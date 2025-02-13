@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "GoAnywhere",
-    "slug": "GoAnywhere",
+    "name": "GOAnywhere",
+    "slug": "GOAnywhere",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

@@ -1,9 +1,11 @@
-import { Text, View,  StyleSheet } from 'react-native';
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
+import P2PNavigation from './P2PNavigation'; // Import P2P Navigation Screen
 
 export default function Index() {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Home screen</Text>
+      <P2PNavigation />
     </View>
   );
 }
@@ -14,8 +16,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#25292e',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  text: {
-    color: '#fff',
   },
 });

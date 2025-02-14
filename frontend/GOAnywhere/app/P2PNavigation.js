@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Dimensions, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 
 const { height, width } = Dimensions.get('window');
 
@@ -16,6 +17,18 @@ const P2PNavigation = () => {
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
+        <MapView
+          style={styles.map}
+          initialRegion={{
+            latitude: 37.7749, // San Francisco, Example
+            longitude: -122.4194,
+            latitudeDelta: 0.0922,
+            longitudeDelta: 0.0421,
+          }}
+        >
+          <Marker coordinate={{ latitude: 37.7749, longitude: -122.4194 }} title="San Francisco" />
+        </MapView>
+
         <View style={styles.topSection}>
           <Text style={styles.title}>P2P Navigation</Text>
           
@@ -45,10 +58,6 @@ const P2PNavigation = () => {
             </TouchableOpacity>
           </View>
         </View>
-        
-        <View style={styles.bottomSection}>
-          {/* Placeholder for future map */}
-        </View>
       </View>
     </TouchableWithoutFeedback>
   );
@@ -57,11 +66,12 @@ const P2PNavigation = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
     width: width,
     height: height,
   },
   topSection: {
+    position: 'center',
     height: height * 0.27,
     justifyContent: 'center',
     alignItems: 'center',
@@ -73,10 +83,10 @@ const styles = StyleSheet.create({
     width: '95%',
     alignSelf: 'center',
   },
-  bottomSection: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
+  map: {
     width: '100%',
+    height: '100%',
+    position: 'absolute',
   },
   title: {
     fontSize: 14,

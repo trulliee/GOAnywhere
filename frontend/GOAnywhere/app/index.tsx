@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import P2PNavigation from './P2PNavigation'; // ✅ Make sure this matches the actual file name
+import P2PNavigation from './P2PNavigation'; 
 
 export default function Index() {
   return (

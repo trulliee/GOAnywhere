@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import P2PNavigation from './P2PNavigation';
+import P2PNavigation from '../P2PNavigation';
 import { useNavigation } from '@react-navigation/native';
 
 export default function Index() {

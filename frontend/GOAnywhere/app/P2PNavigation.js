@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Dimensions, TouchableWithoutFeedback, Keyboard } from 'react-native';
 
 const { height, width } = Dimensions.get('window');
 
@@ -10,96 +10,113 @@ const P2PNavigation = () => {
 
   const handleDriverRoute = () => {
     const randomTime = Math.floor(Math.random() * (30 - 10 + 1)) + 10;
-    setTravelTime(`${randomTime} Mins`);
+    setTravelTime(`${randomTime}`);
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.topSection}>
-        <Text style={styles.title}>P2P Navigation</Text>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
+        <View style={styles.topSection}>
+          <Text style={styles.title}>P2P Navigation</Text>
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Current Location"
+            value={startLocation}
+            onChangeText={setStartLocation}
+          />
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Destination"
+            value={endLocation}
+            onChangeText={setEndLocation}
+          />
+          
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity style={styles.button} onPress={handleDriverRoute}>
+              <Text style={styles.buttonText}>Driver</Text>
+              <Text style={styles.timeText}>{travelTime || '--'} Mins</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.button}>
+              <Text style={styles.buttonText}>Public</Text>
+              <Text style={styles.timeText}>30 Mins</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         
-        <TextInput
-          style={styles.input}
-          placeholder="Current Location"
-          value={startLocation}
-          onChangeText={setStartLocation}
-        />
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Destination"
-          value={endLocation}
-          onChangeText={setEndLocation}
-        />
-        
-        <TouchableOpacity style={styles.button} onPress={handleDriverRoute}>
-          <Text style={styles.buttonText}>Driver</Text>
-        </TouchableOpacity>
-        
-        {travelTime && <Text style={styles.result}>Estimated Time: {travelTime}</Text>}
+        <View style={styles.bottomSection}>
+          {/* Placeholder for future map */}
+        </View>
       </View>
-      
-      <View style={styles.bottomSection}>
-        {/* Leave this section blank for future map integration */}
-      </View>
-    </View>
+    </TouchableWithoutFeedback>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#25292e',
+    backgroundColor: '#FFFFFF',
     width: width,
     height: height,
   },
   topSection: {
-    height: height * 0.33,
+    height: height * 0.27,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#25292e',
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
-    width: '100%',
+    backgroundColor: '#000000',
+    borderTopLeftRadius: 35,
+    borderTopRightRadius: 35,
+    borderBottomLeftRadius: 35,
+    borderBottomRightRadius: 35,
+    width: '95%',
+    alignSelf: 'center',
   },
   bottomSection: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#FFFFFF',
     width: '100%',
   },
   title: {
-    fontSize: 22,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 20,
+    marginBottom: 10,
   },
   input: {
     width: '90%',
     padding: 12,
-    marginBottom: 15,
-    borderWidth: 1,
+    marginBottom: 10,
+    borderWidth: 0.5,
     borderColor: '#ccc',
     borderRadius: 8,
     backgroundColor: '#fff',
   },
-  button: {
-    backgroundColor: '#007bff',
-    padding: 15,
-    borderRadius: 8,
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 5,
     width: '90%',
+  },
+  button: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#E0E0E0',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    width: '48%',
+    justifyContent: 'space-between',
   },
   buttonText: {
-    color: '#fff',
+    color: '#000',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  result: {
-    marginTop: 15,
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+  timeText: {
+    color: '#000',
+    fontSize: 14,
   },
 });
 

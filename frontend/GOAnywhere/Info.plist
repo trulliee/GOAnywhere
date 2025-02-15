@@ -11,3 +11,6 @@
 <array>
   <string>location</string>
 </array>
+
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>We need your location for better navigation.</string>

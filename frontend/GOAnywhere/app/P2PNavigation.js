@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Dimensions, TouchableWithoutFeedback, Keyboard, PermissionsAndroid, Platform } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
-import Geolocation from 'react-native-geolocation-service';
-import P2PPublicTrans from '/P2PPublicTrans';
+import * as Location from 'expo-location';
+import P2PPublicTrans from './P2PPublicTrans';
 
 const { height, width } = Dimensions.get('window');
 
@@ -20,53 +20,38 @@ const P2PNavigation = () => {
   }, []);
 
   const requestLocationPermission = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-        );
-  
-        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-          console.log("Location permission granted");
-          getCurrentLocation();
-        } else {
-          console.log("Location permission denied");
-        }
-      } catch (err) {
-        console.warn(err);
-      }
-    } else {
-      getCurrentLocation(); // iOS automatically asks for permission
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('Permission to access location was denied');
+      return;
     }
+    getCurrentLocation();
   };
   
 
-  const getCurrentLocation = () => {
-    Geolocation.getCurrentPosition(
-      (position) => {
-        if (position && position.coords) {
-          const { latitude, longitude } = position.coords;
-          console.log("User Location:", latitude, longitude);
-  
-          setCurrentRegion({
-            latitude,
-            longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          });
-  
-          setStartLocation(`${latitude}, ${longitude}`);
-        } else {
-          console.log("GPS returned invalid data.");
-        }
-      },
-      (error) => {
-        console.log("Error fetching location:", error.message);
-      },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
-    );
+  const getCurrentLocation = async () => {
+    try {
+      const location = await Location.getCurrentPositionAsync({});
+      if (location && location.coords) {
+        const { latitude, longitude } = location.coords;
+        console.log("User Location:", latitude, longitude);
+
+        setCurrentRegion({
+          latitude,
+          longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        });
+
+        setStartLocation(`${latitude}, ${longitude}`);
+      } else {
+        console.log("GPS returned invalid data.");
+      }
+    } catch (error) {
+      console.log("Error fetching location:", error.message);
+    }
   };
-  
+    
   
   
   const driverTravelTimePlaceholder = () => {

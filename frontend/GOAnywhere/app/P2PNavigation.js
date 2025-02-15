@@ -81,7 +81,7 @@ const P2PNavigation = () => {
             style={styles.map}
             region={
               currentRegion || { 
-                latitude: 1.3521,  // Singapore (TEMP DEFAULT to avoid Africa)
+                latitude: 1.3521, //this is singapore
                 longitude: 103.8198,
                 latitudeDelta: 5, 
                 longitudeDelta: 5

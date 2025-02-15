@@ -22,7 +22,7 @@ export default function LoginScreen() {
             source={{ uri: "https://source.unsplash.com/featured/?city,night" }} 
             style={styles.background}
         >
-            <LinearGradient colors={["rgba(0,0,0,0.7)", "transparent"]} style={styles.overlay}>
+            <LinearGradient colors={["rgba(58, 172, 195, 0.7)", "transparent"]} style={styles.overlay}>
                 <View style={styles.container}>
                     <Text style={styles.title}>Welcome to GoAnywhere</Text>
 

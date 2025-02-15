@@ -1,2 +1,13 @@
 <key>GMSApiKey</key>
 <string>AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g</string>
+
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>We need access to your location for navigation purposes.</string>
+
+<key>NSLocationAlwaysUsageDescription</key>
+<string>This app requires your location to provide real-time navigation.</string>
+
+<key>UIBackgroundModes</key>
+<array>
+  <string>location</string>
+</array>

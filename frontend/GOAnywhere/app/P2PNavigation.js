@@ -1,60 +1,115 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Dimensions, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Dimensions, TouchableWithoutFeedback, Keyboard, PermissionsAndroid, Platform } from 'react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import Geolocation from 'react-native-geolocation-service';
+import P2PPublicTrans from './P2PPublicTrans';
 
 const { height, width } = Dimensions.get('window');
 
 const P2PNavigation = () => {
   const [startLocation, setStartLocation] = useState('');
   const [endLocation, setEndLocation] = useState('');
-  const [travelTime, setTravelTime] = useState(null);
+  const [driverTravelTime, setDriverTravelTime] = useState(null);
+  const [publicTravelTime, setPublicTravelTime] = useState(null);
+  const [route, setRoute] = useState([]);
+  const [markers, setMarkers] = useState([]);
+  const [currentRegion, setCurrentRegion] = useState(null);
 
-  const handleDriverRoute = () => {
+  useEffect(() => {
+    requestLocationPermission();
+  }, []);
+
+  const requestLocationPermission = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        );
+  
+        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+          console.log("Location permission granted");
+          getCurrentLocation();
+        } else {
+          console.log("Location permission denied");
+        }
+      } catch (err) {
+        console.warn(err);
+      }
+    } else {
+      getCurrentLocation(); // iOS automatically asks for permission
+    }
+  };
+  
+
+  const getCurrentLocation = () => {
+    Geolocation.getCurrentPosition(
+      (position) => {
+        if (position && position.coords) {
+          const { latitude, longitude } = position.coords;
+          console.log("User Location:", latitude, longitude);
+  
+          setCurrentRegion({
+            latitude,
+            longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          });
+  
+          setStartLocation(`${latitude}, ${longitude}`);
+        } else {
+          console.log("GPS returned invalid data.");
+        }
+      },
+      (error) => {
+        console.log("Error fetching location:", error.message);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+    );
+  };
+  
+  
+  
+  const driverTravelTimePlaceholder = () => {
     const randomTime = Math.floor(Math.random() * (30 - 10 + 1)) + 10;
-    setTravelTime(`${randomTime}`);
+    setDriverTravelTime(`${randomTime}`);
   };
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
-        <MapView
-          style={styles.map}
-          initialRegion={{
-            latitude: 37.7749, // San Francisco, Example
-            longitude: -122.4194,
-            latitudeDelta: 0.0922,
-            longitudeDelta: 0.0421,
-          }}
+          <MapView
+            style={styles.map}
+            region={
+              currentRegion || { 
+                latitude: 1.3521,  // Singapore (TEMP DEFAULT to avoid Africa)
+                longitude: 103.8198,
+                latitudeDelta: 5, 
+                longitudeDelta: 5
+              }
+            }
+            showsUserLocation={true}
+            showsMyLocationButton={true}
         >
-          <Marker coordinate={{ latitude: 37.7749, longitude: -122.4194 }} title="San Francisco" />
+          {route.length > 0 && <Polyline coordinates={route} strokeWidth={4} strokeColor="blue" />}
+          {markers.map((marker, index) => (
+            <Marker key={index} coordinate={marker} title={marker.title} />
+          ))}
         </MapView>
 
         <View style={styles.topSection}>
           <Text style={styles.title}>P2P Navigation</Text>
-          
-          <TextInput
-            style={styles.input}
-            placeholder="Current Location"
-            value={startLocation}
-            onChangeText={setStartLocation}
-          />
-          
-          <TextInput
-            style={styles.input}
-            placeholder="Destination"
-            value={endLocation}
-            onChangeText={setEndLocation}
-          />
-          
+
+          <TextInput style={styles.input} placeholder="Current Location" value={startLocation} onChangeText={setStartLocation} />
+          <TextInput style={styles.input} placeholder="Destination" value={endLocation} onChangeText={setEndLocation} />
+
           <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.button} onPress={handleDriverRoute}>
+            <TouchableOpacity style={styles.button} onPress={driverTravelTimePlaceholder}>
               <Text style={styles.buttonText}>Driver</Text>
-              <Text style={styles.timeText}>{travelTime || '--'} Mins</Text>
+              <Text style={styles.timeText}>{driverTravelTime || '--'} Mins</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.button}>
+            <TouchableOpacity style={styles.button} onPress={() => P2PPublicTrans(startLocation, endLocation, setRoute, setMarkers, setPublicTravelTime)}>
               <Text style={styles.buttonText}>Public</Text>
-              <Text style={styles.timeText}>30 Mins</Text>
+              <Text style={styles.timeText}>{publicTravelTime || '--'} Mins</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -76,10 +131,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#000000',
-    borderTopLeftRadius: 35,
-    borderTopRightRadius: 35,
-    borderBottomLeftRadius: 35,
-    borderBottomRightRadius: 35,
+    borderRadius: 35,
     width: '95%',
     alignSelf: 'center',
   },

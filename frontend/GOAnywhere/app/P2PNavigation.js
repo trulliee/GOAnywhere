@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Dimensions, TouchableWithoutFeedback, Keyboard, PermissionsAndroid, Platform } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import Geolocation from 'react-native-geolocation-service';
-import P2PPublicTrans from './P2PPublicTrans';
+import P2PPublicTrans from '/P2PPublicTrans';
 
 const { height, width } = Dimensions.get('window');
 

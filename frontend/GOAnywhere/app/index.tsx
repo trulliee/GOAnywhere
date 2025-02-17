@@ -1,9 +1,21 @@
-import { Text, View,  StyleSheet } from 'react-native';
+import React from 'react';
+import { Text, View, StyleSheet, Button } from 'react-native';
+import { useRouter } from "expo-router";
+import { useNavigation } from '@react-navigation/native';
 
 export default function Index() {
+  const navigation = useNavigation();
+  const router = useRouter();
+
+  React.useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Home screen</Text>
+      <Text style={styles.text}>Welcome to GoAnywhere</Text>
+      <Button title="Login" onPress={() => router.push("./login")} />
+      <Button title="Go to P2P Navigation" onPress={() => router.push("./P2PNavigation")} />
     </View>
   );
 }
@@ -17,5 +29,7 @@ const styles = StyleSheet.create({
   },
   text: {
     color: '#fff',
+    fontSize: 18,
+    marginBottom: 10,
   },
 });

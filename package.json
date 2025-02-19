@@ -13,5 +13,9 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
-  ]
+  ],
+  "dependencies": {
+    "expo-notifications": "~0.29.13",
+    "expo-device": "~7.0.2"
+  }
 }

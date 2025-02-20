@@ -16,6 +16,7 @@ export default function Index() {
       <Text style={styles.text}>Welcome to GoAnywhere</Text>
       <Button title="Login" onPress={() => router.push("./login")} />
       <Button title="Go to P2P Navigation" onPress={() => router.push("./P2PNavigation")} />
+      <Button title="Go to Dashboard" onPress={() => router.push("./Dashboard")} />
     </View>
   );
 }

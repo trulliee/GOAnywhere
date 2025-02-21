@@ -1,4 +1,5 @@
 import axios from 'axios';
+import polyline from '@mapbox/polyline'; // Ensure this package is installed
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 
@@ -21,20 +22,17 @@ const P2PDriver = async (startLocation, endLocation, setRoute, setMarkers, setDr
     const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originCoords.lat},${originCoords.lng}&destination=${destinationCoords.lat},${destinationCoords.lng}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`;
 
     const response = await axios.get(url);
-    const steps = response.data.routes[0].legs[0].steps;
-    let polylineCoords = [];
-    let waypoints = [];
+    const routePolyline = response.data.routes[0].overview_polyline.points;
+    const decodedPolyline = polyline.decode(routePolyline).map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
 
-    steps.forEach((step) => {
-      polylineCoords.push({ latitude: step.start_location.lat, longitude: step.start_location.lng });
-      polylineCoords.push({ latitude: step.end_location.lat, longitude: step.end_location.lng });
+    // Only set start and end markers
+    const markers = [
+      { latitude: originCoords.lat, longitude: originCoords.lng, title: "Start" },
+      { latitude: destinationCoords.lat, longitude: destinationCoords.lng, title: "Destination" }
+    ];
 
-      // Add waypoints for visualization
-      waypoints.push({ latitude: step.start_location.lat, longitude: step.start_location.lng, title: "Waypoint" });
-    });
-
-    setRoute(polylineCoords);
-    setMarkers(waypoints);
+    setRoute(decodedPolyline);
+    setMarkers(markers);
     setDriverTravelTime(response.data.routes[0].legs[0].duration.text);
   } catch (error) {
     console.error('Error fetching driving route:', error);

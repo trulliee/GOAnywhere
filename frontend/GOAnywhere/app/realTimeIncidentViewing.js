@@ -13,7 +13,7 @@ const ViewIncidents = () => {
   const fetchValidatedReports = async () => {
     try {
       // Fetch user-submitted reports from backend (Firebase/API)
-      const response = await fetch("https://your-backend.com/api/reports"); // Replace with actual API
+      const response = await fetch(""); // Replace with actual API
       const allReports = await response.json();
 
       // Fetch official traffic data from LTA OneMotoring

@@ -7,6 +7,8 @@ import {
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import P2PPublicTrans from './P2PPublicTrans';
+import P2PDriver from './P2PDriver';
+
 
 const { height, width } = Dimensions.get('window');
 
@@ -56,12 +58,6 @@ const P2PNavigation = () => {
     }
   };
     
-  
-  
-  const driverTravelTimePlaceholder = () => {
-    const randomTime = Math.floor(Math.random() * (30 - 10 + 1)) + 10;
-    setDriverTravelTime(`${randomTime}`);
-  };
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -92,13 +88,13 @@ const P2PNavigation = () => {
           <TextInput style={styles.input} placeholder="Destination" value={endLocation} onChangeText={setEndLocation} />
 
           <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.button} onPress={driverTravelTimePlaceholder}>
-              <Text style={styles.buttonText}>Driver</Text>
-              <Text style={styles.timeText}>{driverTravelTime || '--'} Mins</Text>
+          <TouchableOpacity style={styles.button} onPress={() => P2PDriver(startLocation, endLocation, setRoute, setMarkers, setPublicTravelTime)}>
+          <Text style={styles.buttonText}>Driver</Text>
+              <Text style={styles.timeText}>{driverTravelTime || '--'} </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={() => P2PPublicTrans(startLocation, endLocation, setRoute, setMarkers, setPublicTravelTime)}>
               <Text style={styles.buttonText}>Public</Text>
-              <Text style={styles.timeText}>{publicTravelTime || '--'} Mins</Text>
+              <Text style={styles.timeText}>{publicTravelTime || '--'} </Text>
             </TouchableOpacity>
           </View>
         </View>

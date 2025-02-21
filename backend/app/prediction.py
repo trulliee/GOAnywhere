@@ -1,8 +1,11 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from main import db  # Import Firestore from main.py
 
 router = APIRouter()
+
+def get_db():
+    from app.main import db  # Import here to avoid circular import
+    return db
 
 class RequestData(BaseModel):
     start: str
@@ -16,7 +19,7 @@ class TrafficPrediction(BaseModel):
     weather_condition: str
     overall_conclusion: str
 
-@router.post("/predict/")
+@router.post("/predict")
 async def predict_traffic(request: RequestData):
     prediction = TrafficPrediction(
         jam_level="yellow",

@@ -4,5 +4,10 @@ google-cloud-storage
 google-cloud-secret-manager
 firebase_admin
 requests
+joblib
+scikit-learn
 pandas
-apache-airflow
+numpy
+pylance
+apache-airflow==2.6.3
+psycopg2-binary

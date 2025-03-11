@@ -1,4 +1,3 @@
-
 from google.cloud import storage
 import os
 from google.cloud import secretmanager
@@ -67,21 +66,45 @@ def list_gcs_files(bucket_name):
         print(f"Error listing files: {e}")
         return []
 
+def download_from_gcs(bucket_name, source_blob_name, destination_file_path):
+    """Downloads a blob from GCS to a local file."""
+    try:
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(source_blob_name)
+        blob.download_to_filename(destination_file_path)
+        print(f"Downloaded {source_blob_name} to {destination_file_path}.")
+        return True
+    except Exception as e:
+        print(f"Error downloading from GCS: {e}")
+        return False
+
 if __name__ == "__main__":
     BUCKET_NAME = "goanywhere-traffic-data-history"
     
     # Example: Upload files (ensure the storage client is initialized properly)
     storage_client = initialize_storage_client()
     if storage_client:
-        # Upload the first file
+        # Upload the existing files
         file_uploaded_1 = upload_to_gcs(BUCKET_NAME, "C:/Users/admin/Downloads/RoadTrafficAccidentCasualtiesAnnual.csv", "uploads/RoadTrafficAccidentCasualtiesAnnual.csv")
         if file_uploaded_1:
             print("File 1 uploaded successfully!")
 
-        # Upload the second file
         file_uploaded_2 = upload_to_gcs(BUCKET_NAME, "C:/Users/admin/Downloads/HistoricalDailyWeatherRecords.csv", "uploads/HistoricalDailyWeatherRecords.csv")
         if file_uploaded_2:
             print("File 2 uploaded successfully!")
+        
+        # Upload the new files
+        file_uploaded_3 = upload_to_gcs(BUCKET_NAME, "C:/Users/admin/Downloads/RoadTrafficAccidentCasualtiesMonthly.csv", "uploads/RoadTrafficAccidentCasualtiesMonthly.csv")
+        if file_uploaded_3:
+            print("Monthly traffic accidents file uploaded successfully!")
+            
+        file_uploaded_4 = upload_to_gcs(BUCKET_NAME, "C:/Users/admin/Downloads/PublicHolidaysfor2025.csv", "uploads/PublicHolidaysfor2025.csv")
+        if file_uploaded_4:
+            print("Public holidays file uploaded successfully!")
+            
+        file_uploaded_5 = upload_to_gcs(BUCKET_NAME, "C:/Users/admin/Downloads/RoadNetwork.kml", "uploads/RoadNetwork.kml")
+        if file_uploaded_5:
+            print("Road network KML file uploaded successfully!")
     
         # List files
         files = list_gcs_files(BUCKET_NAME)

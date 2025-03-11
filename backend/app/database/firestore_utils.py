@@ -25,11 +25,40 @@ firebase_admin.initialize_app(cred)
 # Firestore database client
 db = firestore.client()
 
-def store_traffic_data(incidents, traffic_flows):
-    """Stores traffic data (incidents and traffic flows) in Firestore."""
+def store_estimated_travel_times(travel_times):
+    """Stores estimated travel times from LTA DataMall in Firestore."""
+    try:
+        travel_time_ref = db.collection("estimated_travel_times")
+
+        for entry in travel_times:
+            if isinstance(entry, dict):  # Ensure entry is a dictionary
+                doc_id = f"{entry.get('Expressway', 'Unknown')}_{entry.get('Startpoint', 'Unknown')}_{entry.get('Endpoint', 'Unknown')}_{entry.get('Direction', 'Unknown')}"
+                
+                travel_time_data = {
+                    "Expressway": entry.get("Expressway", ""),
+                    "Direction": entry.get("Direction", ""),
+                    "Startpoint": entry.get("Startpoint", ""),
+                    "Endpoint": entry.get("Endpoint", ""),
+                    "Farendpoint": entry.get("Farendpoint", ""),
+                    "Esttime": entry.get("Esttime", 0),  # Keeping original API field name
+                    "Timestamp": firestore.SERVER_TIMESTAMP
+                }
+
+                doc_ref = travel_time_ref.document(doc_id)
+                existing_doc = doc_ref.get()
+
+                # Update only if new data differs to reduce Firestore writes
+                if not existing_doc.exists or existing_doc.to_dict().get("Esttime") != travel_time_data["Esttime"]:
+                    doc_ref.set(travel_time_data)
+
+        print("Estimated travel times successfully stored in Firestore.")
+    except Exception as e:
+        print(f"Error storing estimated travel times: {e}")
+
+def store_traffic_data(incidents):
+    """Stores traffic incidents data in Firestore."""
     try:
         traffic_ref = db.collection("traffic_incidents")
-        traffic_flow_ref = db.collection("traffic_flow")
 
         # Store incidents
         for incident in incidents:
@@ -44,21 +73,132 @@ def store_traffic_data(incidents, traffic_flows):
                 }
                 traffic_ref.document(doc_id).set(filtered_incident)
 
-        '''
-        # havent uploaded traffic_flows data from lta data mall
-        # Store traffic flows
-        for flow in traffic_flows:
-            if isinstance(flow, dict):  # Check if flow is a dictionary
-                doc_id = str(flow.get("Link", "unknown"))
-                filtered_flow = {
-                    "Link": flow.get("Link", ""),
+    except Exception as e:
+        print(f"Error storing traffic incidents data: {e}")
+
+def store_traffic_speed_bands(speed_bands):
+    """Stores traffic speed bands data from LTA DataMall in Firestore."""
+    try:
+        speed_bands_ref = db.collection("traffic_speed_bands")
+
+        for entry in speed_bands:
+            if isinstance(entry, dict):  # Ensure entry is a dictionary
+                # Create a unique document ID using LinkId
+                doc_id = str(entry.get("LinkID", "unknown"))
+                
+                # Prepare the data to store
+                speed_band_data = {
+                    "LinkID": entry.get("LinkID", ""),
+                    "RoadName": entry.get("RoadName", ""),
+                    "RoadCategory": entry.get("RoadCategory", ""),
+                    "SpeedBand": entry.get("SpeedBand", 0),  
+                    "MinSpeed": entry.get("MinSpeed", 0),
+                    "MaxSpeed": entry.get("MaxSpeed", 0),
+                    "StartLongitude": entry.get("StartLongitude", 0),
+                    "StartLatitude": entry.get("StartLatitude", 0),
+                    "EndLongitude": entry.get("EndLongitude", 0),
+                    "EndLatitude": entry.get("EndLatitude", 0),
                     "Timestamp": firestore.SERVER_TIMESTAMP
                 }
-                traffic_flow_ref.document(doc_id).set(filtered_flow)
-        '''
+
+                # Get existing document to check if update is needed
+                doc_ref = speed_bands_ref.document(doc_id)
+                existing_doc = doc_ref.get()
+
+                # Update only if new data differs to reduce Firestore writes
+                if not existing_doc.exists or existing_doc.to_dict().get("SpeedBand") != speed_band_data["SpeedBand"]:
+                    doc_ref.set(speed_band_data)
+
+        print("Traffic speed bands successfully stored in Firestore.")
     except Exception as e:
-        print(f"Error storing traffic data: {e}")
-    
+        print(f"Error storing traffic speed bands: {e}")
+
+def store_vms_data(vms_messages):
+    """Stores Variable Message Services (VMS) data from LTA DataMall in Firestore."""
+    try:
+        vms_ref = db.collection("vms_messages")
+
+        for entry in vms_messages:
+            if isinstance(entry, dict):  # Ensure entry is a dictionary
+                # Create a unique document ID using equipmentId
+                doc_id = str(entry.get("EquipmentID", "unknown"))
+                
+                # Prepare the data to store
+                vms_data = {
+                    "EquipmentID": entry.get("EquipmentID", ""),
+                    "Latitude": entry.get("Latitude", 0),
+                    "Longitude": entry.get("Longitude", 0),
+                    "Message": entry.get("Message", ""),
+                    "Timestamp": firestore.SERVER_TIMESTAMP
+                }
+
+                # Get existing document to check if update is needed
+                doc_ref = vms_ref.document(doc_id)
+                existing_doc = doc_ref.get()
+
+                # Update only if new message differs to reduce Firestore writes
+                if not existing_doc.exists or existing_doc.to_dict().get("Message") != vms_data["Message"]:
+                    doc_ref.set(vms_data)
+
+        print("VMS messages successfully stored in Firestore.")
+    except Exception as e:
+        print(f"Error storing VMS messages: {e}")
+
+def store_traffic_conditions(traffic_conditions):
+    """Stores traffic conditions during peak hours data from data.gov.sg in Firestore."""
+    try:
+        traffic_conditions_ref = db.collection("peak_traffic_conditions")
+        
+        # Process and store each record
+        for entry in traffic_conditions:
+            if isinstance(entry, dict):
+                # Create a unique document ID using date or other identifier
+                doc_id = str(entry.get("year", "")) + "_" + str(entry.get("month", ""))
+                
+                # Store the data
+                traffic_conditions_data = {
+                    "year": entry.get("year", ""),
+                    "month": entry.get("month", ""),
+                    "daily_traffic_volume": entry.get("daily_traffic_volume", 0),
+                    "avg_speed": entry.get("avg_speed", 0),
+                    "congestion_free_roads_percentage": entry.get("congestion_free_roads_percentage", 0),
+                    "Timestamp": firestore.SERVER_TIMESTAMP
+                }
+                
+                traffic_conditions_ref.document(doc_id).set(traffic_conditions_data)
+        
+        print("Peak hour traffic conditions successfully stored in Firestore.")
+    except Exception as e:
+        print(f"Error storing peak hour traffic conditions: {e}")
+
+def store_weather_forecast(forecast_data):
+    """Stores 24-hour weather forecast data from data.gov.sg in Firestore."""
+    try:
+        weather_forecast_ref = db.collection("weather_forecast_24hr")
+        
+        # Create a document ID using the forecast timestamp or date
+        timestamp = forecast_data.get("timestamp", "")
+        doc_id = timestamp.replace(":", "-").replace(".", "-") if timestamp else str(firestore.SERVER_TIMESTAMP)
+        
+        # Include all relevant fields from the forecast
+        forecast_to_store = {
+            "timestamp": timestamp,
+            "update_timestamp": forecast_data.get("update_timestamp", ""),
+            "valid_period": forecast_data.get("valid_period", {}),
+            "general_forecast": forecast_data.get("general_forecast", ""),
+            "temperature": forecast_data.get("temperature", {}),
+            "relative_humidity": forecast_data.get("relative_humidity", {}),
+            "wind": forecast_data.get("wind", {}),
+            "regions": forecast_data.get("regions", {}),
+            "stored_at": firestore.SERVER_TIMESTAMP
+        }
+        
+        # Store the data
+        weather_forecast_ref.document(doc_id).set(forecast_to_store)
+        
+        print("24-hour weather forecast successfully stored in Firestore.")
+    except Exception as e:
+        print(f"Error storing 24-hour weather forecast: {e}")
         
 def store_weather_data(weather_info):
     """Stores weather data in Firestore."""

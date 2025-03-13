@@ -7,17 +7,15 @@
 //import { db } from "./firebaseConfig"; // Your Firebase config file
 
 export const INCIDENT_CATEGORIES = [
-    "Road-Related",
+    "Driver",
     "Public Transport",
-    "Weather",
-    "Crowdsourced",
+    "General",
   ];
   
   export const INCIDENT_DETAILS = [
-    ["Accident", "Roadblock / Closure", "Heavy Traffic", "Broken Down Vehicle", "Hazard on the Road", "Police Checkpoint", "Fire / Explosion", "Flooded Road"],
-    ["Train Service Disruption", "Bus Delays / Diversions", "MRT/Train Breakdown", "Crowded Stations / Bus Stops"],
-    ["Extreme Weather Conditions", "Haze / Poor Air Quality"],
-    ["Community-Reported Issue", "Real-Time Road Observation"],
+    ["Road Hazard"],
+    ["Delay", "Public Trasport Hazard", "Overcrowding"],
+    ["Accident", "Weather", "Road Work", "Map Issue", "Police Supervision"],
   ];
   
   export const SEVERITY_LEVELS = ["Light", "Moderate", "Severe"];

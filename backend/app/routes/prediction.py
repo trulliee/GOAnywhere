@@ -46,7 +46,7 @@ class DetailedPredictionResponse(BaseModel):
 
 router = APIRouter()
 
-@router.get("/prediction", response_model=BasicPredictionResponse)
+@router.get("/prediction/unregistered", response_model=BasicPredictionResponse)
 def get_basic_prediction(
     time: Optional[int] = Query(None, description="Hour of the day (0-23)"),
     day: Optional[int] = Query(None, description="Day of the week (0=Monday, 6=Sunday)"),
@@ -67,7 +67,7 @@ def get_basic_prediction(
         logger.error(f"Prediction error: {str(e)}\n{stack_trace}")
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
-@router.get("/prediction/detailed", response_model=DetailedPredictionResponse)
+@router.get("/prediction/registered", response_model=DetailedPredictionResponse)
 def get_detailed_prediction(
     time: Optional[int] = Query(None, description="Hour of the day (0-23)"),
     day: Optional[int] = Query(None, description="Day of the week (0=Monday, 6=Sunday)"),

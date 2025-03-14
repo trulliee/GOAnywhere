@@ -63,6 +63,7 @@ class TrafficWeatherPredictor:
             logger.error(f"Error loading models: {e}")
             logger.info("Will train new models if data is available")
     
+    # Update to the fetch_data method in TrafficWeatherPredictor class
     def fetch_data(self):
         """Fetch data from both Firestore and Google Cloud Storage."""
         data = {
@@ -71,7 +72,9 @@ class TrafficWeatherPredictor:
             'estimated_travel_times': fetch_firestore_data('estimated_travel_times', limit=1000),
             'vms_messages': fetch_firestore_data('vms_messages', limit=1000),
             'weather_data': fetch_firestore_data('weather_data', limit=100),
-            'weather_forecast_24hr': fetch_firestore_data('weather_forecast_24hr', limit=100)
+            'weather_forecast_24hr': fetch_firestore_data('weather_forecast_24hr', limit=100),
+            # Add explicit fetch for peak traffic conditions
+            'peak_traffic_conditions': fetch_firestore_data('peak_traffic_conditions', limit=100)
         }
         
         # Fetch historical data from Google Cloud Storage
@@ -114,6 +117,9 @@ class TrafficWeatherPredictor:
                                 data['historical_weather'] = csv_data.to_dict('records')
                             elif 'holidays' in filename:
                                 data['holidays'] = csv_data.to_dict('records')
+                            elif 'peak' in filename or 'traffic_conditions' in filename:
+                                # Add handling for peak traffic conditions historical data
+                                data['historical_peak_traffic'] = csv_data.to_dict('records')
                                 
                             logger.info(f"Loaded historical data from GCS: {blob_name}")
                     except Exception as e:
@@ -143,6 +149,9 @@ class TrafficWeatherPredictor:
                                 data['historical_weather'] = csv_data.to_dict('records')
                             elif 'holidays' in filename_lower:
                                 data['holidays'] = csv_data.to_dict('records')
+                            elif 'peak' in filename_lower or 'traffic_conditions' in filename_lower:
+                                # Add handling for peak traffic conditions local data
+                                data['historical_peak_traffic'] = csv_data.to_dict('records')
                             logger.info(f"Loaded historical data from local file: {filename}")
                         except Exception as e:
                             logger.error(f"Error loading CSV file {filename}: {e}")
@@ -581,14 +590,14 @@ class TrafficWeatherPredictor:
                     joblib.dump(self.incidents_model, INCIDENTS_MODEL)
                     logger.info("Incidents model trained and saved")
     
-   # Update the get_basic_prediction method in the TrafficWeatherPredictor class
-
+    # Update to the get_basic_prediction method in TrafficWeatherPredictor class
     def get_basic_prediction(self, time=None, day=None, location=None):
         """
         Generate basic prediction for unregistered users using pandas DataFrame with proper feature names.
         
         Returns:
-            dict: Prediction results including road conditions, possible delays, weather conditions, and travel recommendations
+            dict: Prediction results including road conditions, possible delays, and weather conditions
+                (removed travel recommendation as it's now only for registered users)
         """
         # Use current time and day if not provided
         if time is None:
@@ -614,7 +623,6 @@ class TrafficWeatherPredictor:
         road_condition = "Unknown"
         has_delay = "Unknown"
         weather_condition = "Unknown"
-        travel_recommendation = "Unknown"
         
         # Predict Road Condition
         if self.road_conditions_model is not None:
@@ -755,27 +763,20 @@ class TrafficWeatherPredictor:
             else:
                 weather_condition = "Clear"  # Default
         
-        # Generate Travel Recommendation
-        if road_condition == "Clear" and has_delay == "No" and weather_condition not in ["Rain", "Fog", "Thunderstorm"]:
-            travel_recommendation = "Ideal"
-        else:
-            travel_recommendation = "Not Ideal"
-        
+        # Return basic prediction WITHOUT travel recommendation
         return {
             "road_condition": road_condition,
             "possible_delay": has_delay,
-            "weather_condition": weather_condition,
-            "travel_recommendation": travel_recommendation
+            "weather_condition": weather_condition
         }
 
-    # Update the get_detailed_prediction method in the TrafficWeatherPredictor class
-
+    # Update to the get_detailed_prediction method in TrafficWeatherPredictor class
     def get_detailed_prediction(self, time=None, day=None, location=None, route=None):
         """
         Generate detailed prediction for registered users using pandas DataFrame with proper feature names.
         
         Returns:
-            dict: Detailed prediction results
+            dict: Detailed prediction results including travel recommendation (now only for registered users)
         """
         # Use current time and day if not provided
         if time is None:
@@ -797,8 +798,9 @@ class TrafficWeatherPredictor:
         latest_travel_times = fetch_firestore_data('estimated_travel_times', limit=10)
         latest_weather = fetch_firestore_data('weather_data', limit=1)
         latest_incidents = fetch_firestore_data('traffic_incidents', limit=10)
+        latest_peak_traffic = fetch_firestore_data('peak_traffic_conditions', limit=5)
         
-        # Basic prediction as a starting point
+        # Basic prediction as a starting point (without travel recommendation)
         basic_prediction = self.get_basic_prediction(time, day, location)
         
         # Initialize detailed prediction
@@ -807,7 +809,8 @@ class TrafficWeatherPredictor:
             "estimated_travel_time": {"driving": None, "public_transport": None},
             "alternative_routes": [],
             "incident_alerts": [],
-            "weather_recommendations": []
+            "weather_recommendations": [],
+            "general_travel_recommendation": "Unknown"  # Added this field for registered users
         }
         
         # Road Conditions Probability
@@ -904,14 +907,24 @@ class TrafficWeatherPredictor:
             detailed_prediction["estimated_travel_time"]["driving"] = round(avg_travel_time, 1)
             detailed_prediction["estimated_travel_time"]["public_transport"] = round(avg_travel_time * 1.5, 1)
         
-        # Rest of the method remains the same
-        # Alternative Routes Suggestion (simple logic for now)
+        # Alternative Routes Suggestion (incorporating peak traffic conditions)
         road_condition = basic_prediction["road_condition"]
         if road_condition == "Congested":
-            detailed_prediction["alternative_routes"] = [
-                {"name": "Alternative Route 1", "estimated_time": round(detailed_prediction["estimated_travel_time"]["driving"] * 0.8, 1)},
-                {"name": "Alternative Route 2", "estimated_time": round(detailed_prediction["estimated_travel_time"]["driving"] * 0.9, 1)}
-            ]
+            # Check if we have peak traffic data to improve suggestions
+            if latest_peak_traffic:
+                # Use peak traffic data to suggest better alternatives
+                detailed_prediction["alternative_routes"] = [
+                    {"name": "Alternative Route 1", "estimated_time": round(detailed_prediction["estimated_travel_time"]["driving"] * 0.8, 1), 
+                    "description": "Route via less congested roads avoiding peak areas"},
+                    {"name": "Alternative Route 2", "estimated_time": round(detailed_prediction["estimated_travel_time"]["driving"] * 0.9, 1),
+                    "description": "Slightly longer but steadier traffic flow"}
+                ]
+            else:
+                # Standard alternatives
+                detailed_prediction["alternative_routes"] = [
+                    {"name": "Alternative Route 1", "estimated_time": round(detailed_prediction["estimated_travel_time"]["driving"] * 0.8, 1)},
+                    {"name": "Alternative Route 2", "estimated_time": round(detailed_prediction["estimated_travel_time"]["driving"] * 0.9, 1)}
+                ]
         elif road_condition == "Moderate":
             detailed_prediction["alternative_routes"] = [
                 {"name": "Alternative Route 1", "estimated_time": round(detailed_prediction["estimated_travel_time"]["driving"] * 0.9, 1)}
@@ -940,6 +953,12 @@ class TrafficWeatherPredictor:
         elif weather_condition == "Thunderstorm":
             detailed_prediction["weather_recommendations"].append("Severe weather conditions. Consider postponing travel if possible.")
             detailed_prediction["weather_recommendations"].append("If you must travel, avoid flood-prone areas and stay clear of trees and power lines.")
+        
+        # General Travel Recommendation (now only for registered users)
+        if road_condition == "Clear" and basic_prediction["possible_delay"] == "No" and weather_condition not in ["Rain", "Fog", "Thunderstorm"]:
+            detailed_prediction["general_travel_recommendation"] = "Ideal"
+        else:
+            detailed_prediction["general_travel_recommendation"] = "Not Ideal"
         
         return detailed_prediction
 

@@ -27,7 +27,8 @@ const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.8; // 80% of screen width
 export default function HomeScreen() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [userName, setUserName] = useState('User');
+  const [userName, setUserName] = useState('USER');
+  const [isLoading, setIsLoading] = useState(true);
   
   // State for collapsible menu sections
   const [trafficExpanded, setTrafficExpanded] = useState(false);
@@ -88,19 +89,36 @@ export default function HomeScreen() {
   useEffect(() => {
     // Load user data
     async function loadUser() {
+      setIsLoading(true);
       try {
+        // First check if we have the name in AsyncStorage
+        const storedName = await AuthService.getUserName();
+        if (storedName && storedName !== 'User') {
+          setUserName(storedName.toUpperCase());
+        }
+        
+        // Then try to get full user data from current session
         const userData = await AuthService.getCurrentUser();
         setUser(userData);
         
         if (userData) {
-          const displayName = userData.display_name || userData.name || 
-                            userData.email?.split('@')[0] || 'User';
+          const displayName = userData.name || userData.display_name || 
+                              userData.email?.split('@')[0] || 'USER';
           setUserName(displayName.toUpperCase());
-        } else {
-          setUserName('USER');
+        }
+        
+        // Also try to fetch fresh user info from the server
+        const freshUserInfo = await AuthService.getUserInfo();
+        if (freshUserInfo && !freshUserInfo.error) {
+          const freshName = freshUserInfo.name || 
+                           freshUserInfo.display_name || 
+                           freshUserInfo.email?.split('@')[0] || 'USER';
+          setUserName(freshName.toUpperCase());
         }
       } catch (error) {
         console.error('Error loading user data:', error);
+      } finally {
+        setIsLoading(false);
       }
     }
     

@@ -121,3 +121,33 @@ class AuthService:
             }
         except Exception as e:
             raise Exception(f"Invalid credentials: {str(e)}")
+
+    @staticmethod
+    async def get_user_info(user_id):
+        """
+        Fetch user information from Firestore
+        
+        Args:
+            user_id (str): The user's ID
+            
+        Returns:
+            dict: User information including name
+        """
+        from ..database.firestore_utils import get_document
+        
+        try:
+            user_data = await get_document("users", user_id)
+            if not user_data:
+                return {"error": "User not found"}
+            
+            # Return user data including name
+            return {
+                "id": user_id,
+                "name": user_data.get("name", "User"),
+                "email": user_data.get("email", ""),
+                "phone_number": user_data.get("phone_number", ""),
+                "user_type": user_data.get("user_type", "registered")
+            }
+        except Exception as e:
+            print(f"Error fetching user info: {str(e)}")
+            return {"error": str(e)}

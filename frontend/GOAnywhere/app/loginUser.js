@@ -22,13 +22,24 @@ export default function LoginUser() {
 
     setLoading(true);
     try {
+      let userData;
+      
       if (isLogin) {
         // Handle login
-        await AuthService.login(email, password);
+        userData = await AuthService.login(email, password);
       } else {
         // Handle signup
-        await AuthService.signUp(email, password, name, phoneNumber);
+        userData = await AuthService.signUp(email, password, name, phoneNumber);
       }
+      
+      // Fetch additional user info after successful authentication
+      try {
+        await AuthService.getUserInfo();
+      } catch (infoError) {
+        console.log('Non-critical error fetching user info:', infoError);
+        // Continue with navigation even if this fails
+      }
+      
       router.replace('/home');
     } catch (error) {
       console.error(isLogin ? 'Login error:' : 'Signup error:', error);

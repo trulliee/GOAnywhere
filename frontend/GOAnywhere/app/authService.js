@@ -8,6 +8,7 @@ const API_URL = 'http://192.168.1.14:8000';
 // Keys for AsyncStorage
 const AUTH_TOKEN_KEY = 'auth_token';
 const USER_DATA_KEY = 'user_data';
+const USER_NAME_KEY = 'user_name';
 
 class AuthService {
   // Save auth data to storage
@@ -16,6 +17,12 @@ class AuthService {
       console.log('Saving auth token:', token);
       await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
       await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(userData));
+      
+      // Save user name separately for easy access
+      if (userData.name) {
+        await AsyncStorage.setItem(USER_NAME_KEY, userData.name);
+      }
+      
       return true;
     } catch (error) {
       console.error('Error saving auth data:', error);
@@ -44,10 +51,21 @@ class AuthService {
     }
   }
 
+  // Get user name from storage
+  static async getUserName() {
+    try {
+      const name = await AsyncStorage.getItem(USER_NAME_KEY);
+      return name || 'User';
+    } catch (error) {
+      console.error('Error getting user name:', error);
+      return 'User';
+    }
+  }
+
   // Clear auth data from storage (logout)
   static async clearAuthData() {
     try {
-      await AsyncStorage.multiRemove([AUTH_TOKEN_KEY, USER_DATA_KEY]);
+      await AsyncStorage.multiRemove([AUTH_TOKEN_KEY, USER_DATA_KEY, USER_NAME_KEY]);
       return true;
     } catch (error) {
       console.error('Error clearing auth data:', error);
@@ -177,48 +195,76 @@ class AuthService {
     return !!token;
   }
 
-  // Get current user info
+  // Get current user (with up-to-date info from server)
   static async getCurrentUser() {
     try {
       const token = await this.getToken();
-      
       if (!token) {
-        console.log('No auth token found');
         return null;
       }
 
-      console.log('Using token for auth:', token.substring(0, 20) + '...');
+      // First try to get cached user data
+      const cachedUserData = await this.getUserData();
       
+      // Try to fetch fresh user data from the server
       const response = await fetch(`${API_URL}/auth/me`, {
+        method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
+          'Content-Type': 'application/json',
         },
       });
 
-      console.log('Get user response status:', response.status);
+      if (response.ok) {
+        const userData = await response.json();
+        
+        // Update stored user data
+        await this._saveAuthData(token, userData);
+        
+        return userData;
+      }
+      
+      // If server request fails, return cached data
+      return cachedUserData;
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+      // Return cached data on error
+      return await this.getUserData();
+    }
+  }
+
+  // Fetch user info from server
+  static async getUserInfo() {
+    try {
+      const token = await this.getToken();
+      if (!token) {
+        return { error: 'No authentication token found' };
+      }
+
+      const response = await fetch(`${API_URL}/auth/user-info`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
 
       if (!response.ok) {
-        // Token may be invalid - try getting response content
-        try {
-          const errorData = await response.json();
-          console.log('Auth error response:', errorData);
-        } catch (e) {
-          console.log('Could not parse error response');
-        }
-        
-        if (response.status === 401) {
-          await this.clearAuthData();
-        }
-        return null;
+        const errorData = await response.json();
+        return { error: errorData.detail || 'Failed to fetch user information' };
       }
 
       const userData = await response.json();
-      console.log('User data received:', userData);
+      
+      // Update stored user info
+      if (userData && !userData.error) {
+        await this._saveAuthData(token, userData);
+      }
+      
       return userData;
     } catch (error) {
-      console.error('Error getting current user:', error);
-      return null;
+      console.error('Error fetching user info:', error);
+      return { error: 'An error occurred while fetching user information' };
     }
   }
 

@@ -155,7 +155,7 @@ async def login(login_data: LoginRequest):
         )
 
 @router.post("/verify-token")
-async def verify_token(token_data: TokenData):
+async def verify_token_endpoint(token_data: TokenData):
     try:
         user_data = await AuthService.verify_token(token_data.id_token)
         
@@ -177,5 +177,33 @@ async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@router.get("/user-info")
+async def user_information(token: str = Depends(oauth2_scheme)):
+    """
+    Get user information including name
+    
+    Args:
+        token: JWT token from authentication
+        
+    Returns:
+        User information including name
+    """
+    try:
+        # Verify token and get user ID
+        decoded_token = await AuthService.verify_token(token)
+        user_id = decoded_token["uid"]
+        
+        # Get user info
+        user_info = await AuthService.get_user_info(user_id)
+        if "error" in user_info:
+            raise HTTPException(status_code=404, detail=user_info["error"])
+        
+        return user_info
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e)
         )

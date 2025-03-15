@@ -1,6 +1,7 @@
 from google.cloud import secretmanager
 import firebase_admin
 from firebase_admin import credentials, firestore
+from datetime import datetime
 import json
 
 # Create the Secret Manager client
@@ -688,3 +689,49 @@ def get_incident_validation_status(incident_id):
     except Exception as e:
         print(f"Error getting validation status: {e}")
         return {"error": str(e)}
+
+async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered"):
+    """Store user data in Firestore"""
+    try:
+        db = firestore.client()
+        users_ref = db.collection("users")
+        
+        user_data = {
+            "userType": user_type,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+            "lastLogin": firestore.SERVER_TIMESTAMP,
+            "settings": {
+                "notifications": True,
+                "locationSharing": False
+            }
+        }
+        
+        if name:
+            user_data["name"] = name
+        
+        if email:
+            user_data["email"] = email
+            
+        if phone_number:
+            user_data["phoneNumber"] = phone_number
+        
+        # Set user data in Firestore
+        users_ref.document(user_id).set(user_data)
+        
+    except Exception as e:
+        print(f"Error storing user data: {e}")
+        raise e
+
+async def update_user_last_login(user_id):
+    """Update user's last login timestamp"""
+    try:
+        db = firestore.client()
+        user_ref = db.collection("users").document(user_id)
+        
+        user_ref.update({
+            "lastLogin": firestore.SERVER_TIMESTAMP
+        })
+        
+    except Exception as e:
+        print(f"Error updating user last login: {e}")
+        # Don't raise error to allow authentication to succeed even if this fails

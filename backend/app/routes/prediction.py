@@ -13,7 +13,6 @@ class BasicPredictionResponse(BaseModel):
     road_condition: str
     possible_delay: str
     weather_condition: str
-    travel_recommendation: str
 
 class RoadConditionsProbability(BaseModel):
     Congested: float = 0.0

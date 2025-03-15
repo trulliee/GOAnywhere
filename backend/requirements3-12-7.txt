@@ -11,3 +11,7 @@ numpy
 pylance
 apache-airflow==2.6.3
 psycopg2-binary
+firebase-admin>=6.2.0
+fastapi>=0.103.1
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.6

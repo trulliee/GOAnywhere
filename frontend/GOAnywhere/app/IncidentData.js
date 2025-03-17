@@ -54,8 +54,9 @@ export const fetchFromDB = () => {
 
 export const fetchFromDB = async () => {
   const fetchedData = [
-    ["7", "Road-Related", "Accident", "Highway 5", "2025/03/14 08:30 AM", 2, "Official Report", 0],
-    ["8", "Public Transport", "Train Delay", "Metro Line A", "2025/03/14 09:00 AM", 1, "Crowdsourced", 0],
+    ["7", "Driver", "Road Hazard", "Highway 5", "2025/03/14 08:30 AM", 2, "Official Report", 0],
+    ["8", "Public Transport", "Delay", "Metro Line A", "2025/03/14 09:00 AM", 1, "Crowdsourced", 0],
+    ["9", "General", "Weather", "Highway 9", "2025/03/16 09:00 AM", 2, "Crowdsourced", 0]
   ];
 
   // Only add incidents that do not already exist
@@ -65,6 +66,17 @@ export const fetchFromDB = async () => {
     }
   });
 };
+
+export const getIncidentNotifications = () => {
+  return incidents.filter((incident) =>
+    (incident[1] === "General" && incident[2] === "Weather" && incident[5] === 2) ||  // Weather and Severe
+    (incident[1] === "Driver" && incident[2] === "Road Hazard" && incident[5] === 2)  // Road Hazard and Severe
+  );
+};
+
+
+
+
 
 // Create a component to satisfy expo-router's requirement for default export
 const IncidentData = () => {

@@ -1,76 +1,52 @@
-import React, { useEffect, useState, useRef } from "react";
-import { View, Text, Button, FlatList, StyleSheet } from "react-native";
-import * as Notifications from "expo-notifications";
-import * as Device from "expo-device";
+import React, { useEffect, useState } from "react";
+import { View, Text, FlatList, StyleSheet } from "react-native";
+import { getIncidentNotifications } from "./IncidentData";
+import { getUserAccountNotifications, getReportNotifications } from "./notificationData";
 
-export default function App() {
+const Notification = () => {
   const [notifications, setNotifications] = useState([]);
-  const notificationListener = useRef();
 
-  // Request Notification Permissions
   useEffect(() => {
-    async function registerForPushNotifications() {
-      if (Device.isDevice) {
-        const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== "granted") {
-          alert("Permission for notifications was denied!");
-          return;
-        }
-      } else {
-        alert("Push notifications are only available on real devices.");
-      }
-    }
+    const combinedNotifications = [
+      ...getIncidentNotifications(),
+      ...getUserAccountNotifications(),
+      ...getReportNotifications(),
+    ];
 
-    registerForPushNotifications();
-
-    // Listen for incoming notifications
-    notificationListener.current =
-      Notifications.addNotificationReceivedListener((notification) => {
-        setNotifications((prev) => [
-          { id: Date.now().toString(), ...notification.request.content },
-          ...prev,
-        ]);
-      });
-
-    return () => {
-      Notifications.removeNotificationSubscription(notificationListener.current);
-    };
+    console.log("Final Notifications:", combinedNotifications); // Debugging
+    setNotifications(combinedNotifications);
   }, []);
 
-  // Simulate a Notification (For Testing)
-  const sendTestNotification = async () => {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "New Notification! 🚀",
-        body: "This is a test notification.",
-        data: { extra: "Some additional data" },
-      },
-      trigger: null, // Instant notification
-    });
-  };
+  const renderNotificationItem = ({ item }) => (
+    <View style={styles.notificationBox}>
+      <Text style={styles.notificationText}>{item[2]}</Text>
+      <Text style={styles.notificationTime}>⏰ {item[4]}</Text>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <Button title="Send Test Notification" onPress={sendTestNotification} />
-
-      <Text style={styles.header}>Notifications</Text>
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.notification}>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text>{item.body}</Text>
-          </View>
-        )}
-      />
+      <Text style={styles.title}>Notifications</Text>
+      {notifications.length === 0 ? (
+        <Text style={styles.noNotifications}>No notifications available</Text>
+      ) : (
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item[0]}
+          renderItem={renderNotificationItem}
+        />
+      )}
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
-  header: { fontSize: 18, fontWeight: "bold", marginVertical: 10 },
-  notification: { padding: 15, borderBottomWidth: 1, borderBottomColor: "#ddd" },
-  title: { fontSize: 16, fontWeight: "bold" },
+  container: { flex: 1, padding: 16, backgroundColor: "#fff" },
+  title: { fontSize: 22, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
+  noNotifications: { fontSize: 14, color: "#777", textAlign: "center", marginBottom: 10 },
+  notificationBox: { backgroundColor: "#f8f8f8", padding: 12, marginBottom: 8, borderRadius: 6, elevation: 2 },
+  notificationText: { fontSize: 14, fontWeight: "bold" },
+  notificationTime: { fontSize: 12, color: "#777", marginTop: 4 },
 });
+
+export default Notification;

@@ -2,6 +2,9 @@
 //It makes it so that the app doesn't access firebase everytime it needs to display the data.
 //Atm stuff are mockup. When linking this to firebase, uncomment the commented stuff.
 
+
+//later need to unify this into 1 data fetch code
+
 import React from 'react';
 //import { collection, onSnapshot } from "firebase/firestore";
 //import { db } from "./firebaseConfig"; // Your Firebase config file

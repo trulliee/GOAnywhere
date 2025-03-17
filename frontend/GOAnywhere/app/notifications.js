@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, FlatList, StyleSheet } from "react-native";
 import { getIncidentNotifications } from "./IncidentData";
-import { getUserAccountNotifications, getReportNotifications } from "./notificationData";
+import { getUserAccountNotifications, getReportNotifications } from "./NotificationData";
 
 const Notification = () => {
   const [notifications, setNotifications] = useState([]);

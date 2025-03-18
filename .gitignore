@@ -174,3 +174,4 @@ cython_debug/
 
 airflow/logs/scheduler/latest
 airflow/logs/scheduler/latest
+__pycache__/

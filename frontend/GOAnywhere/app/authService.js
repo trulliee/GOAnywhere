@@ -3,7 +3,7 @@ import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Replace with your actual backend URL based on your IP address
-const API_URL = 'http://192.168.1.14:8000';
+const API_URL = 'http://192.168.27.44:8000';
 
 // Keys for AsyncStorage
 const AUTH_TOKEN_KEY = 'auth_token';

@@ -6,5 +6,5 @@ export default {
     FIREBASE_STORAGE_BUCKET: 'goanywhere-c55c8.appspot.com',
     FIREBASE_MESSAGING_SENDER_ID: '541900038032',
     FIREBASE_APP_ID: '1:541900038032:web:xxxxxxxxxxxxxxx',
-    MAPBOX_ACCESS_TOKEN: 'pk.eyJ1IjoidHJvbGxleTEyNCIsImEiOiJjbTg5em02bDQxODExMmpwenozcXl0bjBrIn0.7qn-UFq5XJ_SlJyQmSg4qw'
+    MAPBOX_ACCESS_TOKEN: 'pk.eyJ1IjoidHJvbGxleTEyNCIsImEiOiJjbThkOTQ2ODgybDF2MmpyM2YwbzQwaHhwIn0.W9SmB0piy6kIiMp3BPmZxA'
   };

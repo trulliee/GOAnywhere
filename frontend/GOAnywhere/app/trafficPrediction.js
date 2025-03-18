@@ -1,546 +1,644 @@
-import React, { useState } from "react";
-import { useRouter } from "expo-router";
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Button, Switch, Platform, ScrollView } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import AuthService from './authService';
+import { useRouter } from 'expo-router';
 
-// For iOS simulator
-const API_BASE_URL_IOS = "http://127.0.0.1:8000";
+// Update this to match your backend URL and port
+const API_URL = 'http://192.168.1.12:8000';
 
-// For Android emulator
-const API_BASE_URL_ANDROID = "http://10.0.2.2:8000";
-
-const TrafficPrediction = () => {
+export default function TrafficPredictionScreen() {
   const router = useRouter();
-  const [date, setDate] = useState(new Date());
-  const [showPicker, setShowPicker] = useState(false);
-  const [startLocation, setStartLocation] = useState("");
-  const [destinationLocation, setDestinationLocation] = useState("");
-  const [prediction, setPrediction] = useState(null);
-  const [isRegistered, setIsRegistered] = useState(false);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [transportMode, setTransportMode] = useState("driving"); // "driving" or "public"
   const [error, setError] = useState(null);
+  const [debugInfo, setDebugInfo] = useState(null); // For debugging response
+  
+  // Form inputs
+  const [startLocation, setStartLocation] = useState('');
+  const [destination, setDestination] = useState('');
+  const [transportMode, setTransportMode] = useState('driving');
+  const [predictionDate, setPredictionDate] = useState(new Date());
+  
+  // Prediction results
+  const [prediction, setPrediction] = useState(null);
 
-// Modify your fetchPrediction function
-const fetchPrediction = async () => {
-  if (!startLocation || !destinationLocation) {
-    Alert.alert("Error", "Please enter both start and destination locations.");
-    return;
-  }
-
-  setLoading(true);
-  setError(null);
-
-  try {
-    // Get the hour and day from the selected date
-    const hour = date.getHours();
-    const day = date.getDay() === 0 ? 6 : date.getDay() - 1;
-
-    // Choose API base URL based on platform
-    const API_BASE_URL = Platform.OS === 'ios' ? API_BASE_URL_IOS : API_BASE_URL_ANDROID;
-    
-    // Choose endpoint based on user type
-    const endpoint = isRegistered 
-      ? `${API_BASE_URL}/prediction/registered` 
-      : `${API_BASE_URL}/prediction/unregistered`;
-    
-    // Build query parameters
-    const params = new URLSearchParams({
-      time: hour,
-      day: day
-    });
-
-    // Add location parameter in the format expected by backend
-    if (isRegistered) {
-      // For registered users, we should include route info
-      params.append('location', `${startLocation}`);
-      
-      // Add a valid expressway name to match what the model expects
-      // You might want to extract this from the location or have a dropdown
-      const expressway = "PIE"; // Example: Pan Island Expressway
-      params.append('route', `${expressway},${startLocation},${destinationLocation}`);
-    } else {
-      // For unregistered users, simple location is enough
-      params.append('location', startLocation);
-    }
-    
-    console.log("Requesting URL:", `${endpoint}?${params.toString()}`);
-
-    const response = await fetch(`${endpoint}?${params.toString()}`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" }
-    });
-
-    console.log("Response status:", response.status);
-
-    if (!response.ok) {
-      let errorMessage = `Server error: ${response.status}`;
+  // Fetch current user on component mount
+  useEffect(() => {
+    const fetchUser = async () => {
       try {
-        const errorData = await response.json();
-        console.log("Error data:", errorData);
-        if (errorData && errorData.detail) {
-          errorMessage = errorData.detail;
-        }
-      } catch (e) {
-        console.log("Error parsing error response:", e);
+        const currentUser = await AuthService.getCurrentUser();
+        console.log("Current user:", currentUser);
+        setUser(currentUser);
+      } catch (err) {
+        console.error("Error fetching user:", err);
       }
-      throw new Error(errorMessage);
+    };
+    
+    fetchUser();
+  }, []);
+  
+  const handleSubmit = async () => {
+    // Validate inputs
+    if (!startLocation || !destination) {
+      Alert.alert('Error', 'Please enter both start location and destination');
+      return;
     }
-
-    const data = await response.json();
-    console.log("Received data:", data);
-    setPrediction(data);
-  } catch (error) {
-    console.error("Error fetching prediction:", error);
-    setError(error.message);
-    Alert.alert(
-      "Error", 
-      "Could not fetch traffic prediction. " + error.message,
-      [
-        { text: "OK" },
-        isRegistered ? 
-          { text: "Try Basic Prediction", onPress: () => setIsRegistered(false) } : 
-          null
-      ].filter(Boolean)
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // Render prediction result based on user type
-  const renderPredictionResult = () => {
-    if (!prediction) return null;
-
-    if (isRegistered) {
-      // Detailed prediction display for registered users
-      return (
-        <View style={styles.resultContainer}>
-          <Text style={styles.resultTitle}>Traffic Prediction</Text>
-          
-          <Text style={styles.resultSubtitle}>Road Conditions:</Text>
-          {Object.entries(prediction.road_conditions_probability || {}).map(([condition, probability]) => (
-            <Text key={condition} style={styles.resultText}>
-              {condition}: {typeof probability === 'number' ? probability.toFixed(1) : probability}%
-            </Text>
-          ))}
-          
-          <Text style={styles.resultSubtitle}>Estimated Travel Time:</Text>
-          {prediction.estimated_travel_time?.driving !== undefined && transportMode === "driving" && (
-            <Text style={styles.resultText}>
-              Driving: {prediction.estimated_travel_time.driving} minutes
-            </Text>
-          )}
-          {prediction.estimated_travel_time?.public_transport !== undefined && transportMode === "public" && (
-            <Text style={styles.resultText}>
-              Public Transit: {prediction.estimated_travel_time.public_transport} minutes
-            </Text>
-          )}
-          
-          {prediction.alternative_routes?.length > 0 && (
-            <>
-              <Text style={styles.resultSubtitle}>Alternative Routes:</Text>
-              {prediction.alternative_routes.map((route, index) => (
-                <Text key={index} style={styles.resultText}>
-                  {route.name}: {route.estimated_time} minutes
-                  {route.description && <Text> - {route.description}</Text>}
-                </Text>
-              ))}
-            </>
-          )}
-          
-          {prediction.incident_alerts?.length > 0 && (
-            <>
-              <Text style={styles.resultSubtitle}>Incidents:</Text>
-              {prediction.incident_alerts.map((alert, index) => (
-                <Text key={index} style={styles.resultText}>
-                  {alert.type}: {alert.message}
-                </Text>
-              ))}
-            </>
-          )}
-          
-          {prediction.weather_recommendations?.length > 0 && (
-            <>
-              <Text style={styles.resultSubtitle}>Weather Recommendations:</Text>
-              {prediction.weather_recommendations.map((rec, index) => (
-                <Text key={index} style={styles.resultText}>• {rec}</Text>
-              ))}
-            </>
-          )}
-
-          {prediction.general_travel_recommendation && (
-            <>
-              <Text style={styles.resultSubtitle}>Travel Recommendation:</Text>
-              <Text style={[
-                styles.resultText, 
-                styles.recommendationText,
-                prediction.general_travel_recommendation === "Ideal" ? 
-                  styles.recommendationIdeal : 
-                  styles.recommendationNotIdeal
-              ]}>
-                {prediction.general_travel_recommendation}
-              </Text>
-            </>
-          )}
-        </View>
-      );
-    } else {
-      // Basic prediction display for unregistered users
-      return (
-        <View style={styles.resultContainer}>
-          <Text style={styles.resultTitle}>Traffic Prediction</Text>
-          
-          <View style={styles.basicResultRow}>
-            <Text style={styles.basicResultLabel}>Road Condition:</Text>
-            <Text style={[
-              styles.basicResultValue,
-              prediction.road_condition === "Clear" ? styles.resultGood : 
-              prediction.road_condition === "Moderate" ? styles.resultModerate :
-              styles.resultBad
-            ]}>
-              {prediction.road_condition}
-            </Text>
-          </View>
-
-          <View style={styles.basicResultRow}>
-            <Text style={styles.basicResultLabel}>Possible Delay:</Text>
-            <Text style={[
-              styles.basicResultValue,
-              prediction.possible_delay === "No" ? styles.resultGood : styles.resultBad
-            ]}>
-              {prediction.possible_delay}
-            </Text>
-          </View>
-
-          <View style={styles.basicResultRow}>
-            <Text style={styles.basicResultLabel}>Weather:</Text>
-            <Text style={[
-              styles.basicResultValue,
-              prediction.weather_condition === "Clear" ? styles.resultGood :
-              prediction.weather_condition === "Cloudy" ? styles.resultModerate :
-              styles.resultWarning
-            ]}>
-              {prediction.weather_condition}
-            </Text>
-          </View>
-
-          <View style={styles.upgradeContainer}>
-            <Text style={styles.upgradeText}>
-              Get detailed predictions including travel recommendations, alternative routes, and incident alerts by upgrading to a registered user account.
-            </Text>
-          </View>
-        </View>
-      );
+    
+    setLoading(true);
+    setError(null);
+    setPrediction(null);
+    setDebugInfo(null);
+    
+    try {
+      // Prepare request payload
+      const requestPayload = {
+        start_location: startLocation,
+        destination_location: destination,
+        transport_mode: transportMode,
+        prediction_datetime: predictionDate.toISOString()
+      };
+      
+      console.log("Sending request payload:", requestPayload);
+      
+      // Get authentication token if user is logged in
+      const token = await AuthService.getToken();
+      console.log("User token:", token ? "Present" : "None");
+      
+      // Make API request
+      const response = await fetch(`${API_URL}/traffic-forecast`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(requestPayload)
+      });
+      
+      // Handle response
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to fetch prediction');
+      }
+      
+      const data = await response.json();
+      console.log("Full prediction response:", JSON.stringify(data, null, 2));
+      setDebugInfo(JSON.stringify(data, null, 2)); // Store for debugging
+      setPrediction(data);
+    } catch (err) {
+      console.error('Prediction Error:', err);
+      setError(err.message || 'Unable to fetch prediction');
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <ScrollView style={styles.scrollView}>
-      <View style={styles.container}>
-        <Text style={styles.title}>Traffic Prediction</Text>
-
-        {/* User Type Toggle */}
-        <View style={styles.toggleContainer}>
-          <Text>Basic</Text>
-          <Switch
-            value={isRegistered}
-            onValueChange={setIsRegistered}
-            style={styles.toggle}
-          />
-          <Text>Detailed</Text>
+  // Render prediction for unregistered users
+  const renderBasicPrediction = () => {
+    if (!prediction) return null;
+    
+    return (
+      <View style={styles.predictionContainer}>
+        <Text style={styles.sectionTitle}>Traffic Prediction</Text>
+        
+        <View style={styles.predictionItem}>
+          <Text style={styles.predictionLabel}>Road Conditions:</Text>
+          <Text style={styles.predictionValue}>{prediction.road_condition || "Unknown"}</Text>
         </View>
-
-        {/* Start Location Input */}
-        <Text style={styles.label}>Start Location</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="E.g., Orchard Road" 
-          value={startLocation} 
-          onChangeText={setStartLocation} 
-        />
-
-        {/* Destination Location Input */}
-        <Text style={styles.label}>Destination</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="E.g., Marina Bay Sands" 
-          value={destinationLocation} 
-          onChangeText={setDestinationLocation} 
-        />
-
-        {/* Transport Mode Selection */}
-        <Text style={styles.label}>Mode of Transport</Text>
-        <View style={styles.transportToggleContainer}>
-          <TouchableOpacity 
-            style={[
-              styles.transportButton, 
-              transportMode === "driving" && styles.transportButtonActive
-            ]}
-            onPress={() => setTransportMode("driving")}
-          >
-            <Text style={[
-              styles.transportButtonText,
-              transportMode === "driving" && styles.transportButtonTextActive
-            ]}>Driving</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.transportButton, 
-              transportMode === "public" && styles.transportButtonActive
-            ]}
-            onPress={() => setTransportMode("public")}
-          >
-            <Text style={[
-              styles.transportButtonText,
-              transportMode === "public" && styles.transportButtonTextActive
-            ]}>Public Transport</Text>
-          </TouchableOpacity>
+        
+        <View style={styles.predictionItem}>
+          <Text style={styles.predictionLabel}>Possible Delays:</Text>
+          <Text style={styles.predictionValue}>{prediction.possible_delay || "Unknown"}</Text>
         </View>
-
-        {/* Date & Time Picker */}
-        <Text style={styles.label}>Select Date & Time</Text>
-        <TouchableOpacity style={styles.pickerButton} onPress={() => setShowPicker(true)}>
-          <Text style={styles.pickerText}>{date.toLocaleString()}</Text>
-        </TouchableOpacity>
-        {showPicker && (
-          <DateTimePicker 
-            value={date} 
-            mode="datetime" 
-            display="default" 
-            onChange={(event, selectedDate) => {
-              setShowPicker(false);
-              if (selectedDate) setDate(selectedDate);
-            }} 
-          />
+        
+        <View style={styles.predictionItem}>
+          <Text style={styles.predictionLabel}>Weather Conditions:</Text>
+          <Text style={styles.predictionValue}>{prediction.weather_condition || "Unknown"}</Text>
+        </View>
+        
+        {!user && (
+          <TouchableOpacity 
+            style={styles.registerButton}
+            onPress={() => router.push('/login')}
+          >
+            <Text style={styles.registerButtonText}>Register for detailed predictions</Text>
+          </TouchableOpacity>
         )}
-
-        {/* Fetch Prediction Button */}
-        <TouchableOpacity 
-          style={[styles.submitButton, loading && styles.disabledButton]} 
-          onPress={fetchPrediction}
-          disabled={loading}
-        >
-          <Text style={styles.submitText}>
-            {loading ? "Loading..." : "Get Prediction"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Error Display */}
-        {error && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>Error: {error}</Text>
+      </View>
+    );
+  };
+  
+  // Render detailed prediction for registered users
+  const renderDetailedPrediction = () => {
+    if (!prediction || !user) return null;
+    
+    console.log("Rendering detailed prediction with:", prediction);
+    
+    return (
+      <View style={styles.predictionContainer}>
+        <Text style={styles.sectionTitle}>Detailed Traffic Prediction</Text>
+        
+        {/* Road Conditions Probability */}
+        <View style={styles.detailSection}>
+          <Text style={styles.detailTitle}>Road Conditions Probability</Text>
+          
+          {prediction.road_conditions_probability && Object.entries(prediction.road_conditions_probability).length > 0 ? (
+            Object.entries(prediction.road_conditions_probability).map(([condition, probability]) => (
+              <View key={condition} style={styles.probabilityItem}>
+                <Text style={styles.conditionLabel}>{condition}:</Text>
+                <View style={styles.probabilityBar}>
+                  <View 
+                    style={[
+                      styles.probabilityFill, 
+                      { width: `${probability}%` },
+                      condition === 'Congested' ? styles.congested : (condition === 'Moderate' ? styles.moderate : styles.clear)
+                    ]}
+                  />
+                </View>
+                <Text style={styles.probabilityText}>{probability}%</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.noDataText}>No probability data available</Text>
+          )}
+        </View>
+        
+        {/* Estimated Travel Time */}
+        <View style={styles.detailSection}>
+          <Text style={styles.detailTitle}>Estimated Travel Time</Text>
+          
+          {prediction.estimated_travel_time && 
+           (prediction.estimated_travel_time.driving || prediction.estimated_travel_time.public_transport) ? (
+            <>
+              {prediction.estimated_travel_time.driving && (
+                <View style={styles.timeItem}>
+                  <Text style={styles.timeLabel}>Driving:</Text>
+                  <Text style={styles.timeValue}>{prediction.estimated_travel_time.driving} min</Text>
+                </View>
+              )}
+              
+              {prediction.estimated_travel_time.public_transport && (
+                <View style={styles.timeItem}>
+                  <Text style={styles.timeLabel}>Public Transport:</Text>
+                  <Text style={styles.timeValue}>{prediction.estimated_travel_time.public_transport} min</Text>
+                </View>
+              )}
+            </>
+          ) : (
+            <Text style={styles.noDataText}>No travel time data available</Text>
+          )}
+        </View>
+        
+        {/* Alternative Routes */}
+        {prediction.alternative_routes && prediction.alternative_routes.length > 0 && (
+          <View style={styles.detailSection}>
+            <Text style={styles.detailTitle}>Alternative Routes</Text>
+            
+            {prediction.alternative_routes.map((route, index) => (
+              <View key={index} style={styles.routeItem}>
+                <Text style={styles.routeName}>{route.name}</Text>
+                <Text style={styles.routeTime}>Est. Time: {route.estimated_time} min</Text>
+                {route.description && <Text style={styles.routeDescription}>{route.description}</Text>}
+              </View>
+            ))}
           </View>
         )}
-
-        {/* Display Prediction Result */}
-        {renderPredictionResult()}
         
-        {/* Back Button */}
-        <View style={styles.backButtonContainer}>
-          <Button title="Back" onPress={() => router.back()} />
+        {/* Incident Alerts */}
+        {prediction.incident_alerts && prediction.incident_alerts.length > 0 && (
+          <View style={styles.detailSection}>
+            <Text style={styles.detailTitle}>Incident Alerts</Text>
+            
+            {prediction.incident_alerts.map((incident, index) => (
+              <View key={index} style={styles.incidentItem}>
+                <Text style={styles.incidentType}>{incident.type}</Text>
+                <Text style={styles.incidentMessage}>{incident.message}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+        
+        {/* Weather Recommendations */}
+        {prediction.weather_recommendations && prediction.weather_recommendations.length > 0 && (
+          <View style={styles.detailSection}>
+            <Text style={styles.detailTitle}>Weather Recommendations</Text>
+            
+            {prediction.weather_recommendations.map((recommendation, index) => (
+              <Text key={index} style={styles.recommendationText}>• {recommendation}</Text>
+            ))}
+          </View>
+        )}
+        
+        {/* General Travel Recommendation */}
+        <View style={styles.detailSection}>
+          <Text style={styles.detailTitle}>Travel Recommendation</Text>
+          {prediction.general_travel_recommendation ? (
+            <Text style={[
+              styles.recommendationValue,
+              prediction.general_travel_recommendation === 'Ideal' ? styles.idealTravel : styles.notIdealTravel
+            ]}>
+              {prediction.general_travel_recommendation}
+            </Text>
+          ) : (
+            <Text style={styles.noDataText}>No recommendation available</Text>
+          )}
         </View>
+        
+        {/* Debug information section (only in development) */}
+        {debugInfo && (
+          <View style={styles.debugSection}>
+            <Text style={styles.debugTitle}>Debug Information</Text>
+            <Text style={styles.debugText}>{debugInfo}</Text>
+          </View>
+        )}
       </View>
+    );
+  };
+
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.formContainer}>
+        <Text style={styles.title}>Traffic Prediction</Text>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Start Location</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter starting point"
+            value={startLocation}
+            onChangeText={setStartLocation}
+          />
+        </View>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Destination</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter destination"
+            value={destination}
+            onChangeText={setDestination}
+          />
+        </View>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Transport Mode</Text>
+          <View style={styles.pickerContainer}>
+            <TouchableOpacity 
+              style={[styles.modeButton, transportMode === 'driving' && styles.modeButtonSelected]} 
+              onPress={() => setTransportMode('driving')}
+            >
+              <Text style={[styles.modeButtonText, transportMode === 'driving' && styles.modeButtonTextSelected]}>
+                Driving
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modeButton, transportMode === 'transit' && styles.modeButtonSelected]} 
+              onPress={() => setTransportMode('transit')}
+            >
+              <Text style={[styles.modeButtonText, transportMode === 'transit' && styles.modeButtonTextSelected]}>
+                Public Transport
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Current Date & Time (Using System Time)</Text>
+          <View style={styles.dateButton}>
+            <Text style={styles.dateButtonText}>
+              {predictionDate.toLocaleString()}
+            </Text>
+          </View>
+        </View>
+        
+        <TouchableOpacity 
+          style={[styles.submitButton, loading && styles.buttonDisabled]}
+          onPress={handleSubmit}
+          disabled={loading}
+        >
+          <Text style={styles.submitButtonText}>
+            {loading ? 'Getting Prediction...' : 'Get Prediction'}
+          </Text>
+        </TouchableOpacity>
+        
+        {loading && <ActivityIndicator size="large" color="#3498db" style={styles.loader} />}
+        
+        {error && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+      </View>
+      
+      {prediction && (
+        user ? renderDetailedPrediction() : renderBasicPrediction()
+      )}
     </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  scrollView: { 
-    flex: 1, 
-    backgroundColor: "#f5f5f5" 
+  container: {
+    flex: 1,
+    backgroundColor: '#f9f9f9',
   },
-  container: { 
-    flex: 1, 
-    padding: 20, 
-    backgroundColor: "#f5f5f5" 
+  formContainer: {
+    padding: 20,
+    backgroundColor: 'white',
+    borderRadius: 10,
+    margin: 15,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  title: { 
-    fontSize: 22, 
-    fontWeight: "bold", 
-    marginBottom: 15, 
-    textAlign: "center" 
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  label: { 
-    fontSize: 16, 
-    marginBottom: 5 
-  },
-  pickerButton: { 
-    padding: 10, 
-    backgroundColor: "#ddd", 
-    borderRadius: 8, 
-    marginBottom: 15, 
-    alignItems: "center" 
-  },
-  pickerText: { 
-    fontSize: 16, 
-    color: "#333" 
-  },
-  input: { 
-    backgroundColor: "white", 
-    padding: 10, 
-    borderRadius: 8, 
-    borderWidth: 1, 
-    borderColor: "#ccc", 
-    marginBottom: 15 
-  },
-  submitButton: { 
-    backgroundColor: "#007bff", 
-    padding: 15, 
-    borderRadius: 8, 
-    alignItems: "center" 
-  },
-  disabledButton: { 
-    backgroundColor: "#cccccc" 
-  },
-  submitText: { 
-    color: "white", 
-    fontWeight: "bold", 
-    fontSize: 16 
-  },
-  toggleContainer: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "center", 
-    marginBottom: 15 
-  },
-  toggle: { 
-    marginHorizontal: 10 
-  },
-  transportToggleContainer: { 
-    flexDirection: "row", 
+  inputGroup: {
     marginBottom: 15,
-    justifyContent: "space-between" 
   },
-  transportButton: {
+  label: {
+    fontSize: 16,
+    marginBottom: 5,
+    fontWeight: '500',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 5,
+    padding: 12,
+    fontSize: 16,
+  },
+  pickerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modeButton: {
     flex: 1,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    alignItems: "center",
-    marginHorizontal: 5,
-    backgroundColor: "#f8f8f8"
+    borderColor: '#ddd',
+    borderRadius: 5,
+    marginHorizontal: 2,
+    alignItems: 'center',
   },
-  transportButtonActive: {
-    backgroundColor: "#007bff",
-    borderColor: "#007bff"
+  modeButtonSelected: {
+    backgroundColor: '#3498db',
+    borderColor: '#3498db',
   },
-  transportButtonText: {
-    color: "#333"
+  modeButtonText: {
+    color: '#333',
   },
-  transportButtonTextActive: {
-    color: "white",
-    fontWeight: "bold"
+  modeButtonTextSelected: {
+    color: 'white',
+    fontWeight: 'bold',
   },
-  resultContainer: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: "#fff",
-    borderRadius: 8,
+  dateButton: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    marginBottom: 15,
+    borderColor: '#ddd',
+    borderRadius: 5,
+    padding: 12,
   },
-  resultTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
-    textAlign: "center",
-  },
-  resultSubtitle: {
+  dateButtonText: {
     fontSize: 16,
-    fontWeight: "bold",
+  },
+  submitButton: {
+    backgroundColor: '#3498db',
+    padding: 15,
+    borderRadius: 5,
+    alignItems: 'center',
     marginTop: 10,
-    marginBottom: 5,
   },
-  resultText: {
-    fontSize: 15,
-    marginBottom: 5,
-    lineHeight: 22,
+  buttonDisabled: {
+    backgroundColor: '#a0cff1',
   },
-  basicResultRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  basicResultLabel: {
+  submitButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
     fontSize: 16,
-    fontWeight: "500",
-    color: "#555",
   },
-  basicResultValue: {
-    fontSize: 16,
-    fontWeight: "bold",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 4,
+  loader: {
+    marginTop: 20,
   },
-  resultGood: {
-    backgroundColor: "#e8f5e9",
-    color: "#2e7d32",
-  },
-  resultModerate: {
-    backgroundColor: "#fff8e1",
-    color: "#ff8f00",
-  },
-  resultBad: {
-    backgroundColor: "#ffebee",
-    color: "#c62828",
-  },
-  resultWarning: {
-    backgroundColor: "#e3f2fd",
-    color: "#1565c0",
-  },
-  recommendationText: {
-    fontWeight: "bold",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 4,
-    overflow: "hidden",
-    textAlign: "center",
-  },
-  recommendationIdeal: {
-    backgroundColor: "#e8f5e9",
-    color: "#2e7d32",
-  },
-  recommendationNotIdeal: {
-    backgroundColor: "#ffebee",
-    color: "#c62828",
-  },
-  upgradeContainer: {
+  errorContainer: {
     marginTop: 15,
     padding: 10,
-    backgroundColor: "#e3f2fd",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#bbdefb",
+    backgroundColor: '#ffebee',
+    borderRadius: 5,
   },
-  upgradeText: {
-    color: "#0d47a1",
+  errorText: {
+    color: '#d32f2f',
+  },
+  
+  // Prediction Styling
+  predictionContainer: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    margin: 15,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  predictionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  predictionLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  predictionValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  registerButton: {
+    backgroundColor: '#3498db',
+    padding: 12,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  registerButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  
+  // Detailed Prediction Styling
+  detailSection: {
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+  },
+  detailTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#2c3e50',
+  },
+  
+  // Probability Items
+  probabilityItem: {
+    marginBottom: 8,
+  },
+  conditionLabel: {
     fontSize: 14,
+    marginBottom: 4,
+  },
+  probabilityBar: {
+    height: 15,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  probabilityFill: {
+    height: '100%',
+  },
+  congested: {
+    backgroundColor: '#e74c3c',
+  },
+  moderate: {
+    backgroundColor: '#f39c12',
+  },
+  clear: {
+    backgroundColor: '#2ecc71',
+  },
+  probabilityText: {
+    fontSize: 12,
+    textAlign: 'right',
+    marginTop: 2,
+  },
+  
+  // Time Items
+  timeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  timeLabel: {
+    fontSize: 15,
+  },
+  timeValue: {
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  
+  // Route Items
+  routeItem: {
+    marginBottom: 10,
+    padding: 10,
+    backgroundColor: 'white',
+    borderRadius: 5,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3498db',
+  },
+  routeName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  routeTime: {
+    fontSize: 14,
+    color: '#555',
+    marginTop: 2,
+  },
+  routeDescription: {
+    fontSize: 14,
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+  
+  // Incident Items
+  incidentItem: {
+    marginBottom: 10,
+    padding: 10,
+    backgroundColor: 'white',
+    borderRadius: 5,
+    borderLeftWidth: 3,
+    borderLeftColor: '#e74c3c',
+  },
+  incidentType: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#e74c3c',
+  },
+  incidentMessage: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  
+  // Weather Recommendations
+  recommendationText: {
+    fontSize: 14,
+    marginBottom: 5,
     lineHeight: 20,
   },
-  errorContainer: { 
-    marginTop: 10, 
-    padding: 10, 
-    backgroundColor: "#ffebee", 
-    borderRadius: 8, 
-    borderWidth: 1, 
-    borderColor: "#ffcdd2" 
+  
+  // General Travel Recommendation
+  recommendationValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    paddingVertical: 8,
+    borderRadius: 5,
   },
-  errorText: { 
-    color: "#c62828", 
-    fontSize: 14 
+  idealTravel: {
+    color: '#2ecc71',
+    backgroundColor: 'rgba(46, 204, 113, 0.1)',
   },
-  backButtonContainer: { 
-    marginTop: 20, 
-    marginBottom: 40 
+  notIdealTravel: {
+    color: '#e74c3c',
+    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+  },
+  
+  // No data text
+  noDataText: {
+    fontStyle: 'italic',
+    color: '#999',
+    textAlign: 'center',
+    padding: 10
+  },
+  
+  // Debug section
+  debugSection: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  debugText: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: '#333',
   }
 });
-
-export default TrafficPrediction;

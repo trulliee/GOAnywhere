@@ -16,7 +16,6 @@ export const addUserAccountNotification = (id, message, time) => {
   userAccountChanges.push([id, "User Account Change", message, time]);
 };
 
-// Function to add a report approval/rejection notification
 export const addReportNotification = (id, message, time) => {
   reportApprovals.push([id, "Report Update", message, time]);
 };

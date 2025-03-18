@@ -261,7 +261,7 @@ export default function HomeScreen() {
           {/* Notification Section */}
           <TouchableOpacity 
             style={styles.menuItem} 
-            onPress={() => navigateTo('Notification')}
+            onPress={() => navigateTo('Notifications')}
           >
             <View style={styles.menuItemRow}>
               <MaterialIcons name="notifications" size={24} color="#fff" style={styles.menuIcon} />

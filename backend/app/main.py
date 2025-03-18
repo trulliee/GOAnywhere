@@ -7,6 +7,9 @@ from app.routes.prediction import router as prediction_router
 from app.routes import incidents
 from app.routes.user_incidents import router as user_incidents_router
 from app.routes.auth import router as auth_router  # Import the auth router
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # Initialize FastAPI
 app = FastAPI()
@@ -14,7 +17,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update this in production with your actual origins
+    allow_origins=["http://192.168.1.12:8081"],  # Update this in production with your actual origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

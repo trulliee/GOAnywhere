@@ -13,23 +13,37 @@ import {
   Dimensions
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import MapView, { Marker } from 'react-native-maps';
 import Collapsible from 'react-native-collapsible';
 import { MaterialIcons } from 'react-native-vector-icons';
+import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
 
 import ENV from './env';
-const mapboxToken = ENV.MAPBOX_ACCESS_TOKEN;
+
+const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
+
 
 // Get screen dimensions
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.8; // 80% of screen width
+
+
+
 
 export default function HomeScreen() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [userName, setUserName] = useState('USER');
   const [isLoading, setIsLoading] = useState(true);
-  
+  const [mapRegion, setMapRegion] = useState({
+    latitude: 1.290270, // Default to Singapore
+    longitude: 103.851959,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+  });
+  const [searchInput, setSearchInput] = useState("");
+  const [marker, setMarker] = useState(null);
   // State for collapsible menu sections
   const [trafficExpanded, setTrafficExpanded] = useState(false);
   const [navigationExpanded, setNavigationExpanded] = useState(false);
@@ -37,6 +51,33 @@ export default function HomeScreen() {
   // Animated value for sidebar position
   const sidebarPosition = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const handleSearch = async () => {
+    if (!searchInput.trim()) {
+      alert('Please enter a location.');
+      return;
+    }
+  
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(searchInput)}&key=${GOOGLE_MAPS_API_KEY}`
+      );
+      const data = await response.json();
+  
+      if (data.results.length > 0) {
+        const { lat, lng } = data.results[0].geometry.location;
+        setMapRegion({ latitude: lat, longitude: lng, latitudeDelta: 0.05, longitudeDelta: 0.05 });
+        setMarker({ latitude: lat, longitude: lng });
+      } else {
+        alert('Location not found.');
+      }
+    } catch (error) {
+      console.error('Error fetching location:', error);
+      alert('Could not fetch location.');
+    }
+  };
+  
+
+
 
   // Create pan responder for swipe gesture
   const panResponder = useRef(
@@ -80,10 +121,16 @@ export default function HomeScreen() {
 
   const hideSidebar = () => {
     setIsSidebarVisible(false);
-    Animated.spring(sidebarPosition, {
+    
+    // Ensure animation updates properly
+    Animated.timing(sidebarPosition, {
       toValue: -SIDEBAR_WIDTH,
+      duration: 200, // Smooth transition
       useNativeDriver: false,
-    }).start();
+    }).start(() => {
+      // This forces re-render to remove the overlay
+      setIsSidebarVisible(false);
+    });
   };
 
   useEffect(() => {
@@ -147,32 +194,32 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
-      {/* Map View */}
-      <View style={styles.mapContainer}>
-        <View style={styles.mapPlaceholder}>
-          <Text style={styles.mapPlaceholderText}>
-            Interactive map coming soon!
-          </Text>
-          <Text style={styles.mapPlaceholderSubtext}>
-            This is a placeholder for demonstration purposes.
-          </Text>
-          {/* Mock map UI */}
-          <View style={styles.mockMap}>
-            <View style={styles.mockRoad} />
-            <View style={styles.mockRoad2} />
-            <View style={styles.mockPoint} />
+      {/* Google Maps (Centered) */}
+      <View style={styles.mapWrapper}>
+        <View style={styles.mapContainer}>
+          <MapView style={styles.smallMap} region={mapRegion}>
+            {marker && <Marker coordinate={marker} title="Searched Location" />}
+          </MapView>
+
+          {/* Search Input */}
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Enter location"
+              value={searchInput}
+              onChangeText={setSearchInput}
+            />
+            <Button title="Search" onPress={handleSearch} />
           </View>
         </View>
       </View>
 
       {/* Dark overlay when sidebar is visible */}
-      {isSidebarVisible && (
-        <TouchableOpacity
-          style={[styles.overlay, { opacity: overlayOpacity }]}
-          activeOpacity={1}
-          onPress={hideSidebar}
-        />
-      )}
+      {isSidebarVisible ? (
+        <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
+          <TouchableOpacity style={styles.overlayTouchable} activeOpacity={1} onPress={hideSidebar} />
+        </Animated.View>
+      ) : null}
 
       {/* Sidebar */}
       <Animated.View style={[styles.sidebar, { transform: [{ translateX: sidebarPosition }] }]}>
@@ -379,9 +426,6 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     fontSize: 14,
   },
-  mapContainer: {
-    flex: 1,
-  },
   mapPlaceholder: {
     flex: 1,
     backgroundColor: '#e0e0e0',
@@ -434,5 +478,48 @@ const styles = StyleSheet.create({
     backgroundColor: 'red',
     marginTop: -10,
     marginLeft: -10,
+    
   },
+  mapWrapper: {
+    flex: 1,
+    justifyContent: "center", 
+    alignItems: "center", 
+  },
+  mapContainer: {
+    width: "90%",
+    height: 250, // Adjust height as needed
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#e0e0e0",
+    elevation: 5, // Adds shadow for a floating effect
+  },
+  smallMap: {
+    height: "100%", 
+    width: "100%",
+  },
+  searchContainer: {
+    position: "absolute",
+    bottom: 5,
+    left: 5,
+    right: 5,
+    flexDirection: "row",
+    backgroundColor: "white",
+    padding: 6,
+    borderRadius: 5,
+    alignItems: "center",
+  },
+  searchInput: {
+    flex: 1,
+    height: 35,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
+    marginRight: 6,
+  },
+  overlayTouchable: {
+    flex: 1, 
+    width: "100%", 
+    height: "100%"
+  }
 });

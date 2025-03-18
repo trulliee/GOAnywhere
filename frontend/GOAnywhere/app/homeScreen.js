@@ -47,6 +47,8 @@ export default function HomeScreen() {
   // State for collapsible menu sections
   const [trafficExpanded, setTrafficExpanded] = useState(false);
   const [navigationExpanded, setNavigationExpanded] = useState(false);
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+
 
   // Animated value for sidebar position
   const sidebarPosition = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
@@ -82,33 +84,62 @@ export default function HomeScreen() {
   // Create pan responder for swipe gesture
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderMove: (event, gesture) => {
-        if (gesture.dx > 0 && !isSidebarVisible) {
-          // Swiping right when sidebar is hidden
-          sidebarPosition.setValue(Math.max(-SIDEBAR_WIDTH, -SIDEBAR_WIDTH + gesture.dx));
-        } else if (gesture.dx < 0 && isSidebarVisible) {
-          // Swiping left when sidebar is visible
-          sidebarPosition.setValue(Math.min(0, gesture.dx));
-        }
+      onStartShouldSetPanResponder: (event, gestureState) => {
+        // Allow swipe if the touch starts within 50 pixels from the left edge
+        return gestureState.x0 <= 50;
       },
-      onPanResponderRelease: (event, gesture) => {
-        if (!isSidebarVisible && gesture.dx > 50) {
-          // Show sidebar if swiped right more than 50px
+
+      onPanResponderMove: (event, gestureState) => {
+        let newPosition = sidebarPosition._value;
+
+        if (gestureState.dx > 0 && !isSidebarVisible && gestureState.x0 <= 50) {
+          // Swiping right when sidebar is hidden and started from the left edge
+          sidebarPosition.setValue(Math.max(-SIDEBAR_WIDTH, -SIDEBAR_WIDTH + gestureState.dx));
+          newPosition = Math.min(0, -SIDEBAR_WIDTH + gestureState.dx);
+
+        } else if (gestureState.dx < 0 && isSidebarVisible) {
+          // Swiping left when sidebar is visible
+          sidebarPosition.setValue(Math.min(0, gestureState.dx));
+          newPosition = Math.max(-SIDEBAR_WIDTH, gestureState.dx);
+
+        }
+        sidebarPosition.setValue(newPosition);
+
+      },
+
+      onPanResponderRelease: (event, gestureState) => {
+        let finalPosition = isSidebarVisible ? 0 : -SIDEBAR_WIDTH;
+
+        if (!isSidebarVisible && gestureState.dx > 50 && gestureState.x0 <= 50) {
+          // Show sidebar if swiped right more than 50px and started from the left edge
+          finalPosition = 0;
           showSidebar();
-        } else if (isSidebarVisible && gesture.dx < -50) {
+        } else if (isSidebarVisible && gestureState.dx < -50) {
+          finalPosition = -SIDEBAR_WIDTH;
           // Hide sidebar if swiped left more than 50px
           hideSidebar();
         } else {
-          // Return to previous state if swipe wasn't enough
+          // Reset position if swipe wasn't enough
           Animated.spring(sidebarPosition, {
             toValue: isSidebarVisible ? 0 : -SIDEBAR_WIDTH,
             useNativeDriver: false,
           }).start();
         }
+        Animated.spring(sidebarPosition, {
+          toValue: finalPosition,
+          bounciness: 0, // Remove extra bounce effect
+          speed: 15, // Faster return speed to prevent detachment
+          useNativeDriver: false,
+        }).start();
       },
     })
   ).current;
+  
+  
+  
+  
+  
+  
 
   // Functions to show/hide the sidebar
   const showSidebar = () => {
@@ -195,23 +226,20 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
       {/* Google Maps (Centered) */}
-      <View style={styles.mapWrapper}>
-        <View style={styles.mapContainer}>
-          <MapView style={styles.smallMap} region={mapRegion}>
-            {marker && <Marker coordinate={marker} title="Searched Location" />}
-          </MapView>
+      <MapView style={styles.smallMap} region={mapRegion}>
+      {marker && <Marker coordinate={marker} title="Searched Location" />}
+      </MapView>
 
-          {/* Search Input */}
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Enter location"
-              value={searchInput}
-              onChangeText={setSearchInput}
-            />
-            <Button title="Search" onPress={handleSearch} />
-          </View>
-        </View>
+
+      {/* Search Input */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Enter location"
+          value={searchInput}
+          onChangeText={setSearchInput}
+        />
+        <Button title="Search" onPress={handleSearch} />
       </View>
 
       {/* Dark overlay when sidebar is visible */}
@@ -308,7 +336,7 @@ export default function HomeScreen() {
           {/* Notification Section */}
           <TouchableOpacity 
             style={styles.menuItem} 
-            onPress={() => navigateTo('Notifications')}
+            onPress={() => navigateTo('Notification')}
           >
             <View style={styles.menuItemRow}>
               <MaterialIcons name="notifications" size={24} color="#fff" style={styles.menuIcon} />
@@ -510,7 +538,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    height: 35,
+    height: 40,
     paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: "#ccc",

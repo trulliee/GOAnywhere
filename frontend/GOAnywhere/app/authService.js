@@ -1,7 +1,7 @@
 // app/authService.js
 import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_CONFIG, getApiUrl } from './config/apiConfig';
+import { getApiUrl } from './utils/apiConfig';
 
 // Keys for AsyncStorage
 const AUTH_TOKEN_KEY = 'auth_token';

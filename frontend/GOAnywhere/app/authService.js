@@ -269,6 +269,41 @@ class AuthService {
     }
   }
 
+  // Update user profile
+  static async updateUserProfile(updateData) {
+    try {
+      const token = await this.getToken();
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const endpoint = getApiUrl('/auth/update-profile');
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to update profile');
+      }
+
+      // Update stored user data
+      await this._saveAuthData(token, data);
+
+      return data;
+    } catch (error) {
+      console.error('Profile update error:', error);
+      Alert.alert('Update Error', error.message);
+      throw error;
+    }
+  }
+
   // Logout
   static async logout() {
     return await this.clearAuthData();

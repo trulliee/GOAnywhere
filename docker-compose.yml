@@ -9,9 +9,13 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/backend/service-account-key.json
+    PYTHONPATH: /opt/airflow:/opt/airflow/backend
   volumes:
     - ./backend:/opt/airflow/backend
     - ./backend/dags:/opt/airflow/dags
+    - ./backend/app:/opt/airflow/app
+    - ./backend/scripts:/opt/airflow/backend/scripts
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
     - ./backend/storage:/opt/airflow/data
@@ -39,7 +43,7 @@ services:
   airflow-webserver:
     <<: *airflow-common
     command: >
-      bash -c "pip install firebase-admin google-cloud-secret-manager &&
+      bash -c "pip install firebase-admin google-cloud-secret-manager joblib scikit-learn pandas numpy geopy requests &&
       airflow webserver"
     ports:
       - 8080:8080
@@ -57,7 +61,7 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     command: >
-      bash -c "pip install firebase-admin google-cloud-secret-manager &&
+      bash -c "pip install firebase-admin google-cloud-secret-manager joblib scikit-learn pandas numpy geopy requests &&
       airflow scheduler"
     restart: always
     depends_on:

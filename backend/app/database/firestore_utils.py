@@ -248,6 +248,30 @@ def fetch_firestore_data(collection_name, limit=10):
 user_incidents_ref = db.collection('user_reported_incidents')
 incident_categories_ref = db.collection('incident_categories')
 
+def initialize_user_incident(incident_data):
+    """
+    Enhanced version of create_user_incident with validation fields
+    
+    Args:
+        incident_data (dict): The incident data
+    
+    Returns:
+        str: The ID of the created incident
+    """
+    # Add server timestamp and validation fields
+    if 'time_reported' not in incident_data:
+        incident_data['time_reported'] = firestore.SERVER_TIMESTAMP
+    
+    # Set initial values for validation
+    incident_data['approves'] = 0
+    incident_data['rejects'] = 0
+    incident_data['status'] = 'pending'  # Start as pending, not active
+    
+    # Add the incident to Firestore
+    doc_ref = user_incidents_ref.document()
+    doc_ref.set(incident_data)
+    return doc_ref.id
+
 def create_user_incident(incident_data):
     """
     Create a new user-reported traffic incident with the proper schema
@@ -499,6 +523,8 @@ def get_all_incidents(mode=None, include_official=True, include_user_reported=Tr
 
 # Add these functions to firestore_utils.py
 
+# Update to the vote_on_incident function in firestore_utils.py
+
 def vote_on_incident(incident_id, user_id, vote_type):
     """
     Register a user's vote on an incident report
@@ -591,16 +617,16 @@ def vote_on_incident(incident_id, user_id, vote_type):
             validation_changed = False
             new_status = updated_data.get('status')
             
-            # Within 30 minutes threshold check (convert to seconds)
-            if report_time and (current_time - report_time).seconds < 1800:  # 30 minutes in seconds
-                # 20 approves = validated
-                if current_approves >= 20 and new_status != 'verified':
+            # Within 20 minutes threshold check (convert to seconds)
+            if report_time and (current_time - report_time).seconds < 1200:  # 20 minutes in seconds
+                # 10 approves = verified (per new requirements)
+                if current_approves >= 10 and new_status != 'verified':
                     transaction.update(ref, {'status': 'verified', 'validated_at': current_time})
                     new_status = 'verified'
                     validation_changed = True
                 
-                # 20 rejects = invalidated
-                elif current_rejects >= 20 and new_status != 'false_report':
+                # 10 rejects = invalidated (per new requirements)
+                elif current_rejects >= 10 and new_status != 'false_report':
                     transaction.update(ref, {'status': 'false_report', 'validated_at': current_time})
                     new_status = 'false_report'
                     validation_changed = True
@@ -621,30 +647,7 @@ def vote_on_incident(incident_id, user_id, vote_type):
         print(f"Error processing vote: {e}")
         return {"error": str(e)}
 
-def initialize_user_incident(incident_data):
-    """
-    Enhanced version of create_user_incident with validation fields
-    
-    Args:
-        incident_data (dict): The incident data
-    
-    Returns:
-        str: The ID of the created incident
-    """
-    # Add server timestamp and validation fields
-    if 'time_reported' not in incident_data:
-        incident_data['time_reported'] = firestore.SERVER_TIMESTAMP
-    
-    # Set initial values for validation
-    incident_data['approves'] = 0
-    incident_data['rejects'] = 0
-    incident_data['status'] = 'pending'  # Start as pending, not active
-    
-    # Add the incident to Firestore
-    doc_ref = user_incidents_ref.document()
-    doc_ref.set(incident_data)
-    return doc_ref.id
-
+# Update the get_incident_validation_status function for 20 minute window and 10 votes threshold
 def get_incident_validation_status(incident_id):
     """
     Get current validation statistics for an incident
@@ -664,12 +667,12 @@ def get_incident_validation_status(incident_id):
         
         incident_data = incident.to_dict()
         
-        # Calculate time remaining in validation window (if still within 30 minutes)
+        # Calculate time remaining in validation window (if still within 20 minutes)
         current_time = firestore.SERVER_TIMESTAMP
         report_time = incident_data.get('time_reported')
         
         time_elapsed = (current_time - report_time).seconds if report_time else 0
-        time_remaining = max(0, 1800 - time_elapsed)  # 30 minutes in seconds
+        time_remaining = max(0, 1200 - time_elapsed)  # 20 minutes in seconds
         
         # Get vote counts
         approves = incident_data.get('approves', 0)
@@ -682,56 +685,75 @@ def get_incident_validation_status(incident_id):
             "rejects": rejects,
             "time_elapsed_seconds": time_elapsed,
             "time_remaining_seconds": time_remaining,
-            "approves_needed": max(0, 20 - approves),
-            "rejects_needed": max(0, 20 - rejects)
+            "approves_needed": max(0, 10 - approves),  # Changed from 20 to 10
+            "rejects_needed": max(0, 10 - rejects)     # Changed from 20 to 10
         }
     
     except Exception as e:
         print(f"Error getting validation status: {e}")
         return {"error": str(e)}
 
+# Add these functions to your app/database/firestore_utils.py file
+
 async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered"):
-    """Store user data in Firestore"""
+    """
+    Stores user data in Firestore
+    
+    Args:
+        user_id (str): The Firebase UID of the user
+        name (str, optional): The user's display name
+        email (str, optional): The user's email
+        phone_number (str, optional): The user's phone number
+        user_type (str): Either "registered" or "anonymous"
+    
+    Returns:
+        bool: True if successful
+    """
     try:
-        db = firestore.client()
-        users_ref = db.collection("users")
+        # Create a reference to the users collection
+        users_ref = db.collection('users')
         
+        # Prepare user data
         user_data = {
-            "userType": user_type,
-            "createdAt": firestore.SERVER_TIMESTAMP,
-            "lastLogin": firestore.SERVER_TIMESTAMP,
-            "settings": {
-                "notifications": True,
-                "locationSharing": False
-            }
+            'user_id': user_id,
+            'user_type': user_type,
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'last_login': firestore.SERVER_TIMESTAMP
         }
         
+        # Add optional fields if provided
         if name:
-            user_data["name"] = name
-        
+            user_data['name'] = name
         if email:
-            user_data["email"] = email
-            
+            user_data['email'] = email
         if phone_number:
-            user_data["phoneNumber"] = phone_number
-        
-        # Set user data in Firestore
+            user_data['phone_number'] = phone_number
+            
+        # Store in Firestore using the UID as document ID
         users_ref.document(user_id).set(user_data)
         
+        return True
     except Exception as e:
         print(f"Error storing user data: {e}")
-        raise e
+        return False
 
 async def update_user_last_login(user_id):
-    """Update user's last login timestamp"""
+    """
+    Updates the last login timestamp for a user
+    
+    Args:
+        user_id (str): The Firebase UID of the user
+    
+    Returns:
+        bool: True if successful
+    """
     try:
-        db = firestore.client()
-        user_ref = db.collection("users").document(user_id)
-        
-        user_ref.update({
-            "lastLogin": firestore.SERVER_TIMESTAMP
+        # Update the last_login field
+        db.collection('users').document(user_id).update({
+            'last_login': firestore.SERVER_TIMESTAMP
         })
         
+        return True
     except Exception as e:
         print(f"Error updating user last login: {e}")
-        # Don't raise error to allow authentication to succeed even if this fails
+        return False

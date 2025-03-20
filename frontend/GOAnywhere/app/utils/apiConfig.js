@@ -29,7 +29,7 @@ const getApiBaseUrl = () => {
   }
 
   // Production fallback - using HTTP not HTTPS for local development
-  return 'http://192.168.1.7:8000';
+  return 'http://192.168.1.2:8000';
 };
 
 // Export the API configuration

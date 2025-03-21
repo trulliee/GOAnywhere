@@ -43,6 +43,8 @@
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
+    <key>MGLMapboxAccessToken</key>
+    <string>pk.eyJ1IjoidHJvbGxleTEyNCIsImEiOiJjbTg5em02bDQxODExMmpwenozcXl0bjBrIn0.7qn-UFq5XJ_SlJyQmSg4qw</string>
     <true/>
     <key>NSAppTransportSecurity</key>
     <dict>

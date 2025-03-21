@@ -13,6 +13,14 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.info("========== PREDICTION ROUTER LOADED ==========")
+
+router = APIRouter(
+    prefix="/api/predict",
+    tags=["traffic-prediction"],
+    responses={404: {"description": "Not found"}},
+)
+
+# Now you can log the router prefix
 logger.info(f"Router prefix: {router.prefix}")
 
 # Add a simple test endpoint
@@ -20,12 +28,6 @@ logger.info(f"Router prefix: {router.prefix}")
 async def test_prediction_route():
     logger.info("Test prediction route called!")
     return {"message": "Prediction router is working"}
-
-router = APIRouter(
-    prefix="/api/predict",
-    tags=["traffic-prediction"],
-    responses={404: {"description": "Not found"}},
-)
 
 class LocationInput(BaseModel):
     name: Optional[str] = None

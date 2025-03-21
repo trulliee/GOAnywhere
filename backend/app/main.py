@@ -20,7 +20,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://192.168.1.12:8081"],  # Update this in production with your actual origins
+    allow_origins=["http://192.168.68.62:8081"],  # Update this in production with your actual origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,5 +39,5 @@ app.include_router(incidents.router)
 app.include_router(user_incidents_router)
 app.include_router(auth_router)  # Add the auth router
 app.include_router(p2pnavigation_router, prefix="/p2pnavigation", tags=["P2P Navigation"]) # Include the p2pnavigation router
-app.include_router(notifications_router, prefix="/notifications", tags=["Notifications"]) # Include the notifications router
+app.include_router(notifications_router, tags=["Notifications"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"]) # Include the dashboard router

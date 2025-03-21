@@ -1,10 +1,11 @@
-// app/utils/apiConfig.js
-import Constants from 'expo-constants';
+// utils/apiConfig.js
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Get the local IP from Expo if available
-const getApiBaseUrl = () => {
-  // Default backend port (Uvicorn uses 8000 by default)
+// Get the API base URL dynamically
+export const getApiUrl = () => {
+  // Default backend port
   const DEFAULT_BACKEND_PORT = 8000;
   
   // For development
@@ -28,24 +29,75 @@ const getApiBaseUrl = () => {
     }
   }
 
-  // Production fallback - using HTTP not HTTPS for local development
+  // Production fallback
   return 'http://192.168.1.2:8000';
 };
 
-// Export the API configuration
-export const API_CONFIG = {
-  baseUrl: getApiBaseUrl(),
+// Export the API URL
+export const API_URL = getApiUrl();
+
+// For simplifying API calls
+export const fetchAPI = async (endpoint, options = {}) => {
+  const url = `${API_URL}${endpoint}`;
+  
+  // Default headers
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  // Get auth token if available
+  try {
+    const userInfo = await AsyncStorage.getItem('user_info');
+    if (userInfo) {
+      const { token } = JSON.parse(userInfo);
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        console.log('Adding auth token to request');
+      }
+    }
+  } catch (error) {
+    console.error('Error getting token for request:', error);
+  }
+  
+  // Prepare the request
+  const requestOptions = {
+    ...options,
+    headers,
+  };
+  
+  try {
+    const response = await fetch(url, requestOptions);
+    
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.detail || 'API request failed');
+      }
+      
+      return data;
+    }
+    
+    // Handle non-JSON responses
+    if (!response.ok) {
+      throw new Error('API request failed');
+    }
+    
+    return await response.text();
+  } catch (error) {
+    console.error(`API Error (${endpoint}):`, error);
+    throw error;
+  }
 };
 
-// Export a function to get a full endpoint URL
-export const getApiUrl = (endpoint) => {
-  // Ensure endpoint starts with a slash if not already
-  const formattedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  return `${API_CONFIG.baseUrl}${formattedEndpoint}`;
+// Export a default object with all functions
+const apiConfig = {
+  API_URL,
+  getApiUrl,
+  fetchAPI
 };
 
-// Add a dummy component as default export to satisfy Expo Router
-// This is not used in your app logic but prevents the route error
-export default function ApiConfigComponent() {
-  return null;
-}
+export default apiConfig;

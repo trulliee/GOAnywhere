@@ -296,7 +296,7 @@ export default function HomeScreen() {
           <Collapsible collapsed={!trafficExpanded}>
             <TouchableOpacity 
               style={styles.submenuItem} 
-              onPress={() => navigateTo('TrafficIncident')}
+              onPress={() => navigateTo('TrafficIncidentsNav')}
             >
               <Text style={styles.submenuText}>Incidents</Text>
             </TouchableOpacity>

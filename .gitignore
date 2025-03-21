@@ -7,6 +7,11 @@ __pycache__/
 # C extensions
 *.so
 
+# Python cache
+__pycache__/
+*.pyc
+
+
 # Distribution / packaging
 .Python
 build/
@@ -174,3 +179,4 @@ cython_debug/
 
 airflow/logs/scheduler/latest
 airflow/logs/scheduler/latest
+__pycache__/

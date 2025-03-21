@@ -1,9 +1,7 @@
 // app/authService.js
 import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// Replace with your actual backend URL based on your IP address
-const API_URL = 'http://192.168.27.44:8000';
+import { getApiUrl } from './utils/apiConfig';
 
 // Keys for AsyncStorage
 const AUTH_TOKEN_KEY = 'auth_token';
@@ -76,9 +74,10 @@ class AuthService {
   // Sign up with email/password
   static async signUp(email, password, name = null, phoneNumber = null) {
     try {
-      console.log(`Attempting to sign up at ${API_URL}/auth/signup`);
+      const endpoint = getApiUrl('/auth/signup');
+      console.log(`Attempting to sign up at ${endpoint}`);
       
-      const response = await fetch(`${API_URL}/auth/signup`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -118,9 +117,10 @@ class AuthService {
   // Login with email/password
   static async login(email, password) {
     try {
-      console.log(`Attempting to login at ${API_URL}/auth/login`);
+      const endpoint = getApiUrl('/auth/login');
+      console.log(`Attempting to login at ${endpoint}`);
       
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -158,9 +158,10 @@ class AuthService {
   // Login anonymously
   static async loginAnonymously() {
     try {
-      console.log(`Attempting anonymous login at ${API_URL}/auth/anonymous`);
+      const endpoint = getApiUrl('/auth/anonymous');
+      console.log(`Attempting anonymous login at ${endpoint}`);
       
-      const response = await fetch(`${API_URL}/auth/anonymous`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -207,7 +208,7 @@ class AuthService {
       const cachedUserData = await this.getUserData();
       
       // Try to fetch fresh user data from the server
-      const response = await fetch(`${API_URL}/auth/me`, {
+      const response = await fetch(getApiUrl('/auth/me'), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -241,7 +242,7 @@ class AuthService {
         return { error: 'No authentication token found' };
       }
 
-      const response = await fetch(`${API_URL}/auth/user-info`, {
+      const response = await fetch(getApiUrl('/auth/user-info'), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -265,6 +266,41 @@ class AuthService {
     } catch (error) {
       console.error('Error fetching user info:', error);
       return { error: 'An error occurred while fetching user information' };
+    }
+  }
+
+  // Update user profile
+  static async updateUserProfile(updateData) {
+    try {
+      const token = await this.getToken();
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const endpoint = getApiUrl('/auth/update-profile');
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to update profile');
+      }
+
+      // Update stored user data
+      await this._saveAuthData(token, data);
+
+      return data;
+    } catch (error) {
+      console.error('Profile update error:', error);
+      Alert.alert('Update Error', error.message);
+      throw error;
     }
   }
 

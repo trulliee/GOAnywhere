@@ -1,749 +1,1073 @@
-import os
+# models/traffic_prediction.py
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import joblib
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.model_selection import train_test_split
-from app.database.firestore_utils import fetch_firestore_data
+from typing import Dict, List, Tuple, Optional, Union, Any
+import pickle
+import os
 import logging
-import random
-import hashlib
-import math
-import json
+from geopy.distance import geodesic
+import joblib
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor, RandomForestRegressor
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, mean_absolute_error
+
+# Import TensorFlow for deep learning models
+import tensorflow as tf
+from tensorflow.keras.models import Sequential, load_model, save_model
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping
+
+# Optional XGBoost for comparison
+import xgboost as xgb
+from firebase_admin import firestore
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Path to store trained models
-MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
+# Model paths
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trained_models")
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-# Define model filenames
-ROAD_CONDITIONS_MODEL = os.path.join(MODEL_DIR, 'road_conditions_model.joblib')
-DELAY_MODEL = os.path.join(MODEL_DIR, 'delay_model.joblib')
-WEATHER_CONDITIONS_MODEL = os.path.join(MODEL_DIR, 'weather_conditions_model.joblib')
-TRAVEL_TIME_MODEL = os.path.join(MODEL_DIR, 'travel_time_model.joblib')
-INCIDENTS_MODEL = os.path.join(MODEL_DIR, 'incidents_model.joblib')
+# Define paths for different model types
+# TensorFlow models
+TF_ROAD_CONDITION_MODEL_PATH = os.path.join(MODEL_DIR, "tf_road_condition_model")
+TF_DELAY_MODEL_PATH = os.path.join(MODEL_DIR, "tf_delay_model")
+TF_TRAVEL_TIME_MODEL_PATH = os.path.join(MODEL_DIR, "tf_travel_time_model")
 
-# Flag to control whether to use ML models or fallback to rule-based logic
-USE_ML_MODELS = True
+# Traditional ML models (backup/comparison)
+ROAD_CONDITION_MODEL_PATH = os.path.join(MODEL_DIR, "road_condition_model.pkl")
+DELAY_MODEL_PATH = os.path.join(MODEL_DIR, "delay_model.pkl")
+TRAVEL_TIME_MODEL_PATH = os.path.join(MODEL_DIR, "travel_time_model.pkl")
+TRANSFORMER_PATH = os.path.join(MODEL_DIR, "feature_transformer.pkl")
 
-# Singapore road names for generating realistic route-specific data
-SINGAPORE_ROADS = ["PIE", "CTE", "KPE", "AYE", "BKE", "SLE", "TPE", "ECP", 
-                   "Orchard Road", "Bukit Timah Road", "Victoria Street", "Serangoon Road",
-                   "Nicoll Highway", "Alexandra Road", "Clementi Road", "Jalan Bukit Merah"]
+# Firestore client
+db = firestore.client()
 
-def get_traffic_weather_prediction(user_type="unregistered", time=None, day=None, location=None, route=None):
-    """Get traffic and weather prediction based on user type."""
-    predictor = TrafficWeatherPredictor()
+class TrafficPredictionModel:
+    """
+    Traffic prediction model that handles data processing, model training,
+    and generating predictions for both registered and unregistered users.
+    Uses TensorFlow for primary models and traditional ML as backup.
+    """
     
-    # Add explicit logging about the inputs
-    logger.info(f"get_traffic_weather_prediction called with: user_type={user_type}, time={time}, day={day}")
-    logger.info(f"Location: {location}")
-    logger.info(f"Route info: {route}")
-    
-    # Use current time and day if not provided
-    now = datetime.now()
-    hour = time if time is not None else now.hour
-    day_of_week = day if day is not None else now.weekday()
-    
-    # Get basic prediction
-    basic_pred = predictor.get_basic_prediction(hour, day_of_week, location)
-    
-    if user_type == "registered":
-        logger.info("Generating detailed prediction for registered user")
+    def __init__(self):
+        # TensorFlow models
+        self.tf_road_condition_model = None
+        self.tf_delay_model = None
+        self.tf_travel_time_model = None
         
-        # Extract route details
-        start_location = route.get("start") if route and "start" in route else "Central"
-        end_location = route.get("end") if route and "end" in route else location or "Central"
-        transport_mode = route.get("transport_mode", "driving") if route else "driving"
+        # Traditional ML models (backup)
+        self.road_condition_model = None  # Classifier for road conditions
+        self.delay_model = None  # Binary classifier for possible delays
+        self.travel_time_model = None  # Regressor for estimated travel time
         
-        logger.info(f"Processing route: {start_location} → {end_location} ({transport_mode})")
+        self.feature_transformer = None  # For preprocessing features
         
-        # Calculate travel times
-        driving_time, public_transport_time = predictor.calculate_route_specific_travel_time(
-            start_location, end_location, hour, day_of_week, transport_mode
-        )
-        
-        # Log travel times for debugging
-        logger.info(f"Calculated travel times: driving={driving_time}, public_transport={public_transport_time}")
-
-        # Generate road condition probabilities
-        road_probs = predictor.calculate_road_conditions_probability(
-            start_location, end_location, hour, day_of_week
-        )
-        
-        # Generate alternative routes
-        alternatives = predictor.generate_alternative_routes(
-            start_location, end_location, driving_time
-        )
-        logger.info(f"Generated {len(alternatives)} alternative routes")
-
-        # Find relevant incidents
-        incident_alerts = []
-        incident = predictor.find_route_specific_incident(start_location, end_location)
-        if incident:
-            incident_alerts.append({
-                "type": incident["type"],
-                "message": incident["message"],
-                "location": {
-                    "latitude": incident["latitude"],
-                    "longitude": incident["longitude"]
-                }
-            })
-        
-        # Generate weather recommendations
-        weather_recs = predictor.generate_weather_recommendations(
-            basic_pred["weather_condition"], 
-            basic_pred["road_condition"]
-        )
-        logger.info(f"Generated {len(weather_recs)} weather recommendations")
-
-        # Determine general recommendation
-        ideal_conditions = (basic_pred["road_condition"] == "Clear" and 
-                           basic_pred["possible_delay"] == "No significant delays")
-        general_recommendation = "Ideal" if ideal_conditions else "Not Ideal"
-        
-        # Build the complete prediction response
-        prediction = {
-            "road_conditions_probability": road_probs,
-            "estimated_travel_time": {
-                "driving": driving_time,
-                "public_transport": public_transport_time
-            },
-            "alternative_routes": alternatives,
-            "incident_alerts": incident_alerts,
-            "weather_recommendations": weather_recs,
-            "general_travel_recommendation": general_recommendation,
-            "road_condition": basic_pred["road_condition"],
-            "possible_delay": basic_pred["possible_delay"],
-            "weather_condition": basic_pred["weather_condition"]
+        # Weather mapping for responses
+        self.weather_mapping = {
+            "clear sky": "Clear",
+            "few clouds": "Clear",
+            "scattered clouds": "Clear",
+            "broken clouds": "Clear",
+            "overcast clouds": "Clear",
+            "light rain": "Rain",
+            "moderate rain": "Rain", 
+            "heavy rain": "Rain",
+            "thunderstorm": "Rain",
+            "mist": "Fog",
+            "fog": "Fog",
+            "haze": "Fog"
         }
         
-        # Debug the prediction data right before returning
-        logger.info(f"FINAL PREDICTION KEYS: {list(prediction.keys())}")
-        logger.info(f"Travel times in final prediction: driving={prediction['estimated_travel_time']['driving']}, public={prediction['estimated_travel_time']['public_transport']}")
-        logger.info(f"Alternative routes count: {len(prediction['alternative_routes'])}")
-        logger.info(f"Weather recommendations count: {len(prediction['weather_recommendations'])}")
-        logger.info(f"Road condition probabilities: {json.dumps(prediction['road_conditions_probability'])}")
+        # Road condition classes for model output
+        self.road_conditions = ['Clear', 'Moderate', 'Congested']
         
-        return prediction
-    else:
-        # For unregistered users, just return the basic prediction
-        logger.info("Returning basic prediction for unregistered user")
-        return basic_pred
-
-class TrafficWeatherPredictor:
-    def __init__(self):
-        """Initialize the predictor with trained models."""
-        self.road_conditions_model = None
-        self.delay_model = None
-        self.weather_conditions_model = None
-        self.travel_time_model = None
-        self.incidents_model = None
-        self.models_loaded = False
+        # Load models on initialization
         self.load_models()
-        
+    
     def load_models(self):
-        """Load trained models if they exist, otherwise train new ones."""
+        """Load trained models if they exist, prioritizing TensorFlow models"""
         try:
-            all_models_exist = all(os.path.exists(model_path) for model_path in [
-                ROAD_CONDITIONS_MODEL, DELAY_MODEL, WEATHER_CONDITIONS_MODEL, 
-                TRAVEL_TIME_MODEL, INCIDENTS_MODEL
-            ])
+            # Try to load TensorFlow models first
+            if os.path.exists(TF_ROAD_CONDITION_MODEL_PATH):
+                self.tf_road_condition_model = tf.keras.models.load_model(TF_ROAD_CONDITION_MODEL_PATH)
+                logger.info("TensorFlow road condition model loaded successfully")
             
-            if all_models_exist:
-                self.road_conditions_model = joblib.load(ROAD_CONDITIONS_MODEL)
-                self.delay_model = joblib.load(DELAY_MODEL)
-                self.weather_conditions_model = joblib.load(WEATHER_CONDITIONS_MODEL)
-                self.travel_time_model = joblib.load(TRAVEL_TIME_MODEL)
-                self.incidents_model = joblib.load(INCIDENTS_MODEL)
-                self.models_loaded = True
-                logger.info("All prediction models loaded successfully")
-            else:
-                logger.warning("Some models are missing. Falling back to rule-based predictions.")
-                self.models_loaded = False
+            if os.path.exists(TF_DELAY_MODEL_PATH):
+                self.tf_delay_model = tf.keras.models.load_model(TF_DELAY_MODEL_PATH)
+                logger.info("TensorFlow delay model loaded successfully")
+            
+            if os.path.exists(TF_TRAVEL_TIME_MODEL_PATH):
+                self.tf_travel_time_model = tf.keras.models.load_model(TF_TRAVEL_TIME_MODEL_PATH)
+                logger.info("TensorFlow travel time model loaded successfully")
+            
+            # Load traditional ML models as backup
+            if os.path.exists(ROAD_CONDITION_MODEL_PATH):
+                self.road_condition_model = joblib.load(ROAD_CONDITION_MODEL_PATH)
+                logger.info("Traditional road condition model loaded as backup")
+            
+            if os.path.exists(DELAY_MODEL_PATH):
+                self.delay_model = joblib.load(DELAY_MODEL_PATH)
+                logger.info("Traditional delay model loaded as backup")
+            
+            if os.path.exists(TRAVEL_TIME_MODEL_PATH):
+                self.travel_time_model = joblib.load(TRAVEL_TIME_MODEL_PATH)
+                logger.info("Traditional travel time model loaded as backup")
+            
+            # Load feature transformer
+            if os.path.exists(TRANSFORMER_PATH):
+                self.feature_transformer = joblib.load(TRANSFORMER_PATH)
+                logger.info("Feature transformer loaded successfully")
                 
         except Exception as e:
             logger.error(f"Error loading models: {e}")
-            logger.warning("Falling back to rule-based predictions")
-            self.models_loaded = False
     
-    def fetch_data(self):
-        """Fetch data from Firestore."""
-        try:
-            data = {
-                'traffic_speed_bands': fetch_firestore_data('traffic_speed_bands', limit=1000),
-                'traffic_incidents': fetch_firestore_data('traffic_incidents', limit=1000),
-                'estimated_travel_times': fetch_firestore_data('estimated_travel_times', limit=1000),
-                'vms_messages': fetch_firestore_data('vms_messages', limit=1000),
-                'weather_data': fetch_firestore_data('weather_data', limit=100),
-                'weather_forecast_24hr': fetch_firestore_data('weather_forecast_24hr', limit=100),
-                'peak_traffic_conditions': fetch_firestore_data('peak_traffic_conditions', limit=100)
-            }
-            
-            # Check if we have enough data for predictions
-            for key, value in data.items():
-                logger.info(f"Fetched {len(value)} records for {key}")
-                
-            return data
-        except Exception as e:
-            logger.error(f"Error fetching data: {e}")
-            return {}
-    
-    def preprocess_input_for_model(self, time, day, location, start_location=None, end_location=None, transport_mode=None):
+    async def get_prediction(self, 
+                      start_location: Dict[str, float], 
+                      destination_location: Dict[str, float], 
+                      mode_of_transport: str, 
+                      travel_time: Optional[datetime] = None,
+                      user_type: str = "unregistered") -> Dict[str, Any]:
         """
-        Preprocess input data for model predictions.
-        
-        Returns:
-            pd.DataFrame: Prepared input data for model prediction
-        """
-        # Current hour and minute
-        now = datetime.now()
-        hour = time if time is not None else now.hour
-        minute = now.minute
-        day_of_week = day if day is not None else now.weekday()
-        
-        # Create a feature dictionary
-        features = {
-            'hour': hour,
-            'minute': minute,
-            'day_of_week': day_of_week,
-            'is_weekend': 1 if day_of_week >= 5 else 0,
-            'is_peak_hour': 1 if ((hour >= 7 and hour <= 9) or (hour >= 17 and hour <= 19)) else 0,
-        }
-        
-        # Add location features if available
-        if location:
-            # Extract location features - check for high traffic areas
-            high_traffic_indicators = ['orchard', 'marina', 'cbd', 'downtown', 'raffles', 'chinatown', 'central']
-            medium_traffic_indicators = ['jurong', 'tampines', 'woodlands', 'novena', 'bugis', 'airport']
-            
-            features['is_high_traffic_area'] = 1 if any(area in location.lower() for area in high_traffic_indicators) else 0
-            features['is_medium_traffic_area'] = 1 if any(area in location.lower() for area in medium_traffic_indicators) else 0
-        
-        # Add route-specific features if available
-        if start_location and end_location:
-            features['has_route'] = 1
-            
-            # Create a unique hash for this route
-            route_key = f"{start_location.lower()}-{end_location.lower()}"
-            route_hash = int(hashlib.md5(route_key.encode()).hexdigest(), 16) % 100
-            features['route_hash'] = route_hash
-            
-            # Check start and end locations for traffic indicators
-            features['start_is_high_traffic'] = 1 if any(area in start_location.lower() for area in high_traffic_indicators) else 0
-            features['end_is_high_traffic'] = 1 if any(area in end_location.lower() for area in high_traffic_indicators) else 0
-            features['start_is_medium_traffic'] = 1 if any(area in start_location.lower() for area in medium_traffic_indicators) else 0
-            features['end_is_medium_traffic'] = 1 if any(area in end_location.lower() for area in medium_traffic_indicators) else 0
-            
-            # Transport mode
-            features['is_driving'] = 1 if transport_mode == 'driving' else 0
-            features['is_transit'] = 1 if transport_mode == 'transit' else 0
-        else:
-            features['has_route'] = 0
-            features['route_hash'] = 0
-            features['start_is_high_traffic'] = 0
-            features['end_is_high_traffic'] = 0
-            features['start_is_medium_traffic'] = 0
-            features['end_is_medium_traffic'] = 0
-            features['is_driving'] = 1  # Default to driving
-            features['is_transit'] = 0
-        
-        # Add weather-related features
-        try:
-            latest_weather = fetch_firestore_data('weather_data', limit=1)
-            if latest_weather:
-                weather_desc = latest_weather[0].get('weather', '').lower()
-                temperature = latest_weather[0].get('temperature', 28)
-                humidity = latest_weather[0].get('humidity', 80)
-                
-                features['temperature'] = temperature
-                features['humidity'] = humidity
-                features['is_raining'] = 1 if 'rain' in weather_desc or 'drizzle' in weather_desc else 0
-                features['is_foggy'] = 1 if 'fog' in weather_desc or 'mist' in weather_desc else 0
-                features['is_cloudy'] = 1 if 'cloud' in weather_desc else 0
-                features['is_thunderstorm'] = 1 if 'thunder' in weather_desc or 'storm' in weather_desc else 0
-            else:
-                # Default values if no weather data
-                features['temperature'] = 28
-                features['humidity'] = 80
-                features['is_raining'] = 0
-                features['is_foggy'] = 0
-                features['is_cloudy'] = 0
-                features['is_thunderstorm'] = 0
-        except Exception as e:
-            logger.error(f"Error fetching weather data: {e}")
-            # Default values on error
-            features['temperature'] = 28
-            features['humidity'] = 80
-            features['is_raining'] = 0
-            features['is_foggy'] = 0
-            features['is_cloudy'] = 0
-            features['is_thunderstorm'] = 0
-        
-        # Convert to DataFrame for model input
-        return pd.DataFrame([features])
-    
-    def get_basic_prediction(self, time=None, day=None, location=None):
-        """
-        Generate basic prediction for unregistered users.
+        Generate traffic prediction based on user inputs
         
         Args:
-            time (int, optional): Hour of the day (0-23)
-            day (int, optional): Day of the week (0=Monday, 6=Sunday)
-            location (str, optional): Destination location name or coordinates
+            start_location: Dictionary with lat/long of starting point
+            destination_location: Dictionary with lat/long of destination
+            mode_of_transport: 'driving' or 'public_transport'
+            travel_time: Datetime for future prediction (default: current time)
+            user_type: 'registered' or 'unregistered'
             
         Returns:
-            dict: Prediction results including road conditions, possible delays, and weather conditions
+            Dictionary with prediction results
         """
-        # Use current time and day if not provided
-        now = datetime.now()
-        hour = time if time is not None else now.hour
-        day_of_week = day if day is not None else now.weekday()
+        if travel_time is None:
+            travel_time = datetime.now()
+            
+        # Gather all relevant data for prediction
+        features = await self._prepare_features(
+            start_location, 
+            destination_location, 
+            mode_of_transport, 
+            travel_time
+        )
+        
+        # Make prediction based on user type
+        if user_type == "unregistered":
+            return await self._basic_prediction(features)
+        else:
+            return await self._detailed_prediction(features, start_location, destination_location, mode_of_transport)
+    
+    async def _prepare_features(self, 
+                        start_location: Dict[str, float], 
+                        destination_location: Dict[str, float], 
+                        mode_of_transport: str, 
+                        travel_time: datetime) -> pd.DataFrame:
+        """Prepare features for model input"""
+        # Calculate direct distance
+        start_coords = (start_location.get('latitude', 0), start_location.get('longitude', 0))
+        dest_coords = (destination_location.get('latitude', 0), destination_location.get('longitude', 0))
+        distance_km = geodesic(start_coords, dest_coords).kilometers
+        
+        # Extract time features
+        hour_of_day = travel_time.hour
+        day_of_week = travel_time.weekday()
         is_weekend = 1 if day_of_week >= 5 else 0
+        is_peak_morning = 1 if 7 <= hour_of_day <= 9 else 0
+        is_peak_evening = 1 if 17 <= hour_of_day <= 19 else 0
         
-        logger.info(f"Basic prediction requested: time={hour}, day={day_of_week}, location='{location}'")
+        # Check if travel date is public holiday
+        is_public_holiday = await self._check_if_public_holiday(travel_time.date())
         
-        # Check if we should use ML models
-        if USE_ML_MODELS and self.models_loaded:
-            try:
-                # Prepare input data for models
-                input_data = self.preprocess_input_for_model(hour, day_of_week, location)
-                
-                # Predict road conditions using model
-                road_condition_pred = self.road_conditions_model.predict(input_data)[0]
-                
-                # Predict possible delays using model
-                delay_pred = self.delay_model.predict(input_data)[0]
-                possible_delay = "Possible delays" if delay_pred == 1 else "No significant delays"
-                
-                # Predict weather conditions using model
-                weather_condition_pred = self.weather_conditions_model.predict(input_data)[0]
-                
-                logger.info(f"Used ML models for basic prediction - Road: {road_condition_pred}, Delay: {delay_pred}, Weather: {weather_condition_pred}")
-                
-                return {
-                    "road_condition": road_condition_pred,
-                    "possible_delay": possible_delay,
-                    "weather_condition": weather_condition_pred
-                }
-            except Exception as e:
-                logger.error(f"Error using ML models for basic prediction: {e}")
-                logger.info("Falling back to rule-based prediction")
-                # Fall back to rule-based prediction on error
+        # Get weather forecast for travel time
+        weather_data = await self._get_weather_forecast(travel_time)
+        rain_forecast = 1 if weather_data.get('weather', '').lower() in ['rain', 'light rain', 'heavy rain', 'thunderstorm'] else 0
+        fog_forecast = 1 if weather_data.get('weather', '').lower() in ['fog', 'mist', 'haze'] else 0
         
-        # Default values for rule-based prediction
-        road_condition = "Clear"
-        possible_delay = "No significant delays"
-        weather_condition = "Partly Cloudy"
+        # Get traffic incidents along route
+        incidents_count = await self._count_incidents_on_route(start_coords, dest_coords)
         
-        # Fetch latest data from Firestore
-        latest_incidents = fetch_firestore_data('traffic_incidents', limit=5)
-        latest_weather = fetch_firestore_data('weather_data', limit=1)
+        # Get average speed band for current time and route
+        avg_speed_band = await self._get_average_speed_band(start_coords, dest_coords)
         
-        # Determine road condition based on time and location
-        if (hour >= 7 and hour <= 9) or (hour >= 17 and hour <= 19):
-            if not is_weekend:
-                road_condition = "Moderate"
-                # Check for high-traffic areas
-                high_traffic_areas = ['orchard', 'marina', 'cbd', 'downtown', 'raffles']
-                if location and any(area in location.lower() for area in high_traffic_areas):
-                    road_condition = "Congested"
-                    possible_delay = "Possible delays"
-        
-        # Determine weather condition from actual data if available
-        if latest_weather:
-            weather_desc = latest_weather[0].get('weather', '').lower()
-            if 'rain' in weather_desc or 'drizzle' in weather_desc:
-                weather_condition = "Rain"
-            elif 'fog' in weather_desc or 'mist' in weather_desc:
-                weather_condition = "Fog"
-            elif 'cloud' in weather_desc:
-                weather_condition = "Cloudy"
-            elif 'thunder' in weather_desc or 'storm' in weather_desc:
-                weather_condition = "Thunderstorm"
-            else:
-                weather_condition = "Clear"
-        
-        logger.info(f"Rule-based basic prediction - Road: {road_condition}, Delay: {possible_delay}, Weather: {weather_condition}")
-        
-        # Return basic prediction
-        return {
-            "road_condition": road_condition,
-            "possible_delay": possible_delay,
-            "weather_condition": weather_condition
+        # Create feature dictionary
+        feature_dict = {
+            'distance_km': distance_km,
+            'hour_of_day': hour_of_day,
+            'day_of_week': day_of_week,
+            'is_weekend': is_weekend,
+            'is_peak_morning': is_peak_morning,
+            'is_peak_evening': is_peak_evening,
+            'is_public_holiday': is_public_holiday,
+            'rain_forecast': rain_forecast,
+            'fog_forecast': fog_forecast,
+            'incidents_count': incidents_count,
+            'avg_speed_band': avg_speed_band,
+            'mode_of_transport': mode_of_transport
         }
-
-    def calculate_route_specific_travel_time(self, start_location, end_location, hour, day_of_week, transport_mode="driving"):
-        """
-        Calculate route-specific travel time based on locations and time.
         
-        Args:
-            start_location (str): Starting location
-            end_location (str): Ending location
-            hour (int): Hour of the day (0-23)
-            day_of_week (int): Day of the week (0=Monday, 6=Sunday)
-            transport_mode (str): 'driving' or 'transit'
-            
-        Returns:
-            tuple: (driving_time, public_transport_time)
-        """
-        logger.info(f"Starting travel time calculation for route: {start_location} → {end_location}")
+        # Convert to DataFrame
+        features = pd.DataFrame([feature_dict])
         
-        # Check if we should use ML model for travel time prediction
-        if USE_ML_MODELS and self.models_loaded and self.travel_time_model is not None:
+        # If transformer exists, apply it
+        if self.feature_transformer:
             try:
-                # Prepare input features for model
-                input_data = self.preprocess_input_for_model(
-                    hour, day_of_week, None, 
-                    start_location=start_location, 
-                    end_location=end_location, 
-                    transport_mode=transport_mode
-                )
-                
-                # Predict driving time using model
-                driving_time = max(10, round(self.travel_time_model.predict(input_data)[0]))
-                
-                # Calculate public transport time based on driving time
-                # (We could have a separate model for this in the future)
-                if transport_mode == 'transit':
-                    public_transport_time = max(15, round(driving_time * 1.3 + 10))
+                # Apply only to features that exist in the transformer
+                features_transformed = self.feature_transformer.transform(features)
+                return features_transformed
+            except Exception as e:
+                logger.error(f"Error transforming features: {e}")
+        
+        return features
+    
+    async def _basic_prediction(self, features: pd.DataFrame) -> Dict[str, Any]:
+        """Generate basic prediction for unregistered users"""
+        result = {
+            "road_conditions": "Moderate",  # Default if model not loaded
+            "possible_delays": "No",
+            "weather_conditions": "Clear"
+        }
+        
+        try:
+            # First try using TensorFlow models if available
+            if self.tf_road_condition_model:
+                # For TensorFlow model, we need to prepare the input differently
+                if isinstance(features, pd.DataFrame):
+                    # Get numeric features for TF model
+                    # For simplicity, we'll just use the numeric features for TF prediction
+                    numeric_features = features[['distance_km', 'hour_of_day', 'day_of_week', 
+                                                'is_weekend', 'is_peak_morning', 'is_peak_evening', 
+                                                'is_public_holiday', 'rain_forecast', 'fog_forecast',
+                                                'incidents_count', 'avg_speed_band']].values
+                    mode_feature = 1 if features['mode_of_transport'].iloc[0] == 'driving' else 0
+                    tf_input = np.column_stack([numeric_features, np.array([[mode_feature]])])
                 else:
-                    public_transport_time = max(15, round(driving_time * 1.3 + 10))
+                    # If already transformed, need to reshape for TF model
+                    tf_input = features
                 
-                logger.info(f"ML model predicted travel times - Driving: {driving_time} min, Public: {public_transport_time} min")
+                # Get road condition prediction from TF model
+                road_probs = self.tf_road_condition_model.predict(tf_input)[0]
+                road_index = np.argmax(road_probs)
+                result["road_conditions"] = self.road_conditions[road_index]
                 
-                return driving_time, public_transport_time
-            except Exception as e:
-                logger.error(f"Error using travel time model: {e}")
-                logger.info("Falling back to rule-based travel time calculation")
-        
-        # Fallback to rule-based calculation
-        # Create a unique identifier for this route combination
-        route_key = f"{start_location.lower()}-{end_location.lower()}"
-        
-        # Base travel time calculation (approximately 15-25 minutes for average routes)
-        base_time = 15  # Default base time in minutes
-        
-        # Add variation based on location names
-        start_len = len(start_location) if start_location else 0
-        end_len = len(end_location) if end_location else 0
-        base_time += (start_len + end_len) / 4
-        
-        # Create a deterministic but unique time for each route
-        route_hash = int(hashlib.md5(route_key.encode()).hexdigest(), 16) % 100
-        base_time = base_time * (0.9 + (route_hash % 20) / 100)
-        
-        # Apply location-specific factors
-        traffic_factor = 1.0
-        
-        # High traffic keywords that might appear in location names
-        high_traffic_indicators = ['orchard', 'marina', 'cbd', 'downtown', 'raffles', 'chinatown', 'central']
-        medium_traffic_indicators = ['jurong', 'tampines', 'woodlands', 'novena', 'bugis', 'airport']
-        
-        # Check if locations contain high traffic keywords
-        for keyword in high_traffic_indicators:
-            if (start_location and keyword in start_location.lower()) or (end_location and keyword in end_location.lower()):
-                traffic_factor = 1.3
-                break
-                
-        # If not high traffic, check for medium traffic
-        if traffic_factor == 1.0:
-            for keyword in medium_traffic_indicators:
-                if (start_location and keyword in start_location.lower()) or (end_location and keyword in end_location.lower()):
-                    traffic_factor = 1.15
-                    break
-        
-        # Time-based factors - common traffic patterns
-        time_factor = 1.0
-        
-        # Peak hours (7-9 AM, 5-7 PM on weekdays)
-        if day_of_week < 5:  # Weekdays
-            if (hour >= 7 and hour <= 9) or (hour >= 17 and hour <= 19):
-                time_factor = 1.5  # 50% slower during peak hours
-        
-        # Weekend factor
-        weekend_factor = 0.85 if day_of_week >= 5 else 1.0  # 15% faster on weekends
-        
-        # Late night factor (11 PM - 6 AM)
-        if hour >= 23 or hour <= 6:
-            time_factor = 0.7  # 30% faster during late night
-        
-        # Calculate final driving time
-        driving_time = base_time * traffic_factor * time_factor * weekend_factor
-        
-        # Ensure minimum driving time and round to integer
-        driving_time = max(10, round(driving_time))
-        
-        logger.info(f"Calculated base driving time: {driving_time} min")
-        
-        # Calculate public transport time
-        if transport_mode == 'transit':
-            # Public transport is generally slower but less affected by traffic
-            public_transport_time = driving_time * 1.4
+                # Get delay prediction from TF model if available
+                if self.tf_delay_model:
+                    delay_prob = self.tf_delay_model.predict(tf_input)[0][0]
+                    result["possible_delays"] = "Yes" if delay_prob > 0.5 else "No"
             
-            # Add fixed time for waiting and transfers
-            public_transport_time += 10
-        else:
-            # Calculate anyway for the prediction
-            public_transport_time = driving_time * 1.4 + 10
-        
-        # Ensure minimum public transport time
-        public_transport_time = max(15, round(public_transport_time))
-
-        logger.info(f"Rule-based travel times - Driving: {driving_time} min, Public: {public_transport_time} min")
-        
-        return driving_time, public_transport_time
-
-    def generate_alternative_routes(self, start, end, primary_time):
-        """
-        Generate alternative routes based on the primary route's travel time.
-        
-        Args:
-            start (str): Starting location
-            end (str): Ending location
-            primary_time (float): Primary route travel time in minutes
+            # Fall back to traditional ML models if TF models aren't available
+            elif self.road_condition_model:
+                road_condition_pred = self.road_condition_model.predict(features)[0]
+                result["road_conditions"] = road_condition_pred
+                
+                # Predict possible delays if model is loaded
+                if self.delay_model:
+                    delay_prob = self.delay_model.predict_proba(features)[0][1]  # Probability of delay
+                    result["possible_delays"] = "Yes" if delay_prob > 0.5 else "No"
             
-        Returns:
-            list: Alternative routes with estimated times
-        """
-        logger.info(f"Generating alternative routes from {start} to {end} (primary time: {primary_time} min)")
-
-        if not start or not end or primary_time <= 0:
-            logger.warning(f"Invalid inputs for alternative routes: start={start}, end={end}, primary_time={primary_time}")
-            # Default safe alternatives
-            return [
-                {
-                    "name": "Recommended Route",
-                    "estimated_time": 15,
-                    "description": "Optimal standard route"
-                },
-                {
-                    "name": "Backup Route",
-                    "estimated_time": 18,
-                    "description": "Secondary route with steady traffic flow"
-                }
-            ]
-
-        # Create a unique hash for this route to ensure consistent recommendations
-        route_key = f"{start.lower()}-{end.lower()}"
-        route_hash = int(hashlib.md5(route_key.encode()).hexdigest(), 16) % 100
+            # Get weather from features (same for both model types)
+            if features[0]['rain_forecast'] == 1:
+                result["weather_conditions"] = "Rain"
+            elif features[0]['fog_forecast'] == 1:
+                result["weather_conditions"] = "Fog"
+                
+        except Exception as e:
+            logger.error(f"Error making basic prediction: {e}")
+            
+        return result
+    
+    async def _detailed_prediction(self, 
+                           features: pd.DataFrame, 
+                           start_location: Dict[str, float], 
+                           destination_location: Dict[str, float],
+                           mode_of_transport: str) -> Dict[str, Any]:
+        """Generate detailed prediction for registered users"""
+        # Start with the basic prediction
+        basic_result = await self._basic_prediction(features)
         
-        # Different time saving factors for different routes
-        time_factor1 = 0.85 + (route_hash % 10) / 100  # 0.85-0.95
-        time_factor2 = 0.95 + (route_hash % 15) / 100  # 0.95-1.10
-        
-        # Pick two unique road names for the alternatives
-        road_index1 = route_hash % len(SINGAPORE_ROADS)
-        road_index2 = (route_hash + 3) % len(SINGAPORE_ROADS)
-        
-        # Create alternative routes with proper time calculations
-        alternatives = [
-            {
-                "name": f"Alternative Route via {SINGAPORE_ROADS[road_index1]}", 
-                "estimated_time": round(primary_time * time_factor1),
-                "description": "Via less congested roads"
+        result = {
+            "road_conditions": basic_result["road_conditions"],
+            "weather_conditions": basic_result["weather_conditions"],
+            "road_conditions_probability": {
+                "Clear": 0.1,
+                "Moderate": 0.2,
+                "Congested": 0.7
             },
-            {
-                "name": f"Scenic Route via {SINGAPORE_ROADS[road_index2]}", 
-                "estimated_time": round(primary_time * time_factor2),
-                "description": "Slightly longer but steadier traffic flow"
-            }
-        ]
-        
-        logger.info(f"Generated alternative routes: {alternatives}")
-        return alternatives
-
-    def find_route_specific_incident(self, start_location, end_location):
-        """Find incidents relevant to the specific route."""
-        # Check if we should use ML model for incident prediction
-        if USE_ML_MODELS and self.models_loaded and self.incidents_model is not None:
-            try:
-                # Prepare input data for model
-                input_data = self.preprocess_input_for_model(
-                    None, None, None, 
-                    start_location=start_location, 
-                    end_location=end_location
-                )
-                
-                # Predict if there's an incident using model
-                incident_probability = self.incidents_model.predict_proba(input_data)[0][1]
-                
-                if incident_probability < 0.3:
-                    # Low probability of incident
-                    logger.info(f"ML model predicts low incident probability ({incident_probability:.2f}), no incidents to report")
-                    return None
-                
-                # If we predict an incident, still use Firestore data or generate one
-                logger.info(f"ML model predicts incident probability: {incident_probability:.2f}")
-            
-            except Exception as e:
-                logger.error(f"Error using incidents model: {e}")
-        
-        # Fetch incidents from Firestore
-        incidents = fetch_firestore_data('traffic_incidents', limit=5)
-        
-        # If real incidents exist, use those
-        if incidents:
-            # Sort incidents by relevance (for now randomly pick one)
-            import random
-            incident = random.choice(incidents)
-            return {
-                "type": incident.get("Type", "Incident"),
-                "message": incident.get("Message", ""),
-                "latitude": incident.get("Latitude", 1.3521),
-                "longitude": incident.get("Longitude", 103.8198)
-            }
-        
-        # If no incidents available, create a route-specific fictitious incident
-        # Create a hash of the route to ensure consistent but different incidents
-        route_key = f"{start_location.lower()}-{end_location.lower()}"
-        route_hash = int(hashlib.md5(route_key.encode()).hexdigest(), 16)
-            
-        # Different incident types based on route hash
-        incident_types = ["Accident", "Roadwork", "Heavy Traffic", "Vehicle Breakdown"]
-        incident_type = incident_types[route_hash % len(incident_types)]
-            
-        # Different locations based on the route
-        if route_hash % 2 == 0:
-            location_ref = start_location
-            # Singapore coordinates range approximately
-            lat = 1.3 + (route_hash % 100) / 1000
-            lng = 103.8 + (route_hash % 100) / 1000
-        else:
-            location_ref = end_location
-            lat = 1.3 + ((route_hash + 50) % 100) / 1000
-            lng = 103.8 + ((route_hash + 50) % 100) / 1000
-            
-        # Create a message that's specific to the route
-        messages = [
-            f"({datetime.now().strftime('%d/%m')}) {incident_type} reported near {location_ref}.",
-            f"({datetime.now().strftime('%d/%m')}) {incident_type} on roads leading to {location_ref}.",
-            f"({datetime.now().strftime('%d/%m')}) Expect delays due to {incident_type.lower()} near {location_ref}."
-        ]
-        message = messages[route_hash % len(messages)]
-            
-        return {
-            "type": incident_type,
-            "message": message,
-            "latitude": lat,
-            "longitude": lng
+            "estimated_travel_time": 25,  # Default in minutes
+            "possible_delays": basic_result["possible_delays"],
+            "general_travel_recommendation": "Not Ideal",
+            "incident_alerts": [],
+            "weather_based_recommendations": [],
+            "alternative_routes": []
         }
-
-    def generate_weather_recommendations(self, weather_condition, road_condition):
-        """Generate weather-based recommendations for drivers."""
-        logger.info(f"Generating weather recommendations for: weather={weather_condition}, road={road_condition}")
-        recommendations = []
-
-        # Handle unknown or missing weather conditions upfront
-        if not weather_condition or weather_condition == "Unknown":
-            recommendations.append("Regular driving conditions apply.")
-            recommendations.append("Stay hydrated and use sun protection if driving for long periods.")
-        else:
-            # Weather-specific recommendations
-            if "Rain" in weather_condition:
-                recommendations.append("Expect slower traffic due to rain. Allow extra travel time.")
-                if road_condition == "Congested":
-                    recommendations.append("Consider postponing non-essential travel due to rain and congestion.")
-                recommendations.append("Drive slower than usual and leave more distance between vehicles.")
-            elif "Fog" in weather_condition:
-                recommendations.append("Reduced visibility due to fog. Drive with caution and use low-beam headlights.")
-                recommendations.append("Avoid sudden lane changes and maintain a safe following distance.")
-            elif "Thunder" in weather_condition or "Storm" in weather_condition:
-                recommendations.append("Severe weather conditions. Consider postponing travel if possible.")
-                recommendations.append("If you must travel, avoid flood-prone areas and stay clear of trees and power lines.")
-            elif "Cloud" in weather_condition or "Partly" in weather_condition:
-                recommendations.append("Weather is cloudy but visibility is good. No special precautions needed.")
+        
+        try:
+            # Prepare input for TF models if needed
+            if isinstance(features, pd.DataFrame):
+                # Get numeric features for TF model
+                numeric_features = features[['distance_km', 'hour_of_day', 'day_of_week', 
+                                           'is_weekend', 'is_peak_morning', 'is_peak_evening', 
+                                           'is_public_holiday', 'rain_forecast', 'fog_forecast',
+                                           'incidents_count', 'avg_speed_band']].values
+                mode_feature = 1 if features['mode_of_transport'].iloc[0] == 'driving' else 0
+                tf_input = np.column_stack([numeric_features, np.array([[mode_feature]])])
             else:
-                # Default recommendations for clear or other conditions
-                recommendations.append("Regular driving conditions apply.")
-                recommendations.append("Stay hydrated and use sun protection if driving for long periods.")
-
-        # Road condition-based additions
-        if road_condition == "Congested":
-            recommendations.append("Expect significant delays due to congestion. Consider alternative routes.")
-        elif road_condition == "Moderate":
-            recommendations.append("Moderate traffic expected. Allow extra time for your journey.")
-
-        # Return recommendations (limit to 3 to avoid overwhelming the user)
-        if len(recommendations) > 3:
-            return recommendations[:3]
+                # If already transformed, use as is for TF model
+                tf_input = features
+            
+            # Get probabilities for road conditions
+            if self.tf_road_condition_model:
+                # For TensorFlow multiclass model
+                probs = self.tf_road_condition_model.predict(tf_input)[0]
+                result["road_conditions_probability"] = {
+                    cond: round(prob * 100, 1) for cond, prob in zip(self.road_conditions, probs)
+                }
+            elif self.road_condition_model:
+                # For traditional ML model
+                probs = self.road_condition_model.predict_proba(features)[0]
+                classes = self.road_condition_model.classes_
+                
+                result["road_conditions_probability"] = {
+                    cls: round(prob * 100, 1) for cls, prob in zip(classes, probs)
+                }
+            
+            # Predict travel time
+            if self.tf_travel_time_model:
+                # For TensorFlow regression model
+                predicted_time = self.tf_travel_time_model.predict(tf_input)[0][0]
+                result["estimated_travel_time"] = round(predicted_time, 1)
+            elif self.travel_time_model:
+                # For traditional ML model
+                predicted_time = self.travel_time_model.predict(features)[0]
+                result["estimated_travel_time"] = round(predicted_time, 1)
+            else:
+                # Fallback calculation based on distance and assumed speed
+                distance_km = features[0]['distance_km']
+                avg_speed = 40 if features[0]['avg_speed_band'] <= 2 else 25 if features[0]['avg_speed_band'] <= 3 else 15
+                result["estimated_travel_time"] = round((distance_km / avg_speed) * 60, 1)  # Convert to minutes
+            
+            # Get incident alerts
+            incident_alerts = await self._get_incidents_on_route(
+                (start_location.get('latitude', 0), start_location.get('longitude', 0)),
+                (destination_location.get('latitude', 0), destination_location.get('longitude', 0))
+            )
+            result["incident_alerts"] = incident_alerts
+            
+            # Generate weather-based recommendations
+            weather_recommendations = await self._generate_weather_recommendations(
+                basic_result["weather_conditions"],
+                mode_of_transport
+            )
+            result["weather_based_recommendations"] = weather_recommendations
+            
+            # Generate travel recommendation
+            result["general_travel_recommendation"] = "Not Ideal" if (
+                result["road_conditions"] == "Congested" or
+                result["possible_delays"] == "Yes" or
+                len(incident_alerts) > 0 or
+                basic_result["weather_conditions"] in ["Rain", "Fog"]
+            ) else "Ideal"
+            
+            # Generate alternative routes (simplified version)
+            result["alternative_routes"] = await self._generate_alternative_routes(
+                start_location,
+                destination_location,
+                mode_of_transport
+            )
+            
+        except Exception as e:
+            logger.error(f"Error making detailed prediction: {e}")
+            
+        return result
+    
+    async def _check_if_public_holiday(self, date: datetime.date) -> int:
+        """Check if a date is a public holiday"""
+        try:
+            # Query Firestore for public holidays
+            public_holidays_ref = db.collection('public_holidays_2025')
+            query = public_holidays_ref.where('date', '==', date.strftime('%Y-%m-%d')).limit(1)
+            docs = query.stream()
+            
+            # If any document exists, it's a holiday
+            return 1 if any(docs) else 0
+            
+        except Exception as e:
+            logger.error(f"Error checking public holiday: {e}")
+            return 0
+    
+    async def _get_weather_forecast(self, prediction_time: datetime) -> Dict[str, Any]:
+        """Get weather forecast for prediction time"""
+        try:
+            # Get current weather data if prediction time is within 24 hours
+            time_diff = prediction_time - datetime.now()
+            
+            if time_diff.total_seconds() < 24 * 60 * 60:
+                # Query the most recent weather forecast
+                forecast_ref = db.collection('weather_forecast_24hr')
+                query = forecast_ref.order_by('stored_at', direction=firestore.Query.DESCENDING).limit(1)
+                docs = query.stream()
+                
+                for doc in docs:
+                    forecast = doc.to_dict()
+                    
+                    # Find the relevant forecast period
+                    if 'regions' in forecast:
+                        # Simplification: just return the central region forecast
+                        central_forecast = forecast.get('regions', {}).get('central', '')
+                        return {
+                            "temperature": forecast.get('temperature', {}).get('high', 30),
+                            "humidity": forecast.get('relative_humidity', {}).get('high', 85),
+                            "weather": central_forecast
+                        }
+            
+            # Fallback to historical averages for the time of year
+            return {
+                "temperature": 30,
+                "humidity": 80,
+                "weather": "clear sky"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting weather forecast: {e}")
+            return {"temperature": 30, "humidity": 80, "weather": "clear sky"}
+    
+    async def _count_incidents_on_route(self, start_coords: Tuple[float, float], 
+                                dest_coords: Tuple[float, float]) -> int:
+        """Count traffic incidents along the route"""
+        try:
+            # Query recent traffic incidents
+            incidents_ref = db.collection('traffic_incidents')
+            query = incidents_ref.order_by('Timestamp', direction=firestore.Query.DESCENDING).limit(50)
+            docs = query.stream()
+            
+            incidents_count = 0
+            
+            # Calculate midpoint and max distance
+            mid_lat = (start_coords[0] + dest_coords[0]) / 2
+            mid_lon = (start_coords[1] + dest_coords[1]) / 2
+            route_distance = geodesic(start_coords, dest_coords).kilometers
+            
+            # Buffer around the route (in km)
+            buffer_distance = max(1.0, route_distance * 0.2)  # At least 1km or 20% of route distance
+            
+            for doc in docs:
+                incident = doc.to_dict()
+                
+                # Check if incident is near the route
+                incident_coords = (incident.get('Latitude', 0), incident.get('Longitude', 0))
+                
+                # Simple check - is the incident within buffer distance of the midpoint?
+                distance_to_mid = geodesic((mid_lat, mid_lon), incident_coords).kilometers
+                
+                if distance_to_mid <= buffer_distance:
+                    incidents_count += 1
+            
+            return incidents_count
+            
+        except Exception as e:
+            logger.error(f"Error counting incidents on route: {e}")
+            return 0
+    
+    async def _get_average_speed_band(self, start_coords: Tuple[float, float], 
+                              dest_coords: Tuple[float, float]) -> float:
+        """Get average speed band for the route"""
+        try:
+            # Query recent speed bands
+            speed_bands_ref = db.collection('traffic_speed_bands')
+            query = speed_bands_ref.order_by('Timestamp', direction=firestore.Query.DESCENDING).limit(100)
+            docs = query.stream()
+            
+            relevant_bands = []
+            
+            # Calculate midpoint and max distance
+            mid_lat = (start_coords[0] + dest_coords[0]) / 2
+            mid_lon = (start_coords[1] + dest_coords[1]) / 2
+            route_distance = geodesic(start_coords, dest_coords).kilometers
+            
+            # Buffer around the route (in km)
+            buffer_distance = max(2.0, route_distance * 0.3)  # At least 2km or 30% of route distance
+            
+            for doc in docs:
+                speed_band = doc.to_dict()
+                
+                # Check if road segment is near the route
+                start_segment = (speed_band.get('StartLatitude', 0), speed_band.get('StartLongitude', 0))
+                end_segment = (speed_band.get('EndLatitude', 0), speed_band.get('EndLongitude', 0))
+                
+                # Check if either end of the road segment is within buffer distance of the midpoint
+                start_distance = geodesic((mid_lat, mid_lon), start_segment).kilometers
+                end_distance = geodesic((mid_lat, mid_lon), end_segment).kilometers
+                
+                if start_distance <= buffer_distance or end_distance <= buffer_distance:
+                    relevant_bands.append(speed_band.get('SpeedBand', 2))
+            
+            # Return average speed band, default to 2 if no relevant bands found
+            return sum(relevant_bands) / len(relevant_bands) if relevant_bands else 2
+            
+        except Exception as e:
+            logger.error(f"Error getting average speed band: {e}")
+            return 2  # Default to moderate speed
+    
+    async def _get_incidents_on_route(self, start_coords: Tuple[float, float], 
+                              dest_coords: Tuple[float, float]) -> List[Dict[str, Any]]:
+        """Get details of incidents along the route"""
+        try:
+            # Get all incidents (official and user-reported)
+            from app.database.firestore_utils import get_all_incidents
+            
+            all_incidents = get_all_incidents(limit=100)
+            nearby_incidents = []
+            
+            # Calculate route parameters
+            route_distance = geodesic(start_coords, dest_coords).kilometers
+            buffer_distance = max(1.0, route_distance * 0.2)  # At least 1km or 20% of route distance
+            
+            for incident in all_incidents:
+                # Get coordinates - different structure for official vs user-reported
+                if incident.get('source') == 'official':
+                    incident_coords = (incident.get('Latitude', 0), incident.get('Longitude', 0))
+                    incident_type = incident.get('Type', 'Unknown')
+                    incident_message = incident.get('Message', '')
+                else:
+                    location = incident.get('location', {})
+                    incident_coords = (location.get('latitude', 0), location.get('longitude', 0))
+                    incident_type = incident.get('type', 'Unknown')
+                    incident_message = incident.get('description', '')
+                
+                # Check if on route (simplified)
+                # In a real implementation, we'd check if the incident is actually on the driving route
+                is_on_route = False
+                
+                # Check distance to start
+                distance_to_start = geodesic(start_coords, incident_coords).kilometers
+                if distance_to_start <= buffer_distance:
+                    is_on_route = True
+                
+                # Check distance to destination
+                distance_to_dest = geodesic(dest_coords, incident_coords).kilometers
+                if distance_to_dest <= buffer_distance:
+                    is_on_route = True
+                
+                # Calculate midpoint
+                mid_lat = (start_coords[0] + dest_coords[0]) / 2
+                mid_lon = (start_coords[1] + dest_coords[1]) / 2
+                distance_to_mid = geodesic((mid_lat, mid_lon), incident_coords).kilometers
+                
+                if distance_to_mid <= buffer_distance:
+                    is_on_route = True
+                
+                if is_on_route:
+                    nearby_incidents.append({
+                        "type": incident_type,
+                        "message": incident_message,
+                        "distance_from_start": round(distance_to_start, 1),
+                        "latitude": incident_coords[0],
+                        "longitude": incident_coords[1],
+                        "source": incident.get('source', 'unknown')
+                    })
+            
+            # Sort by distance from start
+            return sorted(nearby_incidents, key=lambda x: x['distance_from_start'])
+            
+        except Exception as e:
+            logger.error(f"Error getting incidents on route: {e}")
+            return []
+    
+    async def _generate_weather_recommendations(self, weather: str, mode: str) -> List[str]:
+        """Generate weather-based recommendations"""
+        recommendations = []
+        
+        if weather == "Rain":
+            if mode == "driving":
+                recommendations = [
+                    "Reduce speed due to wet roads",
+                    "Leave extra space between vehicles",
+                    "Use headlights for better visibility",
+                    "Avoid areas prone to flooding"
+                ]
+            else:
+                recommendations = [
+                    "Bring an umbrella",
+                    "Allow extra travel time for potential public transport delays",
+                    "Consider sheltered walking routes",
+                    "Be aware that bus services may be running slower than usual"
+                ]
+        elif weather == "Fog":
+            if mode == "driving":
+                recommendations = [
+                    "Use fog lights but not high beams",
+                    "Reduce speed significantly",
+                    "Maintain extra distance from other vehicles",
+                    "Avoid expressways if possible"
+                ]
+            else:
+                recommendations = [
+                    "Allow extra travel time for potential public transport delays",
+                    "Be aware of reduced visibility at crossings"
+                ]
+                
         return recommendations
-
-    def calculate_road_conditions_probability(self, start_location, end_location, hour, day_of_week):
+    
+    async def _generate_alternative_routes(self, 
+                                   start_location: Dict[str, float], 
+                                   destination_location: Dict[str, float],
+                                   mode_of_transport: str) -> List[Dict[str, Any]]:
+        """Generate alternative routes - simplified version"""
+        # In a real implementation, this would call a routing API
+        # Here we provide a simplified version with dummy data
+        
+        # Calculate direct distance
+        start_coords = (start_location.get('latitude', 0), start_location.get('longitude', 0))
+        dest_coords = (destination_location.get('latitude', 0), destination_location.get('longitude', 0))
+        direct_distance_km = geodesic(start_coords, dest_coords).kilometers
+        
+        # Generate alternatives
+        alternatives = []
+        
+        # 1. Slightly longer but potentially faster route
+        alt_1_distance = direct_distance_km * 1.1  # 10% longer
+        alt_1_time = (alt_1_distance / 50) * 60  # Assuming 50 km/h average speed
+        
+        alternatives.append({
+            "name": "Alternative Route 1", 
+            "distance_km": round(alt_1_distance, 1),
+            "estimated_time_min": round(alt_1_time, 1),
+            "congestion_level": "Low",
+            "description": "Longer route via major roads with less congestion"
+        })
+        
+        # 2. Shorter but potentially slower route
+        alt_2_distance = direct_distance_km * 0.95  # 5% shorter
+        alt_2_time = (alt_2_distance / 30) * 60  # Assuming 30 km/h average speed
+        
+        alternatives.append({
+            "name": "Alternative Route 2", 
+            "distance_km": round(alt_2_distance, 1),
+            "estimated_time_min": round(alt_2_time, 1),
+            "congestion_level": "Moderate",
+            "description": "Shorter route through local roads with more traffic lights"
+        })
+        
+        return alternatives
+    
+    async def _get_historical_travel_times(self) -> List[Dict[str, Any]]:
+        """Get historical estimated travel times from Firestore"""
+        try:
+            times_ref = db.collection('estimated_travel_times')
+            query = times_ref.limit(1000)  # Get at most 1000 records
+            docs = query.stream()
+            
+            return [doc.to_dict() for doc in docs]
+            
+        except Exception as e:
+            logger.error(f"Error getting historical travel times: {e}")
+            return []
+    
+    async def _get_historical_speed_bands(self) -> List[Dict[str, Any]]:
+        """Get historical speed bands from Firestore"""
+        try:
+            bands_ref = db.collection('traffic_speed_bands')
+            query = bands_ref.limit(1000)  # Get at most 1000 records
+            docs = query.stream()
+            
+            return [doc.to_dict() for doc in docs]
+            
+        except Exception as e:
+            logger.error(f"Error getting historical speed bands: {e}")
+            return []
+    
+    def _generate_synthetic_training_data(self, num_samples: int = 5000) -> pd.DataFrame:
+        """Generate synthetic data for model training when historical data is insufficient"""
+        np.random.seed(42)  # For reproducibility
+        
+        # Generate features
+        data = {
+            'distance_km': np.random.uniform(1, 30, num_samples),  # Distance in km
+            'hour_of_day': np.random.randint(0, 24, num_samples),
+            'day_of_week': np.random.randint(0, 7, num_samples),
+            'is_weekend': np.random.randint(0, 2, num_samples),
+            'is_peak_morning': np.random.randint(0, 2, num_samples),
+            'is_peak_evening': np.random.randint(0, 2, num_samples),
+            'is_public_holiday': np.random.randint(0, 2, num_samples),
+            'rain_forecast': np.random.randint(0, 2, num_samples),
+            'fog_forecast': np.random.randint(0, 2, num_samples),
+            'incidents_count': np.random.randint(0, 5, num_samples),
+            'avg_speed_band': np.random.randint(1, 5, num_samples),
+            'mode_of_transport': np.random.choice(['driving', 'public_transport'], num_samples)
+        }
+        
+        # Create DataFrame
+        df = pd.DataFrame(data)
+        
+        # Generate target variables based on features
+        
+        # 1. Road condition (Clear, Moderate, Congested)
+        # Logic: More incidents, higher speed band, peak hours lead to congestion
+        congestion_score = (
+            df['incidents_count'] * 0.5 + 
+            df['avg_speed_band'] * 0.3 + 
+            df['is_peak_morning'] * 2 + 
+            df['is_peak_evening'] * 2.5 +
+            df['rain_forecast'] * 1.5 +
+            df['fog_forecast'] * 1 +
+            df['is_public_holiday'] * -1  # Holidays typically have less congestion
+        )
+        
+        # Normalize to 0-10 scale
+        congestion_score = 10 * (congestion_score - congestion_score.min()) / (congestion_score.max() - congestion_score.min())
+        
+        # Map to road conditions
+        road_conditions = ['Clear', 'Moderate', 'Congested']
+        df['road_condition'] = pd.cut(
+            congestion_score, 
+            bins=[0, 3.33, 6.67, 10], 
+            labels=road_conditions, 
+            include_lowest=True
+        )
+        
+        # 2. Delay (Yes/No)
+        # Logic: Delays are more likely with incidents, congestion, bad weather
+        delay_prob = (
+            df['incidents_count'] * 0.15 + 
+            (df['avg_speed_band'] / 4) * 0.3 + 
+            df['is_peak_morning'] * 0.1 + 
+            df['is_peak_evening'] * 0.15 +
+            df['rain_forecast'] * 0.15 +
+            df['fog_forecast'] * 0.2
+        )
+        
+        # Normalize to 0-1 probability
+        delay_prob = (delay_prob - delay_prob.min()) / (delay_prob.max() - delay_prob.min())
+        
+        # Convert to binary
+        df['had_delay'] = (delay_prob > 0.5).astype(int)
+        
+        # 3. Travel time in minutes
+        # Logic: Base travel time on distance, then add factors for mode, congestion, etc.
+        
+        # Base speed in km/h - 40 km/h for driving, 25 km/h for public transport
+        base_speed = np.where(df['mode_of_transport'] == 'driving', 40, 25)
+        
+        # Adjust for congestion (speed band)
+        speed_factor = np.select(
+            [df['avg_speed_band'] == 1, df['avg_speed_band'] == 2, df['avg_speed_band'] == 3, df['avg_speed_band'] == 4],
+            [1.2, 1.0, 0.8, 0.6],
+            default=1.0
+        )
+        
+        # Adjust for weather
+        weather_factor = np.select(
+            [df['rain_forecast'] == 1, df['fog_forecast'] == 1, (df['rain_forecast'] == 1) & (df['fog_forecast'] == 1)],
+            [0.9, 0.8, 0.7],
+            default=1.0
+        )
+        
+        # Adjust for time of day
+        time_factor = np.select(
+            [df['is_peak_morning'] == 1, df['is_peak_evening'] == 1, df['is_weekend'] == 1],
+            [0.8, 0.7, 1.1],
+            default=1.0
+        )
+        
+        # Calculate travel time (distance / adjusted speed) in minutes
+        adjusted_speed = base_speed * speed_factor * weather_factor * time_factor
+        df['travel_time_minutes'] = (df['distance_km'] / adjusted_speed) * 60
+        
+        # Add some random noise (±10%)
+        df['travel_time_minutes'] *= np.random.uniform(0.9, 1.1, num_samples)
+        
+        return df
+    
+    async def _collect_training_data(self) -> pd.DataFrame:
+        """Collect and prepare historical data for training"""
+        try:
+            # This function would normally gather historical data from multiple sources
+            # For simplicity, we'll create a synthetic dataset here
+            
+            # Check if we can get some real data from Firestore
+            estimated_times = await self._get_historical_travel_times()
+            speed_bands = await self._get_historical_speed_bands()
+            
+            # If we have no real data, generate synthetic data
+            if not estimated_times and not speed_bands:
+                return self._generate_synthetic_training_data()
+            
+            # Otherwise, compile real data with synthetic supplements
+            # (real implementation would do proper feature engineering here)
+            return self._generate_synthetic_training_data(1000)  # Generate 1000 synthetic records
+            
+        except Exception as e:
+            logger.error(f"Error collecting training data: {e}")
+            return pd.DataFrame()
+    
+    async def train_models(self, force_retrain: bool = False):
         """
-        Calculate the probabilities of different road conditions.
+        Train prediction models using historical data
         
         Args:
-            start_location (str): Starting location
-            end_location (str): Ending location
-            hour (int): Hour of the day (0-23)
-            day_of_week (int): Day of the week (0=Monday, 6=Sunday)
-            
-        Returns:
-            dict: Probabilities for Congested, Moderate, and Clear road conditions
+            force_retrain (bool): If True, retrain models even if they already exist
         """
-        # Check if we should use ML model for road condition probability prediction
-        if USE_ML_MODELS and self.models_loaded and self.road_conditions_model is not None:
-            try:
-                # Prepare input data for model
-                input_data = self.preprocess_input_for_model(
-                    hour, day_of_week, None, 
-                    start_location=start_location, 
-                    end_location=end_location
-                )
+        if not force_retrain and all([
+            self.tf_road_condition_model, 
+            self.tf_delay_model, 
+            self.tf_travel_time_model
+        ]):
+            logger.info("TensorFlow models already trained. Use force_retrain=True to retrain")
+            return
+            
+        try:
+            # Collect training data
+            training_data = await self._collect_training_data()
+            
+            if training_data.empty:
+                logger.error("No training data available")
+                return
                 
-                # If the model can predict probabilities, use them
-                if hasattr(self.road_conditions_model, 'predict_proba'):
-                    proba = self.road_conditions_model.predict_proba(input_data)[0]
-                    
-                    # Map probabilities to road conditions
-                    # Assuming the model has 3 classes: [Clear, Moderate, Congested]
-                    road_conditions = ["Clear", "Moderate", "Congested"]
-                    probabilities = {cond: round(prob * 100) for cond, prob in zip(road_conditions, proba)}
-                    
-                    logger.info(f"ML model predicted road condition probabilities: {probabilities}")
-                    return probabilities
-                
-            except Exception as e:
-                logger.error(f"Error using road conditions model for probabilities: {e}")
-                logger.info("Falling back to rule-based probability calculation")
+            logger.info(f"Collected {len(training_data)} records for training")
+            
+            # Prepare features and targets
+            X = training_data.drop(['road_condition', 'had_delay', 'travel_time_minutes'], axis=1)
+            y_road = pd.get_dummies(training_data['road_condition'])  # One-hot encode for TF
+            y_delay = training_data['had_delay']
+            y_time = training_data['travel_time_minutes']
+            
+            # Create preprocessing pipeline
+            categorical_features = ['mode_of_transport']
+            numeric_features = ['distance_km', 'hour_of_day', 'day_of_week', 
+                                'is_weekend', 'is_peak_morning', 'is_peak_evening', 
+                                'is_public_holiday', 'rain_forecast', 'fog_forecast',
+                                'incidents_count', 'avg_speed_band']
+            
+            preprocessor = ColumnTransformer(
+                transformers=[
+                    ('num', StandardScaler(), numeric_features),
+                    ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+                ])
+            
+            # Split data
+            X_train, X_test, y_road_train, y_road_test = train_test_split(X, y_road, test_size=0.2, random_state=42)
+            _, _, y_delay_train, y_delay_test = train_test_split(X, y_delay, test_size=0.2, random_state=42)
+            _, _, y_time_train, y_time_test = train_test_split(X, y_time, test_size=0.2, random_state=42)
+            
+            # Fit preprocessing pipeline
+            self.feature_transformer = preprocessor.fit(X_train)
+            
+            # Save preprocessor
+            joblib.dump(self.feature_transformer, TRANSFORMER_PATH)
+            
+            # Transform data
+            X_train_transformed = self.feature_transformer.transform(X_train)
+            X_test_transformed = self.feature_transformer.transform(X_test)
+            
+            # Get the number of features after transformation
+            if isinstance(X_train_transformed, np.ndarray):
+                n_features = X_train_transformed.shape[1]
+            else:
+                n_features = X_train_transformed.toarray().shape[1]
+            
+            # Convert sparse matrices to dense if needed
+            if not isinstance(X_train_transformed, np.ndarray):
+                X_train_transformed = X_train_transformed.toarray()
+                X_test_transformed = X_test_transformed.toarray()
+            
+            # 1. Train TensorFlow Road Condition Model (multiclass classification)
+            tf_road_model = Sequential([
+                Dense(64, activation='relu', input_shape=(n_features,)),
+                BatchNormalization(),
+                Dropout(0.3),
+                Dense(32, activation='relu'),
+                Dropout(0.2),
+                Dense(3, activation='softmax')  # 3 classes: Clear, Moderate, Congested
+            ])
+            
+            tf_road_model.compile(
+                optimizer=Adam(learning_rate=0.001),
+                loss='categorical_crossentropy',
+                metrics=['accuracy']
+            )
+            
+            early_stopping = EarlyStopping(
+                monitor='val_loss',
+                patience=10,
+                restore_best_weights=True
+            )
+            
+            tf_road_model.fit(
+                X_train_transformed, 
+                y_road_train,
+                epochs=50,
+                batch_size=32,
+                validation_split=0.2,
+                callbacks=[early_stopping],
+                verbose=1
+            )
+            
+            # Evaluate road condition model
+            road_eval = tf_road_model.evaluate(X_test_transformed, y_road_test)
+            logger.info(f"TensorFlow road condition model accuracy: {road_eval[1]:.4f}")
+            
+            # Save TensorFlow road condition model
+            tf_road_model.save(TF_ROAD_CONDITION_MODEL_PATH)
+            self.tf_road_condition_model = tf_road_model
+            
+            # 2. Train TensorFlow Delay Model (binary classification)
+            tf_delay_model = Sequential([
+                Dense(32, activation='relu', input_shape=(n_features,)),
+                BatchNormalization(),
+                Dropout(0.2),
+                Dense(16, activation='relu'),
+                Dense(1, activation='sigmoid')  # Binary output
+            ])
+            
+            tf_delay_model.compile(
+                optimizer=Adam(learning_rate=0.001),
+                loss='binary_crossentropy',
+                metrics=['accuracy']
+            )
+            
+            tf_delay_model.fit(
+                X_train_transformed, 
+                y_delay_train,
+                epochs=50,
+                batch_size=32,
+                validation_split=0.2,
+                callbacks=[early_stopping],
+                verbose=1
+            )
+            
+            # Evaluate delay model
+            delay_eval = tf_delay_model.evaluate(X_test_transformed, y_delay_test)
+            logger.info(f"TensorFlow delay model accuracy: {delay_eval[1]:.4f}")
+            
+            # Save TensorFlow delay model
+            tf_delay_model.save(TF_DELAY_MODEL_PATH)
+            self.tf_delay_model = tf_delay_model
+            
+            # 3. Train TensorFlow Travel Time Model (regression)
+            tf_time_model = Sequential([
+                Dense(64, activation='relu', input_shape=(n_features,)),
+                BatchNormalization(),
+                Dropout(0.3),
+                Dense(32, activation='relu'),
+                Dropout(0.2),
+                Dense(16, activation='relu'),
+                Dense(1)  # Regression output (no activation)
+            ])
+            
+            tf_time_model.compile(
+                optimizer=Adam(learning_rate=0.001),
+                loss='mse',
+                metrics=['mae']
+            )
+            
+            tf_time_model.fit(
+                X_train_transformed, 
+                y_time_train,
+                epochs=50,
+                batch_size=32,
+                validation_split=0.2,
+                callbacks=[early_stopping],
+                verbose=1
+            )
+            
+            # Evaluate travel time model
+            y_time_pred = tf_time_model.predict(X_test_transformed).flatten()
+            time_mae = mean_absolute_error(y_time_test, y_time_pred)
+            logger.info(f"TensorFlow travel time model MAE: {time_mae:.2f} minutes")
+            
+            # Save TensorFlow travel time model
+            tf_time_model.save(TF_TRAVEL_TIME_MODEL_PATH)
+            self.tf_travel_time_model = tf_time_model
+            
+            # Also train traditional ML models as backup
+            # Train road condition model
+            self.road_condition_model = RandomForestClassifier(n_estimators=100, random_state=42)
+            self.road_condition_model.fit(X_train_transformed, y_road_train.idxmax(axis=1))
+            
+            road_pred = self.road_condition_model.predict(X_test_transformed)
+            road_accuracy = accuracy_score(y_road_test.idxmax(axis=1), road_pred)
+            logger.info(f"Traditional road condition model accuracy: {road_accuracy:.4f}")
+            
+            # Save road condition model
+            joblib.dump(self.road_condition_model, ROAD_CONDITION_MODEL_PATH)
+            
+            # Train delay model
+            self.delay_model = xgb.XGBClassifier(n_estimators=100, random_state=42)
+            self.delay_model.fit(X_train_transformed, y_delay_train)
+            
+            delay_pred = self.delay_model.predict(X_test_transformed)
+            delay_accuracy = accuracy_score(y_delay_test, delay_pred)
+            logger.info(f"Traditional delay model accuracy: {delay_accuracy:.4f}")
+            
+            # Save delay model
+            joblib.dump(self.delay_model, DELAY_MODEL_PATH)
+            
+            # Train travel time model
+            self.travel_time_model = GradientBoostingRegressor(n_estimators=100, random_state=42)
+            self.travel_time_model.fit(X_train_transformed, y_time_train)
+            
+            time_pred = self.travel_time_model.predict(X_test_transformed)
+            time_mae = mean_absolute_error(y_time_test, time_pred)
+            logger.info(f"Traditional travel time model MAE: {time_mae:.2f} minutes")
+            
+            # Save travel time model
+            joblib.dump(self.travel_time_model, TRAVEL_TIME_MODEL_PATH)
+            
+            logger.info("All models trained and saved successfully")
+            
+        except Exception as e:
+            logger.error(f"Error training models: {e}")
+
+# Prediction models singleton instance
+traffic_model = TrafficPredictionModel()
+
+async def initialize_models():
+    """Initialize prediction models - call on startup"""
+    traffic_model.load_models()
+    
+    # Train models if they don't exist
+    if (not os.path.exists(TF_ROAD_CONDITION_MODEL_PATH) or 
+        not os.path.exists(TF_DELAY_MODEL_PATH) or 
+        not os.path.exists(TF_TRAVEL_TIME_MODEL_PATH)):
+        logger.info("Training models for the first time...")
+        await traffic_model.train_models()
+
+async def get_traffic_prediction(
+    start_location: Dict[str, float], 
+    destination_location: Dict[str, float], 
+    mode_of_transport: str, 
+    prediction_time: Optional[datetime] = None,
+    user_type: str = "unregistered") -> Dict[str, Any]:
+    """
+    Public API function to get traffic prediction
+    
+    Args:
+        start_location: Dictionary with lat/long of starting point
+        destination_location: Dictionary with lat/long of destination
+        mode_of_transport: 'driving' or 'public_transport'
+        prediction_time: Datetime for future prediction (default: current time)
+        user_type: 'registered' or 'unregistered'
         
-        # Fallback to rule-based calculation
-        # Create a deterministic hash for this route combination
-        route_key = f"{start_location.lower()}-{end_location.lower()}"
-        route_hash = int(hashlib.md5(route_key.encode()).hexdigest(), 16) % 100
-        
-        # Base congestion varies by route (5-25%)
-        base_congestion = 5 + (route_hash % 20)
-        
-        # Adjust for peak hours
-        is_peak_hour = (hour >= 7 and hour <= 9) or (hour >= 17 and hour <= 19)
-        if is_peak_hour and day_of_week < 5:  # Weekday peak
-            base_congestion += 20
-        
-        # Adjust for location keywords
-        high_traffic_areas = ['orchard', 'marina', 'cbd', 'downtown', 'raffles']
-        for area in high_traffic_areas:
-            if (start_location and area in start_location.lower()) or (end_location and area in end_location.lower()):
-                base_congestion += 15
-                break
-        
-        # Cap at 75%
-        base_congestion = min(base_congestion, 75)
-        
-        # Calculate remaining percentages
-        remaining = 100 - base_congestion
-        moderate = min(remaining * 2 // 3, 50)  # Allocate about 2/3 of remaining to moderate
-        clear = 100 - base_congestion - moderate
-        
-        return {
-            "Congested": base_congestion,
-            "Moderate": moderate,
-            "Clear": clear
-        }
+    Returns:
+        Dictionary with prediction results
+    """
+    return await traffic_model.get_prediction(
+        start_location,
+        destination_location,
+        mode_of_transport,
+        prediction_time,
+        user_type
+    )
+
+async def retrain_models():
+    """Function to retrain models with latest data - call regularly via cron/Airflow"""
+    logger.info("Retraining prediction models with latest data...")
+    await traffic_model.train_models(force_retrain=True)
+    logger.info("Model retraining complete")

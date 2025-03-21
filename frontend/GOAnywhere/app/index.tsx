@@ -49,7 +49,7 @@ export default function Index() {
       <Button title="Go to New Home Screen" onPress={() => router.push("./home")} />
       <Button title="Go to P2P Navigation" onPress={() => router.push("./P2PNavigation")} />
       <Button title="Go to Dashboard" onPress={() => router.push("./dashboard")} />
-      <Button title="Go to Traffic Incidents" onPress={() => router.push("./TrafficIncident")} /> 
+      <Button title="Go to Traffic Incidents" onPress={() => router.push("./TrafficIncidentsNav")} />
       <Button title="Go to Traffic Prediction" onPress={() => router.push("./trafficPrediction")} />
       <Button title="Go to Notification" onPress={() => router.push("./Notification")} />
 

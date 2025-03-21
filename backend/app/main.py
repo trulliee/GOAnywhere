@@ -11,7 +11,11 @@ from app.p2pnavigation import router as p2pnavigation_router  # Import the p2pna
 from app.notifications import router as notifications_router # Import the notifications router
 from dotenv import load_dotenv
 load_dotenv()
+import logging
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("uvicorn")
 
 # Initialize FastAPIS
 app = FastAPI()
@@ -25,6 +29,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add this middleware to log all requests
+@app.middleware("http")
+async def log_requests(request, call_next):
+    logger.info(f"Request path: {request.method} {request.url.path}")
+    response = await call_next(request)
+    logger.info(f"Response status: {response.status_code}")
+    return response
 # Root test route
 @app.get("/")
 def root():
@@ -33,7 +44,7 @@ def root():
 # Include routers
 app.include_router(traffic_router, tags=["Traffic"])
 app.include_router(weather_router, tags=["Weather"])
-app.include_router(prediction_router, tags=["Prediction"])
+app.include_router(prediction_router)  
 app.include_router(auth_router)  # Add the auth router
 app.include_router(p2pnavigation_router, prefix="/p2pnavigation", tags=["P2P Navigation"]) # Include the p2pnavigation router
 app.include_router(notifications_router, prefix="/notifications", tags=["Notifications"]) # Include the notifications router

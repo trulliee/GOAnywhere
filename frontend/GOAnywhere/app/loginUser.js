@@ -1,6 +1,6 @@
 // app/loginUser.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import AuthService from './authService';
 
@@ -43,7 +43,7 @@ export default function LoginUser() {
       router.replace('/home');
     } catch (error) {
       console.error(isLogin ? 'Login error:' : 'Signup error:', error);
-      // Alert is already shown in the AuthService
+      // AuthService already shows an alert on error
     } finally {
       setLoading(false);
     }
@@ -57,7 +57,7 @@ export default function LoginUser() {
       router.replace('/home');
     } catch (error) {
       console.error('Anonymous login error:', error);
-      // Alert is already shown in the AuthService
+      // AuthService already shows an alert on error
     } finally {
       setLoading(false);
     }
@@ -74,6 +74,7 @@ export default function LoginUser() {
           placeholder="Name (optional)"
           value={name}
           onChangeText={setName}
+          editable={!loading}
         />
       )}
       
@@ -85,6 +86,7 @@ export default function LoginUser() {
         onChangeText={setEmail}
         keyboardType="email-address"
         autoCapitalize="none"
+        editable={!loading}
       />
       
       {/* Phone number input (signup only) */}
@@ -95,6 +97,7 @@ export default function LoginUser() {
           value={phoneNumber}
           onChangeText={setPhoneNumber}
           keyboardType="phone-pad"
+          editable={!loading}
         />
       )}
       
@@ -105,6 +108,7 @@ export default function LoginUser() {
         value={password}
         onChangeText={setPassword}
         secureTextEntry
+        editable={!loading}
       />
       
       {/* Login/Signup button */}
@@ -113,7 +117,11 @@ export default function LoginUser() {
         onPress={handleSubmit}
         disabled={loading}
       >
-        <Text style={styles.buttonText}>{isLogin ? 'Login' : 'Sign Up'}</Text>
+        {loading ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Text style={styles.buttonText}>{isLogin ? 'Login' : 'Sign Up'}</Text>
+        )}
       </TouchableOpacity>
       
       {/* Toggle login/signup */}

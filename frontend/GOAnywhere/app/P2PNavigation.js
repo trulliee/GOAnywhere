@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef  } from 'react';
 import { 
   View, Text, TextInput, TouchableOpacity, 
   StyleSheet, Dimensions, TouchableWithoutFeedback, 
-  Keyboard
+  Keyboard, ScrollView
 } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import P2PPublicTrans from './P2PPublicTrans';
 import P2PDriver from './P2PDriver';
+import BottomSheet from 'react-native-gesture-bottom-sheet';
+
+
 
 
 const { height, width } = Dimensions.get('window');
@@ -20,6 +23,13 @@ const P2PNavigation = () => {
   const [route, setRoute] = useState([]);
   const [markers, setMarkers] = useState([]);
   const [currentRegion, setCurrentRegion] = useState(null);
+  const [locationHistory, setLocationHistory] = useState([]);
+  const [isHistoryVisible, setIsHistoryVisible] = useState(false);
+  const [driverDetails, setDriverDetails] = useState(null);
+  const [publicDetails, setPublicDetails] = useState(null);
+  const bottomSheetRef = useRef(null);
+
+
 
   useEffect(() => {
     requestLocationPermission();
@@ -33,6 +43,14 @@ const P2PNavigation = () => {
     }
     getCurrentLocation();
   };
+
+  const addToHistory = (start, end) => {
+    setLocationHistory(prev => {
+      const newHistory = [{ start, end }, ...prev];
+      return newHistory.slice(0, 20); // Keep only last 20
+    });
+  };
+  
 
   const getCurrentLocation = async () => {
     try {
@@ -144,10 +162,10 @@ const P2PNavigation = () => {
             <Marker key={index} coordinate={marker} title={marker.title} />
           ))}
         </MapView>
-
+  
         <View style={styles.topSection}>
           <Text style={styles.title}>P2P Navigation</Text>
-
+  
           <TextInput 
             style={styles.input} 
             placeholder="Current Location" 
@@ -160,27 +178,102 @@ const P2PNavigation = () => {
             value={endLocation} 
             onChangeText={setEndLocation} 
           />
-
+  
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={styles.button} 
-              onPress={() => getRouteFromBackend(startLocation, endLocation)} 
+              onPress={() => {
+                addToHistory(startLocation, endLocation);
+                P2PDriver(
+                  startLocation,
+                  endLocation,
+                  setRoute,
+                  setMarkers,
+                  setDriverTravelTime,
+                  setDriverDetails
+                );
+              }}
+              
             >
               <Text style={styles.buttonText}>Driver</Text>
               <Text style={styles.timeText}>{driverTravelTime || '--'}</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.button} 
-              onPress={() => P2PPublicTrans(startLocation, endLocation, setRoute, setMarkers, setPublicTravelTime)} 
+              onPress={() => {
+                addToHistory(startLocation, endLocation);
+                P2PPublicTrans(
+                  startLocation,
+                  endLocation,
+                  setRoute,
+                  setMarkers,
+                  setPublicTravelTime,
+                  setPublicDetails
+                );
+              }}
+              
             >
               <Text style={styles.buttonText}>Public</Text>
               <Text style={styles.timeText}>{publicTravelTime || '--'}</Text>
             </TouchableOpacity>
           </View>
         </View>
+  
+        {driverDetails && (
+          <View style={styles.detailsBox}>
+            <Text style={styles.detailsTitle}>Driving Details</Text>
+            <Text>Total Distance: {driverDetails.distance}</Text>
+            <Text>Estimated Time: {driverDetails.duration}</Text>
+            {driverDetails.steps.map((step, idx) => (
+              <Text key={idx}>• {step.instruction} ({step.distance})</Text>
+            ))}
+          </View>
+        )}
+  
+        {publicDetails && (
+          <View style={styles.detailsBox}>
+            <Text style={styles.detailsTitle}>Public Transit Details</Text>
+            <Text>Total Distance: {publicDetails.distance}</Text>
+            <Text>Estimated Time: {publicDetails.duration}</Text>
+            {publicDetails.steps.map((step, idx) => (
+              <Text key={idx}>
+                • {step.instruction} ({step.distance})
+                {step.transitInfo && 
+                  ` via ${step.transitInfo.vehicleType} ${step.transitInfo.lineName}, toward ${step.transitInfo.headsign}, board at ${step.transitInfo.departureStop}, drop off at ${step.transitInfo.arrivalStop}, ${step.transitInfo.numStops} stops`
+                }
+              </Text>
+            ))}
+          </View>
+        )}
+  
+        <TouchableOpacity
+          style={styles.historyBar}
+          onPress={() => bottomSheetRef.current?.show()}
+        >
+          <Text style={styles.historyBarText}>Swipe up for Location History ▲</Text>
+        </TouchableOpacity>
+
+        <BottomSheet
+          hasDraggableIcon
+          ref={bottomSheetRef}
+          height={height * 0.4}
+          draggable
+        >
+          <View style={styles.historySheet}>
+            <Text style={styles.historyTitle}>Location History</Text>
+            <ScrollView showsVerticalScrollIndicator={true}>
+              {locationHistory.map((item, index) => (
+                <Text key={index} style={styles.historyItem}>
+                  {index + 1}. {item.start} ➜ {item.end}
+                </Text>
+              ))}
+            </ScrollView>
+          </View>
+        </BottomSheet>
+
       </View>
     </TouchableWithoutFeedback>
-  );
+  );  
 };
 
 const styles = StyleSheet.create({
@@ -245,6 +338,45 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 14,
   },
+  historyPanel: {
+    position: 'absolute',
+    bottom: 80,
+    left: 10,
+    right: 10,
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    padding: 15,
+    maxHeight: height * 0.3,
+  },
+  historyTitle: {
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  historyItem: {
+    fontSize: 13,
+    paddingVertical: 2,
+  },
+  historyToggle: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    backgroundColor: '#000',
+    padding: 8,
+    borderRadius: 20,
+  },
+  detailsBox: {
+    position: 'absolute',
+    bottom: 150,
+    left: 10,
+    right: 10,
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    padding: 15,
+  },
+  detailsTitle: {
+    fontWeight: 'bold',
+    marginBottom: 10,
+  }  
 });
 
 export default P2PNavigation;

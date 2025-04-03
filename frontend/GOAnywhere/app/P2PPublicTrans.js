@@ -3,7 +3,7 @@ import polyline from '@mapbox/polyline'; // Ensure this package is installed
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 
-const P2PPublicTrans = async (startLocation, endLocation, setRoute, setMarkers, setPublicTravelTime) => {
+const P2PPublicTrans = async (startLocation, endLocation, setRoute, setMarkers, setPublicTravelTime, setPublicDetails) => {
   if (!startLocation || !endLocation) {
     alert('Please enter both origin and destination.');
     return;
@@ -34,6 +34,27 @@ const P2PPublicTrans = async (startLocation, endLocation, setRoute, setMarkers, 
     setRoute(decodedPolyline);
     setMarkers(markers);
     setPublicTravelTime(response.data.routes[0].legs[0].duration.text);
+    const steps = response.data.routes[0].legs[0].steps.map((step, index) => ({
+      instruction: step.html_instructions.replace(/<[^>]+>/g, ''),
+      distance: step.distance.text,
+      travelMode: step.travel_mode,
+      transitInfo: step.transit_details ? {
+        lineName: step.transit_details.line.short_name || step.transit_details.line.name,
+        departureStop: step.transit_details.departure_stop.name,
+        arrivalStop: step.transit_details.arrival_stop.name,
+        headsign: step.transit_details.headsign,
+        numStops: step.transit_details.num_stops,
+        vehicleType: step.transit_details.line.vehicle.type, // e.g., BUS or SUBWAY
+      } : null,
+    }));
+    
+    
+    setPublicDetails({
+      distance: response.data.routes[0].legs[0].distance.text,
+      duration: response.data.routes[0].legs[0].duration.text,
+      steps,
+    });
+    
   } catch (error) {
     console.error('Error fetching public transport route:', error);
     alert('Could not fetch public transport route.');

@@ -3,7 +3,7 @@ import polyline from '@mapbox/polyline'; // Ensure this package is installed
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 
-const P2PDriver = async (startLocation, endLocation, setRoute, setMarkers, setDriverTravelTime) => {
+const P2PDriver = async (startLocation, endLocation, setRoute, setMarkers, setDriverTravelTime, setDriverDetails) => {
   if (!startLocation || !endLocation) {
     alert('Please enter both origin and destination.');
     return;
@@ -34,6 +34,18 @@ const P2PDriver = async (startLocation, endLocation, setRoute, setMarkers, setDr
     setRoute(decodedPolyline);
     setMarkers(markers);
     setDriverTravelTime(response.data.routes[0].legs[0].duration.text);
+    const steps = response.data.routes[0].legs[0].steps.map((step, index) => ({
+      instruction: step.html_instructions.replace(/<[^>]+>/g, ''),
+      distance: step.distance.text,
+      road: step.maneuver || "Follow route"
+    }));
+    
+    setDriverDetails({
+      distance: response.data.routes[0].legs[0].distance.text,
+      duration: response.data.routes[0].legs[0].duration.text,
+      steps,
+    });
+    
   } catch (error) {
     console.error('Error fetching driving route:', error);
     alert('Could not fetch driving route.');

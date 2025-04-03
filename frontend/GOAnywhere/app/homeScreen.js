@@ -302,7 +302,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.submenuItem} 
-              onPress={() => navigateTo('trafficPrediction')}
+              onPress={() => navigateTo('TrafficPrediction')}
             >
               <Text style={styles.submenuText}>Forecast</Text>
             </TouchableOpacity>

@@ -30,7 +30,7 @@ def get_frontend_prediction_data(start_location=None, end_location=None, transpo
     """
     try:
         # Import prediction functionality
-        from app.models.traffic_prediction import get_traffic_weather_prediction
+        from backend.app.models.traffic_prediction_model import get_traffic_weather_prediction
         
         # Determine user type based on available parameters
         user_type = "registered" if start_location and end_location else "unregistered"

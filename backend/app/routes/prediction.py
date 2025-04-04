@@ -1,234 +1,352 @@
-import logging
-from fastapi import APIRouter, Query, Depends, HTTPException, Header, Request
-from datetime import datetime
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel
-import json
+# app/routes/prediction.py
 
-# Set up logger
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
+from pydantic import BaseModel, Field
+from typing import List, Dict, Optional, Any, Union
+from datetime import datetime
+import logging
+
+# Import model implementations
+from app.models.traffic_prediction_model import TrafficPredictionModel
+from app.models.travel_time_model import TravelTimeModel
+from app.models.incident_impact_model import IncidentImpactModel
+from app.models.route_recommendation import RouteRecommendationModel
+from app.models.feedback_analyzer import FeedbackAnalyzer
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Define response models
-class BasicPredictionResponse(BaseModel):
-    road_condition: str
-    possible_delay: str
-    weather_condition: str
+# Initialize router
+router = APIRouter(
+    prefix="/prediction",
+    tags=["prediction"],
+    responses={404: {"description": "Not found"}},
+)
 
-class TravelTime(BaseModel):
-    driving: float
-    public_transport: float
+# Initialize models (lazy loading)
+traffic_model = None
+travel_time_model = None
+incident_model = None
+route_model = None
+feedback_analyzer = None
 
-class AlternativeRoute(BaseModel):
-    name: str
-    estimated_time: float
-    description: Optional[str] = None
+def get_traffic_model():
+    """Lazy loading of traffic prediction model."""
+    global traffic_model
+    if traffic_model is None:
+        traffic_model = TrafficPredictionModel('app/models/traffic_prediction_model.joblib')
+    return traffic_model
 
-class IncidentLocation(BaseModel):
-    latitude: float
-    longitude: float
+def get_travel_time_model():
+    """Lazy loading of travel time model."""
+    global travel_time_model
+    if travel_time_model is None:
+        travel_time_model = TravelTimeModel('app/models/travel_time_model.joblib')
+    return travel_time_model
 
-class IncidentAlert(BaseModel):
-    type: str
-    message: str
-    location: IncidentLocation
+def get_incident_model():
+    """Lazy loading of incident impact model."""
+    global incident_model
+    if incident_model is None:
+        incident_model = IncidentImpactModel('app/models/incident_impact_model.joblib')
+    return incident_model
 
-class DetailedPredictionResponse(BaseModel):
-    road_conditions_probability: Dict[str, float]
-    estimated_travel_time: TravelTime
-    alternative_routes: List[AlternativeRoute] = []
-    incident_alerts: List[IncidentAlert] = []
-    weather_recommendations: List[str] = []
-    general_travel_recommendation: str
-    road_condition: str
-    possible_delay: str
-    weather_condition: str
+def get_route_model():
+    """Lazy loading of route recommendation model."""
+    global route_model
+    if route_model is None:
+        route_model = RouteRecommendationModel(
+            traffic_prediction_model=get_traffic_model(),
+            travel_time_model=get_travel_time_model(),
+            incident_impact_model=get_incident_model()
+        )
+    return route_model
 
-class TrafficForecastRequest(BaseModel):
-    start_location: str
-    destination_location: str
-    transport_mode: str
-    prediction_datetime: str
+def get_feedback_analyzer():
+    """Lazy loading of feedback analyzer."""
+    global feedback_analyzer
+    if feedback_analyzer is None:
+        feedback_analyzer = FeedbackAnalyzer()
+    return feedback_analyzer
 
-router = APIRouter()
+# Input models
+class LocationModel(BaseModel):
+    latitude: float = Field(..., description="Latitude coordinate")
+    longitude: float = Field(..., description="Longitude coordinate")
+    name: Optional[str] = Field(None, description="Location name (if available)")
 
-@router.get("/prediction/unregistered", response_model=BasicPredictionResponse)
-def get_basic_prediction(
-    time: Optional[int] = Query(None, description="Hour of the day (0-23)"),
-    day: Optional[int] = Query(None, description="Day of the week (0=Monday, 6=Sunday)"),
-    location: Optional[str] = Query(None, description="Location name or coordinates")
+class WeatherConditionsModel(BaseModel):
+    temperature: Optional[float] = Field(None, description="Temperature in Celsius")
+    humidity: Optional[float] = Field(None, description="Humidity percentage")
+    rainfall: Optional[float] = Field(None, description="Rainfall amount in mm")
+    visibility: Optional[float] = Field(None, description="Visibility in km")
+    weather_main: Optional[str] = Field(None, description="Main weather condition (Clear, Rain, etc.)")
+
+class RoutePreferencesModel(BaseModel):
+    avoid_congestion: Optional[bool] = Field(False, description="Prefer routes with less congestion")
+    prefer_fastest: Optional[bool] = Field(True, description="Prefer fastest routes")
+    avoid_incidents: Optional[bool] = Field(True, description="Avoid routes with incidents")
+
+class NavigationRequestModel(BaseModel):
+    start_location: Union[str, LocationModel] = Field(..., description="Starting point (address or coordinates)")
+    destination_location: Union[str, LocationModel] = Field(..., description="Destination point (address or coordinates)")
+    departure_time: Optional[datetime] = Field(None, description="Departure time (defaults to current time)")
+    transport_mode: str = Field("driving", description="Mode of transport (driving or public_transport)")
+    preferences: Optional[RoutePreferencesModel] = Field(None, description="Route preferences")
+
+class FeedbackRequestModel(BaseModel):
+    prediction_type: str = Field(..., description="Type of prediction (travel_time, traffic_condition, etc.)")
+    prediction_id: str = Field(..., description="ID of the prediction being rated")
+    user_id: str = Field(..., description="ID of the user providing feedback")
+    actual_value: Union[float, str] = Field(..., description="Actual observed value")
+    predicted_value: Union[float, str] = Field(..., description="Value that was predicted")
+    timestamp: Optional[datetime] = Field(None, description="Time when feedback was provided")
+    location: Optional[LocationModel] = Field(None, description="Location relevant to the prediction")
+    additional_comments: Optional[str] = Field(None, description="Additional feedback comments")
+
+# API Routes
+@router.post("/route", response_model=Dict[str, Any])
+async def get_route_recommendations(
+    request: NavigationRequestModel = Body(...),
 ):
+    """
+    Get route recommendations based on current traffic conditions, incidents, and weather.
+    """
     try:
-        # Use current time and day if not provided
-        if time is None:
-            time = datetime.now().hour
-        if day is None:
-            day = datetime.now().weekday()
-            
-        # Import the prediction model
-        from app.models.traffic_prediction import get_traffic_weather_prediction
+        # Initialize route model
+        route_model = get_route_model()
         
-        prediction = get_traffic_weather_prediction("unregistered", time, day, location)
+        # Get departure time (default to now)
+        departure_time = request.departure_time or datetime.now()
         
-        # Log the prediction for debugging
-        logger.info(f"Unregistered prediction response: {json.dumps(prediction, default=str)}")
+        # Get recommendations
+        recommendations = route_model.get_route_recommendations(
+            origin=request.start_location,
+            destination=request.destination_location,
+            departure_time=departure_time,
+            mode=request.transport_mode,
+            preferences=request.preferences.dict() if request.preferences else None
+        )
         
-        return BasicPredictionResponse(**prediction)
+        return recommendations
+    
     except Exception as e:
-        import traceback
-        stack_trace = traceback.format_exc()
-        logger.error(f"Prediction error: {str(e)}\n{stack_trace}")
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+        logger.error(f"Error getting route recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/prediction/registered", response_model=DetailedPredictionResponse)
-def get_detailed_prediction(
-    time: Optional[int] = Query(None, description="Hour of the day (0-23)"),
-    day: Optional[int] = Query(None, description="Day of the week (0=Monday, 6=Sunday)"),
-    location: Optional[str] = Query(None, description="Location name or coordinates"),
-    route: Optional[str] = Query(None, description="Route information")
+@router.get("/traffic", response_model=Dict[str, Any])
+async def predict_traffic_conditions(
+    latitude: float = Query(..., description="Latitude coordinate"),
+    longitude: float = Query(..., description="Longitude coordinate"),
+    prediction_time: Optional[datetime] = Query(None, description="Time for prediction (defaults to current time)"),
+    road_name: Optional[str] = Query(None, description="Road name (if known)")
 ):
     """
-    Get detailed traffic and weather prediction for registered users.
+    Predict traffic conditions at a specific location and time.
     """
     try:
-        # Use current time and day if not provided
-        if time is None:
-            time = datetime.now().hour
-        if day is None:
-            day = datetime.now().weekday()
-            
-        # Parse route information if provided
-        route_info = None
-        if route:
-            try:
-                # First try parsing as JSON
-                route_info = json.loads(route)
-            except json.JSONDecodeError:
-                # Fall back to simple parsing
-                parts = route.split(',')
-                route_info = {
-                    "expressway": parts[0] if len(parts) > 0 else None,
-                    "start": parts[1] if len(parts) > 1 else None,
-                    "end": parts[2] if len(parts) > 2 else None
-                }
+        # Initialize traffic model
+        traffic_model = get_traffic_model()
         
-        # Import the prediction model
-        from app.models.traffic_prediction import get_traffic_weather_prediction
-            
-        prediction = get_traffic_weather_prediction("registered", time, day, location, route_info)
+        # Get prediction time (default to now)
+        pred_time = prediction_time or datetime.now()
         
-        # Log the prediction for debugging
-        logger.info(f"Detailed prediction response: {json.dumps(prediction, default=str)}")
-        
-        return DetailedPredictionResponse(**prediction)
-    except Exception as e:
-        logger.error(f"Detailed prediction error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
-
-@router.post("/traffic") 
-async def traffic_forecast(request: Request, traffic_request: TrafficForecastRequest):
-    """
-    Process traffic forecast requests from the mobile app.
-    """
-    try:
-        logger.info(f"Received traffic forecast request: {traffic_request}")
-        logger.info(f"Start location: {traffic_request.start_location}, Destination: {traffic_request.destination_location}")
-        
-        # Get the authorization header
-        auth_header = request.headers.get("Authorization", "")
-        logger.info(f"Auth header received: {auth_header[:10]}..." if auth_header else "No auth header")
-        
-        # Determine user type - assume all users with tokens are registered
-        token = auth_header.replace("Bearer ", "") if auth_header and auth_header.startswith("Bearer ") else None
-        user_type = "registered" if token else "unregistered"
-        logger.info(f"Determined user_type: {user_type}")
-        
-        # Parse datetime 
-        prediction_time = datetime.now()
-        if traffic_request.prediction_datetime:
-            try:
-                prediction_time = datetime.fromisoformat(traffic_request.prediction_datetime.replace('Z', '+00:00'))
-            except ValueError:
-                logger.warning(f"Could not parse datetime: {traffic_request.prediction_datetime}, using current time")
-        
-        # Extract hour and day from prediction time
-        hour = prediction_time.hour
-        day = prediction_time.weekday()
-        
-        # Create route info with both locations
-        route_info = {
-            "start": traffic_request.start_location,
-            "end": traffic_request.destination_location,
-            "transport_mode": traffic_request.transport_mode
+        # Create location object
+        location = {
+            'latitude': latitude,
+            'longitude': longitude,
+            'road_name': road_name
         }
         
-        logger.info(f"Getting prediction for user_type: {user_type}, route: {route_info}")
+        # Get current weather conditions
+        # In a real implementation, this would query a weather service
+        # or use cached weather data from Firestore
+        weather = {
+            'temperature': 28.5,
+            'humidity': 85.0,
+            'rainfall': 0.0,
+            'weather_main': 'Clear'
+        }
         
-        # Import the prediction module
-        from app.models.traffic_prediction import get_traffic_weather_prediction
+        # Create features for prediction
+        features = {
+            'timestamp': pred_time,
+            'latitude': latitude,
+            'longitude': longitude,
+            'road_name': road_name,
+            'temperature': weather['temperature'],
+            'humidity': weather['humidity'],
+            'rainfall': weather['rainfall'],
+            'weather_main': weather['weather_main'],
+            'hour_of_day': pred_time.hour,
+            'day_of_week': pred_time.weekday(),
+            'month': pred_time.month,
+            'is_peak_hour': 1 if (7 <= pred_time.hour <= 9) or (17 <= pred_time.hour <= 19) else 0
+        }
         
-        # Get prediction based on identified user type
-        prediction = get_traffic_weather_prediction(user_type, hour, day, traffic_request.destination_location, route_info)
-            
-        # For unregistered users, return only the basic fields
-        if user_type != "registered":
-            return {
-                "road_condition": prediction.get("road_condition", "Moderate"),
-                "possible_delay": prediction.get("possible_delay", "No significant delays"),
-                "weather_condition": prediction.get("weather_condition", "Partly Cloudy")
-            }
+        # Make prediction
+        import pandas as pd
+        prediction = traffic_model.predict(pd.DataFrame([features]))[0]
         
-        # For registered users, ensure all required fields are present
-        logger.info("Processing detailed prediction for registered user")
+        # Create response
+        response = {
+            'location': location,
+            'prediction_time': pred_time.isoformat(),
+            'predicted_speed_band': prediction,
+            'traffic_condition': traffic_model._map_speed_to_severity(prediction),
+            'confidence': 0.85,  # Placeholder - would be provided by the model
+            'weather_conditions': weather
+        }
         
-        # Validate the prediction structure
-        if isinstance(prediction, dict):
-            # Ensure essential keys exist
-            if "road_conditions_probability" not in prediction:
-                logger.warning("Missing road_conditions_probability, adding default")
-                prediction["road_conditions_probability"] = {"Congested": 30, "Moderate": 40, "Clear": 30}
-                
-            if "estimated_travel_time" not in prediction:
-                logger.warning("Missing estimated_travel_time, adding default")
-                prediction["estimated_travel_time"] = {
-                    "driving": 20,
-                    "public_transport": 35
-                }
-                
-            if "alternative_routes" not in prediction or not prediction["alternative_routes"]:
-                logger.warning("Missing alternative_routes, adding default")
-                prediction["alternative_routes"] = [
-                    {
-                        "name": "Alternative Route via CTE",
-                        "estimated_time": 18,
-                        "description": "Via less congested roads"
-                    },
-                    {
-                        "name": "Scenic Route via PIE",
-                        "estimated_time": 22,
-                        "description": "Slightly longer but steadier traffic flow"
-                    }
-                ]
-                
-            if "weather_recommendations" not in prediction or not prediction["weather_recommendations"]:
-                logger.warning("Missing weather_recommendations, adding default")
-                prediction["weather_recommendations"] = [
-                    "Regular driving conditions apply.",
-                    "Stay alert and follow traffic rules."
-                ]
-                
-            if "general_travel_recommendation" not in prediction:
-                logger.warning("Missing general_travel_recommendation, adding default")
-                prediction["general_travel_recommendation"] = "Not Ideal"
-        else:
-            logger.warning(f"Unexpected prediction type: {type(prediction)}")
-            raise HTTPException(status_code=500, detail="Invalid prediction format")
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error predicting traffic conditions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/travel-time", response_model=Dict[str, Any])
+async def predict_travel_time(
+    request: NavigationRequestModel = Body(...),
+):
+    """
+    Predict travel time between origin and destination.
+    """
+    try:
+        # Initialize travel time model
+        travel_time_model = get_travel_time_model()
         
-        # Log the complete prediction for debugging
-        logger.info(f"FINAL BACKEND PREDICTION BEING SENT TO CLIENT: {json.dumps(prediction)}")
+        # Get departure time (default to now)
+        departure_time = request.departure_time or datetime.now()
+        
+        # Predict travel time
+        prediction = travel_time_model.predict_travel_time(
+            origin=request.start_location,
+            destination=request.destination_location,
+            mode=request.transport_mode,
+            departure_time=departure_time,
+            avoid_congestion=request.preferences.avoid_congestion if request.preferences else False
+        )
         
         return prediction
-        
+    
     except Exception as e:
-        logger.error(f"Traffic forecast error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate traffic forecast: {str(e)}")
+        logger.error(f"Error predicting travel time: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/incident-impact", response_model=Dict[str, Any])
+async def predict_incident_impact(
+    incident_type: str = Query(..., description="Type of incident (accident, roadwork, etc.)"),
+    latitude: float = Query(..., description="Latitude coordinate"),
+    longitude: float = Query(..., description="Longitude coordinate"),
+    road_name: Optional[str] = Query(None, description="Road name (if known)"),
+    prediction_time: Optional[datetime] = Query(None, description="Time for prediction (defaults to current time)")
+):
+    """
+    Predict the impact of a traffic incident.
+    """
+    try:
+        # Initialize incident model
+        incident_model = get_incident_model()
+        
+        # Get prediction time (default to now)
+        pred_time = prediction_time or datetime.now()
+        
+        # Create location object
+        location = {
+            'latitude': latitude,
+            'longitude': longitude,
+            'road_name': road_name
+        }
+        
+        # Get current weather conditions
+        # In a real implementation, this would query a weather service
+        # or use cached weather data from Firestore
+        weather = {
+            'temperature': 28.5,
+            'humidity': 85.0,
+            'rainfall': 0.0,
+            'weather_main': 'Clear'
+        }
+        
+        # Predict incident impact
+        impact = incident_model.predict_impact(
+            incident_type=incident_type,
+            location=location,
+            timestamp=pred_time,
+            weather_conditions=weather
+        )
+        
+        return impact
+    
+    except Exception as e:
+        logger.error(f"Error predicting incident impact: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/feedback", response_model=Dict[str, Any])
+async def submit_prediction_feedback(
+    feedback: FeedbackRequestModel = Body(...),
+):
+    """
+    Submit feedback on a prediction's accuracy.
+    """
+    try:
+        # Initialize feedback analyzer
+        analyzer = get_feedback_analyzer()
+        
+        # Prepare feedback data
+        feedback_data = feedback.dict()
+        
+        # Record feedback
+        feedback_id = analyzer.record_feedback(feedback_data)
+        
+        return {
+            "message": "Feedback recorded successfully",
+            "feedback_id": feedback_id
+        }
+    
+    except Exception as e:
+        logger.error(f"Error recording feedback: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/accuracy-metrics", response_model=Dict[str, Any])
+async def get_accuracy_metrics(
+    prediction_type: str = Query(..., description="Type of prediction (travel_time, traffic_condition, etc.)"),
+    time_period: str = Query("last_30_days", description="Time period for metrics (last_7_days, last_30_days, last_90_days)")
+):
+    """
+    Get accuracy metrics for predictions based on user feedback.
+    """
+    try:
+        # Initialize feedback analyzer
+        analyzer = get_feedback_analyzer()
+        
+        # Get analysis
+        analysis = analyzer.analyze_feedback_trends(prediction_type, time_period)
+        
+        return analysis
+    
+    except Exception as e:
+        logger.error(f"Error getting accuracy metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/performance-report", response_model=Dict[str, Any])
+async def get_performance_report(
+    prediction_type: str = Query(..., description="Type of prediction (travel_time, traffic_condition, etc.)"),
+    time_period: str = Query("last_30_days", description="Time period for report (last_7_days, last_30_days, last_90_days)")
+):
+    """
+    Get a comprehensive performance report with visualizations.
+    """
+    try:
+        # Initialize feedback analyzer
+        analyzer = get_feedback_analyzer()
+        
+        # Generate report
+        report = analyzer.generate_performance_report(prediction_type, time_period)
+        
+        return report
+    
+    except Exception as e:
+        logger.error(f"Error generating performance report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

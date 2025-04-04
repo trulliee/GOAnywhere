@@ -78,6 +78,52 @@ def download_from_gcs(bucket_name, source_blob_name, destination_file_path):
         print(f"Error downloading from GCS: {e}")
         return False
 
+def check_required_files(bucket_name="goanywhere-traffic-data-history"):
+    """
+    Verifies that all required data files exist in Google Cloud Storage
+    
+    Returns:
+        bool: True if all required files exist, False otherwise
+    """
+    try:
+        # Define the files we expect to find
+        expected_files = [
+            "uploads/PublicHolidaysfor2025.csv",
+            "uploads/RoadTrafficAccidentCasualtiesMonthly.csv",
+            "uploads/RoadTrafficAccidentCasualtiesAnnual.csv",
+            "uploads/HistoricalDailyWeatherRecords.csv",
+            "uploads/RoadNetwork.kml"  # Updated to match your actual file format
+        ]
+        
+        # Get the list of files in the bucket
+        all_files = list_gcs_files(bucket_name)
+        
+        # Check each expected file
+        missing_files = []
+        for filename in expected_files:
+            if filename not in all_files:
+                missing_files.append(filename)
+                print(f"❌ {filename} does not exist in GCS bucket")
+            else:
+                # Get file stats
+                bucket = storage_client.bucket(bucket_name)
+                blob = bucket.blob(filename)
+                size_mb = blob.size / (1024 * 1024)
+                last_updated = blob.updated
+                
+                print(f"✅ {filename} exists - Size: {size_mb:.2f} MB, Last updated: {last_updated}")
+        
+        if missing_files:
+            print(f"The following files are missing: {', '.join(missing_files)}")
+            return False
+        else:
+            print("All required files exist in GCS bucket.")
+            return True
+            
+    except Exception as e:
+        print(f"Error checking required files: {e}")
+        return False
+
 if __name__ == "__main__":
     BUCKET_NAME = "goanywhere-traffic-data-history"
     

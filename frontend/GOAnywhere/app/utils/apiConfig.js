@@ -30,7 +30,7 @@ export const getApiUrl = () => {
   }
 
   // Production fallback
-  return 'http://192.168.1.2:8000';
+  return 'http://192.168.1.14:8000';
 };
 
 // Export the API URL

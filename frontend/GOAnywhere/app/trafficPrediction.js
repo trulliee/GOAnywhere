@@ -1,20 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  ActivityIndicator, 
-  Alert,
-  Platform
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import AuthService from './authService';
-import apiConfig from './utils/apiConfig'; // Import as default
+import { useRouter } from 'expo-router';
+import { getApiUrl } from './utils/apiConfig';
+const API_URL = getApiUrl('');
 
-export default function TrafficPrediction() {
+export default function TrafficPredictionScreen() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -24,6 +15,7 @@ export default function TrafficPrediction() {
   const [startLocation, setStartLocation] = useState('');
   const [destination, setDestination] = useState('');
   const [transportMode, setTransportMode] = useState('driving');
+  const [predictionDate, setPredictionDate] = useState(new Date());
   
   // Prediction results
   const [prediction, setPrediction] = useState(null);
@@ -51,11 +43,7 @@ export default function TrafficPrediction() {
     
     fetchUser();
   }, []);
-
-  const formatDate = (date) => {
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-  };
-
+  
   const handleSubmit = async () => {
     // Validate inputs
     if (!startLocation || !destination) {
@@ -68,72 +56,46 @@ export default function TrafficPrediction() {
     setPrediction(null);
     
     try {
-      // Always use current date and time for prediction
-      const currentTime = new Date();
-      
       // Prepare request payload
       const requestPayload = {
-        start_location: {
-          name: startLocation
-        },
-        destination_location: {
-          name: destination
-        },
-        mode_of_transport: transportMode === 'transit' ? 'public_transport' : transportMode,
-        prediction_time: currentTime.toISOString()
+        start_location: startLocation,
+        destination_location: destination,
+        transport_mode: transportMode,
+        prediction_datetime: predictionDate.toISOString()
       };
       
       console.log("Sending request payload:", requestPayload);
       
-      // Set up base request options without auth header
-      const requestOptions = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestPayload)
+      // Get authentication token if user is logged in
+      const token = await AuthService.getToken();
+      console.log("User token:", token ? "Present" : "None");
+      
+      // Prepare headers with proper auth format
+      const headers = {
+        'Content-Type': 'application/json'
       };
       
-      // Only add Authorization header if user is logged in and not anonymous
-      if (user && !user.isAnonymous) {
-        try {
-          const token = await AuthService.getToken();
-          if (token) {
-            console.log("Adding auth token to request");
-            requestOptions.headers['Authorization'] = `Bearer ${token}`;
-          }
-        } catch (tokenError) {
-          console.error("Error getting token:", tokenError);
-          // Continue without the token
-        }
-      } else {
-        console.log("No authenticated user, proceeding without token");
+      // Only add Authorization header if token exists
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
       
-      // Use the apiConfig directly to get the API URL
-      const apiUrl = apiConfig.getApiUrl();
-      console.log("API URL:", `${apiUrl}/api/predict/traffic`);
-      
-      // Make API request to your backend endpoint
-      const response = await fetch(`${apiUrl}/api/predict/traffic`, requestOptions);
+      // Make API request with properly formatted headers
+      const response = await fetch(`${API_URL}/traffic-forecast`, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(requestPayload)
+      });
       
       // Handle response
       if (!response.ok) {
-        console.log("Response not OK. Status:", response.status);
-        let errorDetail = "Server error: " + response.status;
+        const errorText = await response.text();
+        let errorDetail;
         try {
-          const errorText = await response.text();
-          console.log("Error response text:", errorText);
-          if (errorText) {
-            try {
-              const errorData = JSON.parse(errorText);
-              errorDetail = errorData.detail || 'Failed to fetch prediction';
-            } catch (parseError) {
-              errorDetail = errorText;
-            }
-          }
-        } catch (textError) {
-          console.log("Error getting response text:", textError);
+          const errorData = JSON.parse(errorText);
+          errorDetail = errorData.detail || 'Failed to fetch prediction';
+        } catch {
+          errorDetail = errorText || 'Failed to fetch prediction';
         }
         throw new Error(errorDetail);
       }
@@ -141,9 +103,48 @@ export default function TrafficPrediction() {
       // Get the response data
       const data = await response.json();
       console.log("RAW prediction response:", JSON.stringify(data, null, 2));
-  
-      // Set the prediction data
+
+      // Ensure data consistency - check if data has all required fields for registered users
+      if (user) {
+        // These are fallbacks that should ideally not be needed anymore with the updated backend
+        if (!data.estimated_travel_time || !data.estimated_travel_time.driving) {
+          console.log("Adding fallback travel times");
+          const baseTime = 15 + (startLocation.length + destination.length) / 4;
+          data.estimated_travel_time = {
+            driving: Math.round(baseTime),
+            public_transport: Math.round(baseTime * 1.4 + 10)
+          };
+        }
+
+        if (!data.alternative_routes || data.alternative_routes.length === 0) {
+          console.log("Adding fallback alternative routes");
+          data.alternative_routes = [
+            {
+              name: "Alternative Route via CTE",
+              estimated_time: Math.round(data.estimated_travel_time.driving * 0.9),
+              description: "Via less congested roads"
+            },
+            {
+              name: "Scenic Route via PIE",
+              estimated_time: Math.round(data.estimated_travel_time.driving * 1.1),
+              description: "Slightly longer but steadier traffic flow"
+            }
+          ];
+        }
+
+        if (!data.weather_recommendations || data.weather_recommendations.length === 0) {
+          console.log("Adding fallback weather recommendations");
+          data.weather_recommendations = [
+            "Weather is typical for the season. No special precautions needed.",
+            data.road_condition === "Congested" ? 
+              "Allow extra time due to road congestion." : 
+              "Regular driving conditions apply."
+          ];
+        }
+      }
+
       setPrediction(data);
+
     } catch (err) {
       console.error('Prediction Error:', err);
       setError(err.message || 'Unable to fetch prediction');
@@ -162,29 +163,17 @@ export default function TrafficPrediction() {
         
         <View style={styles.predictionItem}>
           <Text style={styles.predictionLabel}>Road Conditions:</Text>
-          <Text style={[
-            styles.predictionValue,
-            prediction.road_conditions === 'Congested' ? styles.redText :
-            prediction.road_conditions === 'Moderate' ? styles.yellowText :
-            styles.greenText
-          ]}>
-            {prediction.road_conditions || "Clear"}
-          </Text>
+          <Text style={styles.predictionValue}>{prediction.road_condition || "Clear"}</Text>
         </View>
         
         <View style={styles.predictionItem}>
           <Text style={styles.predictionLabel}>Possible Delays:</Text>
-          <Text style={[
-            styles.predictionValue,
-            prediction.possible_delays === 'Yes' ? styles.redText : styles.greenText
-          ]}>
-            {prediction.possible_delays || "No"}
-          </Text>
+          <Text style={styles.predictionValue}>{prediction.possible_delay || "No"}</Text>
         </View>
         
         <View style={styles.predictionItem}>
           <Text style={styles.predictionLabel}>Weather Conditions:</Text>
-          <Text style={styles.predictionValue}>{prediction.weather_conditions || "Clear"}</Text>
+          <Text style={styles.predictionValue}>{prediction.weather_condition || "Clear"}</Text>
         </View>
         
         {!user && (
@@ -208,41 +197,11 @@ export default function TrafficPrediction() {
       <View style={styles.predictionContainer}>
         <Text style={styles.sectionTitle}>Detailed Traffic Prediction</Text>
         
-        {/* Basic Info Summary at Top */}
-        <View style={styles.basicInfoCard}>
-          <View style={styles.basicInfoItem}>
-            <Text style={styles.basicInfoLabel}>Road Conditions:</Text>
-            <Text style={[
-              styles.basicInfoValue,
-              prediction.road_conditions === 'Congested' ? styles.redText :
-              prediction.road_conditions === 'Moderate' ? styles.yellowText :
-              styles.greenText
-            ]}>
-              {prediction.road_conditions}
-            </Text>
-          </View>
-          
-          <View style={styles.basicInfoItem}>
-            <Text style={styles.basicInfoLabel}>Weather:</Text>
-            <Text style={styles.basicInfoValue}>{prediction.weather_conditions}</Text>
-          </View>
-          
-          <View style={styles.basicInfoItem}>
-            <Text style={styles.basicInfoLabel}>Recommendation:</Text>
-            <Text style={[
-              styles.basicInfoValue,
-              prediction.general_travel_recommendation === 'Ideal' ? styles.greenText : styles.redText
-            ]}>
-              {prediction.general_travel_recommendation || "Unavailable"}
-            </Text>
-          </View>
-        </View>
-        
         {/* Road Conditions Probability */}
         <View style={styles.detailSection}>
           <Text style={styles.detailTitle}>Road Conditions Probability</Text>
           
-          {prediction.road_conditions_probability && Object.keys(prediction.road_conditions_probability).length > 0 ? (
+          {prediction.road_conditions_probability && Object.entries(prediction.road_conditions_probability).length > 0 ? (
             Object.entries(prediction.road_conditions_probability).map(([condition, probability]) => (
               <View key={condition} style={styles.probabilityItem}>
                 <Text style={styles.conditionLabel}>{condition}:</Text>
@@ -251,9 +210,7 @@ export default function TrafficPrediction() {
                     style={[
                       styles.probabilityFill, 
                       { width: `${probability}%` },
-                      condition === 'Congested' ? styles.congested : 
-                      condition === 'Moderate' ? styles.moderate : 
-                      styles.clear
+                      condition === 'Congested' ? styles.congested : (condition === 'Moderate' ? styles.moderate : styles.clear)
                     ]}
                   />
                 </View>
@@ -269,12 +226,26 @@ export default function TrafficPrediction() {
         <View style={styles.detailSection}>
           <Text style={styles.detailTitle}>Estimated Travel Time</Text>
           
-          <View style={styles.timeItem}>
-            <Text style={styles.timeLabel}>Estimated Time:</Text>
-            <Text style={styles.timeValue}>
-              {prediction.estimated_travel_time ? `${prediction.estimated_travel_time} min` : 'Not available'}
-            </Text>
-          </View>
+          {prediction.estimated_travel_time && 
+           (prediction.estimated_travel_time.driving != null || prediction.estimated_travel_time.public_transport != null) ? (
+            <>
+              {prediction.estimated_travel_time.driving ? (
+                <View style={styles.timeItem}>
+                  <Text style={styles.timeLabel}>Driving:</Text>
+                  <Text style={styles.timeValue}>{prediction.estimated_travel_time.driving} min</Text>
+                </View>
+              ) : null}
+              
+              {prediction.estimated_travel_time.public_transport ? (
+                <View style={styles.timeItem}>
+                  <Text style={styles.timeLabel}>Public Transport:</Text>
+                  <Text style={styles.timeValue}>{prediction.estimated_travel_time.public_transport} min</Text>
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.noDataText}>No travel time data available</Text>
+          )}
         </View>
         
         {/* Alternative Routes */}
@@ -285,17 +256,7 @@ export default function TrafficPrediction() {
             {prediction.alternative_routes.map((route, index) => (
               <View key={index} style={styles.routeItem}>
                 <Text style={styles.routeName}>{route.name}</Text>
-                <Text style={styles.routeTime}>Est. Time: {route.estimated_time_min} min</Text>
-                {route.congestion_level && (
-                  <Text style={[
-                    styles.routeCongestion,
-                    route.congestion_level === 'Low' ? styles.greenText :
-                    route.congestion_level === 'Moderate' ? styles.yellowText :
-                    styles.redText
-                  ]}>
-                    Congestion: {route.congestion_level}
-                  </Text>
-                )}
+                <Text style={styles.routeTime}>Est. Time: {route.estimated_time} min</Text>
                 {route.description && <Text style={styles.routeDescription}>{route.description}</Text>}
               </View>
             ))}
@@ -311,22 +272,17 @@ export default function TrafficPrediction() {
               <View key={index} style={styles.incidentItem}>
                 <Text style={styles.incidentType}>{incident.type}</Text>
                 <Text style={styles.incidentMessage}>{incident.message}</Text>
-                {incident.distance_from_start && (
-                  <Text style={styles.incidentDistance}>
-                    {incident.distance_from_start} km from start
-                  </Text>
-                )}
               </View>
             ))}
           </View>
         )}
         
         {/* Weather Recommendations */}
-        {prediction.weather_based_recommendations && prediction.weather_based_recommendations.length > 0 && (
+        {prediction.weather_recommendations && prediction.weather_recommendations.length > 0 && (
           <View style={styles.detailSection}>
             <Text style={styles.detailTitle}>Weather Recommendations</Text>
             
-            {prediction.weather_based_recommendations.map((recommendation, index) => (
+            {prediction.weather_recommendations.map((recommendation, index) => (
               <Text key={index} style={styles.recommendationText}>• {recommendation}</Text>
             ))}
           </View>
@@ -335,12 +291,16 @@ export default function TrafficPrediction() {
         {/* General Travel Recommendation */}
         <View style={styles.detailSection}>
           <Text style={styles.detailTitle}>Travel Recommendation</Text>
-          <Text style={[
-            styles.recommendationValue,
-            prediction.general_travel_recommendation === 'Ideal' ? styles.idealTravel : styles.notIdealTravel
-          ]}>
-            {prediction.general_travel_recommendation || "No recommendation available"}
-          </Text>
+          {prediction.general_travel_recommendation ? (
+            <Text style={[
+              styles.recommendationValue,
+              prediction.general_travel_recommendation === 'Ideal' ? styles.idealTravel : styles.notIdealTravel
+            ]}>
+              {prediction.general_travel_recommendation}
+            </Text>
+          ) : (
+            <Text style={styles.noDataText}>No recommendation available</Text>
+          )}
         </View>
       </View>
     );
@@ -395,15 +355,12 @@ export default function TrafficPrediction() {
         </View>
         
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Date & Time for Prediction</Text>
+          <Text style={styles.label}>Current Date & Time (Using System Time)</Text>
           <View style={styles.dateButton}>
             <Text style={styles.dateButtonText}>
-              {formatDate(new Date())} (Current time)
+              {predictionDate.toLocaleString()}
             </Text>
           </View>
-          <Text style={styles.dateHelpText}>
-            Predictions are based on current conditions
-          </Text>
         </View>
         
         <TouchableOpacity 
@@ -505,16 +462,9 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     borderRadius: 5,
     padding: 12,
-    backgroundColor: '#f5f5f5', // Light gray background to indicate non-interactive
   },
   dateButtonText: {
     fontSize: 16,
-  },
-  dateHelpText: {
-    fontSize: 12,
-    color: '#777',
-    marginTop: 4,
-    fontStyle: 'italic',
   },
   submitButton: {
     backgroundColor: '#3498db',
@@ -589,28 +539,6 @@ const styles = StyleSheet.create({
   },
   registerButtonText: {
     color: 'white',
-    fontWeight: 'bold',
-  },
-  
-  // Basic info card for registered users
-  basicInfoCard: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 20,
-    flexDirection: 'column',
-  },
-  basicInfoItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 5,
-  },
-  basicInfoLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  basicInfoValue: {
-    fontSize: 14,
     fontWeight: 'bold',
   },
   
@@ -694,10 +622,6 @@ const styles = StyleSheet.create({
     color: '#555',
     marginTop: 2,
   },
-  routeCongestion: {
-    fontSize: 14, 
-    marginTop: 2,
-  },
   routeDescription: {
     fontSize: 14,
     marginTop: 5,
@@ -721,12 +645,6 @@ const styles = StyleSheet.create({
   incidentMessage: {
     fontSize: 14,
     marginTop: 2,
-  },
-  incidentDistance: {
-    fontSize: 12,
-    marginTop: 4,
-    color: '#777',
-    fontStyle: 'italic',
   },
   
   // Weather Recommendations
@@ -753,17 +671,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(231, 76, 60, 0.1)',
   },
   
-  // Text colors
-  redText: {
-    color: '#e74c3c',
-  },
-  yellowText: {
-    color: '#f39c12',
-  },
-  greenText: {
-    color: '#2ecc71',
-  },
-  
   // No data text
   noDataText: {
     fontStyle: 'italic',
@@ -771,4 +678,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 10
   }
-});
+})

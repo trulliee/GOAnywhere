@@ -130,8 +130,8 @@ def load_historical_data():
                 "road_data/road_network.geojson",
                 road_network_file
             )
-        with open(road_network_file, 'r') as f:
-            data['road_network'] = json.load(f)
+            with open(road_network_file, 'r') as f:
+                data['road_network'] = json.load(f)
         
     except Exception as e:
         logger.error(f"Error loading data from Cloud Storage: {e}")
@@ -373,4 +373,285 @@ def preprocess_data(data):
         if 'travel_times' in preprocessed:
             travel_data.append(preprocessed['travel_times'])
         
-        if
+        if travel_data:
+            preprocessed['travel_time_data'] = pd.concat(travel_data, ignore_index=True)
+        
+        # Incident impact model data
+        incident_data = []
+        if 'traffic_incidents' in preprocessed:
+            incident_data.append(preprocessed['traffic_incidents'])
+        
+        if incident_data:
+            preprocessed['incident_impact_data'] = pd.concat(incident_data, ignore_index=True)
+        
+    except Exception as e:
+        logger.error(f"Error in data preprocessing: {e}")
+    
+    return preprocessed
+
+def train_traffic_prediction_model(data):
+    """
+    Train the traffic prediction model.
+    
+    Args:
+        data (dict): Preprocessed data dictionary
+    
+    Returns:
+        tuple: (model, metrics)
+    """
+    try:
+        if 'traffic_prediction_data' not in data or data['traffic_prediction_data'].empty:
+            logger.error("No traffic prediction data available for training")
+            return None, None
+        
+        # Create model instance
+        model = TrafficPredictionModel(model_path="app/models/traffic_prediction_model.joblib")
+        
+        # Prepare training data
+        training_data = data['traffic_prediction_data']
+        weather_data = data.get('historical_weather', pd.DataFrame())
+        holiday_data = data.get('holidays', pd.DataFrame())
+        incident_data = data.get('traffic_incidents', pd.DataFrame())
+        event_data = data.get('events', pd.DataFrame())
+        
+        # Train model
+        metrics = model.train(
+            traffic_data=training_data,
+            weather_data=weather_data,
+            holiday_data=holiday_data,
+            incident_data=incident_data,
+            event_data=event_data
+        )
+        
+        logger.info(f"Traffic prediction model training completed with metrics: {metrics}")
+        
+        # Save metadata about the training
+        training_metadata = {
+            'model_type': 'traffic_prediction',
+            'training_time': datetime.now().isoformat(),
+            'data_size': len(training_data),
+            'metrics': metrics,
+            'model_version': datetime.now().strftime('%Y%m%d%H%M')
+        }
+        
+        # Save metadata to Firestore
+        db.collection('model_training').document(f"traffic_prediction_{training_metadata['model_version']}").set(training_metadata)
+        
+        # Write the last training time to the model_last_trained.txt file
+        with open('storage/model_last_trained.txt', 'w') as f:
+            f.write(f"traffic_prediction_model: {datetime.now().isoformat()}\n")
+        
+        return model, metrics
+    
+    except Exception as e:
+        logger.error(f"Error training traffic prediction model: {e}")
+        return None, None
+
+def train_travel_time_model(data):
+    """
+    Train the travel time model.
+    
+    Args:
+        data (dict): Preprocessed data dictionary
+    
+    Returns:
+        tuple: (model, metrics)
+    """
+    try:
+        if 'travel_time_data' not in data or data['travel_time_data'].empty:
+            logger.error("No travel time data available for training")
+            return None, None
+        
+        # Create model instance
+        model = TravelTimeModel(model_path="app/models/travel_time_model.joblib")
+        
+        # Prepare training data
+        travel_times_data = data['travel_time_data']
+        traffic_data = data.get('traffic_speed_bands', pd.DataFrame())
+        weather_data = data.get('historical_weather', pd.DataFrame())
+        holiday_data = data.get('holidays', pd.DataFrame())
+        incident_data = data.get('traffic_incidents', pd.DataFrame())
+        event_data = data.get('events', pd.DataFrame())
+        
+        # Train model
+        metrics = model.train(
+            travel_times_data=travel_times_data,
+            traffic_data=traffic_data,
+            weather_data=weather_data,
+            holiday_data=holiday_data,
+            incident_data=incident_data,
+            event_data=event_data
+        )
+        
+        logger.info(f"Travel time model training completed with metrics: {metrics}")
+        
+        # Save metadata about the training
+        training_metadata = {
+            'model_type': 'travel_time',
+            'training_time': datetime.now().isoformat(),
+            'data_size': len(travel_times_data),
+            'metrics': metrics,
+            'model_version': datetime.now().strftime('%Y%m%d%H%M')
+        }
+        
+        # Save metadata to Firestore
+        db.collection('model_training').document(f"travel_time_{training_metadata['model_version']}").set(training_metadata)
+        
+        # Append the last training time to the model_last_trained.txt file
+        with open('storage/model_last_trained.txt', 'a') as f:
+            f.write(f"travel_time_model: {datetime.now().isoformat()}\n")
+        
+        return model, metrics
+    
+    except Exception as e:
+        logger.error(f"Error training travel time model: {e}")
+        return None, None
+
+def train_incident_impact_model(data):
+    """
+    Train the incident impact model.
+    
+    Args:
+        data (dict): Preprocessed data dictionary
+    
+    Returns:
+        tuple: (model, metrics)
+    """
+    try:
+        if 'incident_impact_data' not in data or data['incident_impact_data'].empty:
+            logger.error("No incident impact data available for training")
+            return None, None
+        
+        # Create model instance
+        model = IncidentImpactModel(model_path="app/models/incident_impact_model.joblib")
+        
+        # Prepare training data
+        incidents_data = data['incident_impact_data']
+        weather_data = data.get('historical_weather', pd.DataFrame())
+        holiday_data = data.get('holidays', pd.DataFrame())
+        road_data = data.get('road_network')
+        
+        # Train model
+        metrics = model.train(
+            incidents_data=incidents_data,
+            weather_data=weather_data,
+            holiday_data=holiday_data,
+            road_data=road_data
+        )
+        
+        logger.info(f"Incident impact model training completed with metrics: {metrics}")
+        
+        # Save metadata about the training
+        training_metadata = {
+            'model_type': 'incident_impact',
+            'training_time': datetime.now().isoformat(),
+            'data_size': len(incidents_data),
+            'metrics': metrics,
+            'model_version': datetime.now().strftime('%Y%m%d%H%M')
+        }
+        
+        # Save metadata to Firestore
+        db.collection('model_training').document(f"incident_impact_{training_metadata['model_version']}").set(training_metadata)
+        
+        # Append the last training time to the model_last_trained.txt file
+        with open('storage/model_last_trained.txt', 'a') as f:
+            f.write(f"incident_impact_model: {datetime.now().isoformat()}\n")
+        
+        return model, metrics
+    
+    except Exception as e:
+        logger.error(f"Error training incident impact model: {e}")
+        return None, None
+
+def backup_model(model_path, version):
+    """
+    Backup a model file to Google Cloud Storage.
+    
+    Args:
+        model_path (str): Path to the model file
+        version (str): Version identifier for the backup
+    
+    Returns:
+        bool: True if backup was successful, False otherwise
+    """
+    try:
+        # Define bucket name for model backups
+        bucket_name = "goanywhere-ml-models"
+        
+        # Create Cloud Storage bucket if it doesn't exist
+        bucket = storage_client.bucket(bucket_name)
+        if not bucket.exists():
+            bucket = storage_client.create_bucket(bucket_name)
+            logger.info(f"Created new bucket: {bucket_name}")
+        
+        # Define destination blob name using model name and version
+        model_filename = os.path.basename(model_path)
+        model_name = os.path.splitext(model_filename)[0]
+        destination_blob_name = f"{model_name}/{model_name}_{version}.joblib"
+        
+        # Upload model to Cloud Storage
+        blob = bucket.blob(destination_blob_name)
+        blob.upload_from_filename(model_path)
+        
+        logger.info(f"Model {model_path} backed up to gs://{bucket_name}/{destination_blob_name}")
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error backing up model {model_path}: {e}")
+        return False
+
+def retrain_all_models():
+    """
+    Main function to retrain all prediction models.
+    
+    Returns:
+        bool: True if all models were trained successfully, False otherwise
+    """
+    try:
+        logger.info("Starting model retraining process")
+        
+        # Load and preprocess data
+        raw_data = load_historical_data()
+        preprocessed_data = preprocess_data(raw_data)
+        
+        # Train traffic prediction model
+        traffic_model, traffic_metrics = train_traffic_prediction_model(preprocessed_data)
+        
+        # Train travel time model
+        travel_model, travel_metrics = train_travel_time_model(preprocessed_data)
+        
+        # Train incident impact model
+        incident_model, incident_metrics = train_incident_impact_model(preprocessed_data)
+        
+        # Generate version identifier for backups
+        version = datetime.now().strftime('%Y%m%d%H%M')
+        
+        # Backup models
+        if traffic_model:
+            backup_model("app/models/traffic_prediction_model.joblib", version)
+        
+        if travel_model:
+            backup_model("app/models/travel_time_model.joblib", version)
+        
+        if incident_model:
+            backup_model("app/models/incident_impact_model.joblib", version)
+        
+        # Log summary
+        logger.info("Model retraining completed successfully")
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error in model retraining process: {e}")
+        return False
+
+if __name__ == "__main__":
+    # If run directly, retrain all models
+    retrain_result = retrain_all_models()
+    
+    if retrain_result:
+        print("Model retraining completed successfully")
+    else:
+        print("Model retraining encountered errors. Check logs for details.")
+        sys.exit(1)

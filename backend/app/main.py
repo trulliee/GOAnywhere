@@ -23,7 +23,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://192.168.68.62:8081"],  # Update this in production with your actual origins
+    #allow_origins=["http://192.168.68.62:8081"],  # Update this in production with your actual origins
     allow_origins=["*"],  # Update this in production with your actual origins
     allow_credentials=True,
     allow_methods=["*"],

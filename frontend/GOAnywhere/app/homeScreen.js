@@ -78,10 +78,11 @@ export default function HomeScreen() {
     { name: 'Saved 2', icon: 'star'},
   ];
   const locationHistory = [
-    { name: 'Ikea Alexandra', address: '317 Alexandra Rd' },
-    { name: 'Home', address: '214 Depot Rd' },
-    { name: 'Star Living @ Sungei Kadut', address: '21 Sungei Kadut Street 2' },
-    { name: 'IMM Building', address: '2 Jurong East Street 21' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
     { name: '168790', address: '2 Spooner Rd' },
     { name: '168790', address: '2 Spooner Rd' },
     { name: '168790', address: '2 Spooner Rd' },

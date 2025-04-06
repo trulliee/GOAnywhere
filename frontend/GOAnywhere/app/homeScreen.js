@@ -74,6 +74,8 @@ export default function HomeScreen() {
     { name: 'Home', icon: 'home' },
     { name: 'Work', icon: 'briefcase' },
     { name: 'Add', icon: 'add' },
+    { name: 'Saved 1', icon: 'star'},
+    { name: 'Saved 2', icon: 'star'},
   ];
   const locationHistory = [
     { name: 'Ikea Alexandra', address: '317 Alexandra Rd' },
@@ -404,8 +406,8 @@ export default function HomeScreen() {
                         onPress={() => handleHistoryPress(entry)}
                         style={styles.historyEntry}
                       >
-                        <Ionicons name="time-outline" size={16} />
-                        <View>
+                        <Ionicons name="time-outline" size={28} style={{ marginRight: 5 }}/>
+                        <View style={{ marginLeft: 5 }}>
                           <Text style={styles.historyTitle}>{entry.name}</Text>
                           <Text style={styles.historySubtitle}>{entry.address}</Text>
                         </View>
@@ -826,6 +828,15 @@ const styles = StyleSheet.create({
   savedLocationButton: {
     alignItems: 'center',
     marginRight: 15,
+    padding: 10,             
+    borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 2,
+    borderColor: '#333333',        
+    backgroundColor: '#f0f0f0', 
+    width: 80,               
+    height: 80,              
+    justifyContent: 'center' 
   },
   locationHistoryScroll: {
     flex: 1,
@@ -837,9 +848,10 @@ const styles = StyleSheet.create({
   },
   historyTitle: {
     fontWeight: 'bold',
+    fontSize: 20,
   },
   historySubtitle: {
-    fontSize: 12,
+    fontSize: 16,
     color: '#888',
   },
   overlayTouchable: {

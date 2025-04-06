@@ -15,7 +15,11 @@
     "expo-env.d.ts"
   ],
   "dependencies": {
+    "expo-device": "~7.0.2",
     "expo-notifications": "~0.29.13",
-    "expo-device": "~7.0.2"
+    "react-native-svg": "^15.11.2"
+  },
+  "devDependencies": {
+    "react-native-svg-transformer": "^1.5.0"
   }
 }

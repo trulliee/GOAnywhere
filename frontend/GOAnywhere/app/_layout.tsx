@@ -1,11 +1,18 @@
-import { Stack } from "expo-router";
+import React from 'react';
+import { Stack } from 'expo-router';
 
-export default function RootLayout() {
+export default function AppLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="login" />
-      <Stack.Screen name="signup" />
-      <Stack.Screen name="home" />
-    </Stack>
+    <Stack
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: '#333',
+        },
+        headerTintColor: '#fff',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    />
   );
 }

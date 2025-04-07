@@ -20,7 +20,7 @@
       "package": "com.anonymous.GOAnywhere"
     },
     "web": {
-      "bundler": "metro",
+      
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
@@ -34,7 +34,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-build-properties"
     ],
     "experiments": {
       "typedRoutes": true

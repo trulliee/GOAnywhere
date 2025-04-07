@@ -7,6 +7,11 @@ __pycache__/
 # C extensions
 *.so
 
+# Python cache
+__pycache__/
+*.pyc
+
+
 # Distribution / packaging
 .Python
 build/
@@ -132,6 +137,7 @@ celerybeat.pid
 .env
 .venv
 env/
+app/env.js
 venv/
 ENV/
 env.bak/
@@ -170,4 +176,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-node_modules
+
+airflow/logs/scheduler/latest
+airflow/logs/scheduler/latest
+__pycache__/

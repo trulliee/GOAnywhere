@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import AuthService from './authService';
 import { useRouter } from 'expo-router';
-import { getApiUrl } from './utils/apiConfig';
-const API_URL = getApiUrl('');
+import { API_URL, fetchAPI } from './utils/apiConfig';
 
 export default function TrafficPredictionScreen() {
   const router = useRouter();

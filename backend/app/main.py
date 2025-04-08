@@ -9,6 +9,7 @@ from app.routes.auth import router as auth_router  # Import the auth router
 from app.dashboard import router as dashboard_router  # Import the dashboard router
 from app.p2pnavigation import router as p2pnavigation_router  # Import the p2pnavigation router
 from app.notifications import router as notifications_router # Import the notifications router
+from app.crowdsourced import router as crowd_router
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -38,3 +39,4 @@ app.include_router(auth_router)  # Add the auth router
 app.include_router(p2pnavigation_router, prefix="/p2pnavigation", tags=["P2P Navigation"]) # Include the p2pnavigation router
 app.include_router(notifications_router, tags=["Notifications"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"]) # Include the dashboard router
+app.include_router(crowd_router) # Include the crowdsourced router

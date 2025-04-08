@@ -18,6 +18,12 @@ import Collapsible from 'react-native-collapsible';
 import { MaterialIcons } from 'react-native-vector-icons';
 import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
+import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
+import * as Location from 'expo-location';
+import { fetchAPI } from './utils/apiConfig';
+
+//import {db} from './firebaseConfig' (add in the firebase stuff here)
+//import { collection, addDoc } from 'firebase/firestore';
 
 import ENV from './env';
 
@@ -49,7 +55,86 @@ export default function HomeScreen() {
   const [navigationExpanded, setNavigationExpanded] = useState(false);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
 
+  // Crowdsourced Menu
+  const [isCrowdModalVisible, setIsCrowdModalVisible] = useState(false);
+  const slideAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
+  const driverCategories = [
+    "Accident", "Road Works", "Traffic Police",
+    "Weather", "Hazard", "Map Issue"
+  ];
+  const publicCategories = [
+    "Accident", "Transit Works", "High Crowd",
+    "Weather", "Hazard", "Traffic Police",
+    "Delays", "Map Issue"
+  ];
+  const showCrowdModal = () => {
+    setReportMode(null);
+    setIsCrowdModalVisible(true);
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver:true,
+    }).start();
+  }
 
+  const hideCrowdModal = () => {
+    Animated.timing(slideAnim, {
+      toValue: Dimensions.get('window').height, // Slide off-screen
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setIsCrowdModalVisible(false));
+  };
+
+  const handleReportModeSelect = (mode) => {
+    Animated.timing(slideAnim, {
+      toValue: Dimensions.get('window').height, // Slide modal down
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsCrowdModalVisible(false); // hide modal
+      setReportMode(mode);           // then set the mode after hiding
+    });
+  };
+  const [reportMode, setReportMode] = useState(null); // 'driver' or 'public'
+
+  // Get user's location for the crowdsourced report
+  const getCurrentLocation = async () => {
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      alert('Permission to access location was denied');
+      return null;
+    }
+  
+    let location = await Location.getCurrentPositionAsync({});
+    return {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+      timestamp: Date.now()
+    };
+  };
+
+  const submitCrowdsourcedReport = async (reportType) => {
+    const location = await getCurrentLocation();
+    if (!location) return;
+  
+    try {
+      const data = await fetchAPI('/submit-crowd-report', {
+        method: 'POST',
+        body: JSON.stringify({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          type: reportType,
+          source: reportMode,
+        }),
+      });
+  
+      Alert.alert("Report Submitted", `You reported: ${reportType}`);
+    } catch (error) {
+      console.error("Error submitting report:", error);
+      Alert.alert("Submission Failed", "Please try again.");
+    }
+  };
+  
   // Animated value for sidebar position
   const sidebarPosition = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
@@ -77,8 +162,6 @@ export default function HomeScreen() {
       alert('Could not fetch location.');
     }
   };
-  
-
 
 
   // Create pan responder for swipe gesture
@@ -249,6 +332,68 @@ export default function HomeScreen() {
         </Animated.View>
       ) : null}
 
+      {/* Crowdsourced Button */}
+      {isCrowdModalVisible && (
+        <TouchableOpacity style={styles.modalOverlay} onPress={hideCrowdModal} activeOpacity={1}>
+          <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
+            <Text style={styles.sheetTitle}>Report As</Text>
+            <TouchableOpacity style={styles.sheetButton} onPress={() => {
+              handleReportModeSelect('driver');
+              hideCrowdModal();
+            }}>
+              <Text style={styles.sheetButtonText}>Driver</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sheetButton} onPress={() => {
+              handleReportModeSelect('public');
+              hideCrowdModal();
+            }}>
+              <Text style={styles.sheetButtonText}>Public Transport</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      )}
+      {reportMode && (
+        <View style={styles.modalOverlay}>
+          <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
+            <Text style={styles.sheetTitle}>
+              {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
+            </Text>
+
+            {reportMode === 'driver' && (
+              <View style={styles.reportCategoryContainer}>
+                {driverCategories.map((category, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.reportButton}
+                    onPress={() => submitCrowdsourcedReport(category)}
+                  >
+                    <Text style={styles.buttonText}>{category}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {reportMode === 'public' && (
+              <View style={styles.reportCategoryContainer}>
+                {publicCategories.map((category, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.reportButton}
+                    onPress={() => submitCrowdsourcedReport(category)}
+                  >
+                    <Text style={styles.buttonText}>{category}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <TouchableOpacity onPress={() => setReportMode(null)} style={styles.sheetButton}>
+              <Text style={styles.sheetButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      )}
+
       {/* Sidebar */}
       <Animated.View style={[styles.sidebar, { transform: [{ translateX: sidebarPosition }] }]}>
         {/* User Profile Section */}
@@ -292,7 +437,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.submenuItem} 
-              onPress={() => navigateTo('trafficPrediction')}
+              onPress={() => navigateTo('TrafficPrediction')}
             >
               <Text style={styles.submenuText}>Forecast</Text>
             </TouchableOpacity>
@@ -356,6 +501,14 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </ScrollView>
       </Animated.View>
+      {!isCrowdModalVisible && !reportMode &&(
+        <TouchableOpacity 
+        style={styles.crowdsourceButton}
+        onPress={showCrowdModal}
+      >
+        <WarningIcon width={36} height={36} />
+      </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -549,5 +702,76 @@ const styles = StyleSheet.create({
     flex: 1, 
     width: "100%", 
     height: "100%"
+  },
+
+  crowdsourceButton: {
+    position: 'absolute',
+    bottom: 80, // Adjust as needed to sit above your search bar
+    right: 20,
+    width: 60,
+    height: 60,
+    backgroundColor: '#4A4A4A', // dark grey
+    borderRadius: 15, // rounded edges
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5, // for Android shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    zIndex: 99, // stays on top
+  },
+  
+  modalOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+    zIndex: 30,
+  },
+  
+  bottomSheet: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  
+  sheetButton: {
+    backgroundColor: '#f2f2f2',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginVertical: 6,
+    alignItems: 'center',
+  },
+  
+  sheetButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  reportCategoryContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginTop: 10,
+  },
+  
+  reportButton: {
+    width: '30%',
+    marginVertical: 8,
+    backgroundColor: '#eee',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   }
 });

@@ -5,10 +5,8 @@ import numpy as np
 from datetime import datetime, timedelta
 import logging
 import os
-import firebase_admin
 from firebase_admin import firestore
-import matplotlib.pyplot as plt
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from app.data.firestore_dataloader import FirestoreDataLoader
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -20,15 +18,10 @@ class FeedbackAnalyzer:
     and identify patterns for improvement.
     """
     
-    def __init__(self, db=None):
-        """
-        Initialize the feedback analyzer.
-        
-        Args:
-            db: Firestore database instance (optional)
-        """
-        # Use the provided db or the default one from firebase_admin
-        self.db = db or firestore.client()
+    def __init__(self):
+        """Initialize the feedback analyzer."""
+        self.data_loader = FirestoreDataLoader()
+        self.db = firestore.client()
         
         # Initialize collections
         self.feedback_collection = self.db.collection('prediction_feedback')
@@ -216,16 +209,16 @@ class FeedbackAnalyzer:
         else:
             return "50%+"
     
-    def analyze_feedback_trends(self, prediction_type, time_period='last_30_days'):
+    def get_feedback_data(self, prediction_type, time_period='last_30_days'):
         """
-        Analyze feedback trends over a specified time period.
+        Get feedback data from Firestore using the data loader.
         
         Args:
             prediction_type (str): Type of prediction to analyze
             time_period (str): Time period to analyze ('last_7_days', 'last_30_days', 'last_90_days')
             
         Returns:
-            dict: Analysis results
+            pandas.DataFrame: Feedback data
         """
         # Calculate date range
         end_date = datetime.now()
@@ -257,12 +250,7 @@ class FeedbackAnalyzer:
             feedback_list.append(feedback)
         
         if not feedback_list:
-            return {
-                'prediction_type': prediction_type,
-                'time_period': time_period,
-                'feedback_count': 0,
-                'message': 'No feedback data available for the selected period'
-            }
+            return pd.DataFrame()
         
         df = pd.DataFrame(feedback_list)
         
@@ -274,6 +262,34 @@ class FeedbackAnalyzer:
             )
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
             df['date'] = df['timestamp'].dt.date
+        
+        return df
+    
+    def analyze_feedback_trends(self, prediction_type, time_period='last_30_days'):
+        """
+        Analyze feedback trends over a specified time period.
+        
+        Args:
+            prediction_type (str): Type of prediction to analyze
+            time_period (str): Time period to analyze ('last_7_days', 'last_30_days', 'last_90_days')
+            
+        Returns:
+            dict: Analysis results
+        """
+        # Get the feedback data using the new method
+        df = self.get_feedback_data(prediction_type, time_period)
+        
+        if df.empty:
+            return {
+                'prediction_type': prediction_type,
+                'time_period': time_period,
+                'feedback_count': 0,
+                'message': 'No feedback data available for the selected period'
+            }
+        
+        # Calculate date range from the data
+        start_date = df['timestamp'].min()
+        end_date = df['timestamp'].max()
         
         # Prepare analysis results
         analysis = {
@@ -409,6 +425,35 @@ class FeedbackAnalyzer:
                         'recommendation': "Consider gathering more training data for this location"
                     })
         
+        # Add insights based on other data sources
+        try:
+            # Check if traffic patterns have changed recently
+            speed_bands = self.data_loader.get_traffic_speed_bands(days=7)
+            
+            if not speed_bands.empty and 'timestamp' in df.columns:
+                # Get most recent feedback data point timestamp
+                latest_feedback = df['timestamp'].max()
+                
+                # Look for traffic data around the same time
+                if 'Timestamp' in speed_bands.columns:
+                    recent_traffic = speed_bands[
+                        (speed_bands['Timestamp'] >= latest_feedback - timedelta(hours=1)) &
+                        (speed_bands['Timestamp'] <= latest_feedback + timedelta(hours=1))
+                    ]
+                    
+                    if not recent_traffic.empty and 'SpeedBand' in recent_traffic.columns:
+                        avg_speed = recent_traffic['SpeedBand'].mean()
+                        
+                        # If traffic is significantly congested
+                        if avg_speed < 2.5:
+                            insights.append({
+                                'type': 'info',
+                                'message': 'Recent traffic conditions have been heavily congested, which may affect prediction accuracy',
+                                'source': 'traffic_data'
+                            })
+        except Exception as e:
+            logger.warning(f"Error getting additional insights from traffic data: {e}")
+        
         return insights
     
     def _generate_traffic_condition_insights(self, df, daily_metrics, mismatch_analysis):
@@ -459,6 +504,33 @@ class FeedbackAnalyzer:
                     'message': f"Traffic condition predictions during hour {worst_hour} have low accuracy ({worst_hour_accuracy:.1f}%)",
                     'recommendation': "Model may need retraining with more data from this time period"
                 })
+        
+        # Add insights based on other data sources
+        try:
+            # Check if there are unusual traffic patterns
+            incidents = self.data_loader.get_incidents(days=7)
+            
+            if not incidents.empty:
+                # Count incidents by day
+                if 'Timestamp' in incidents.columns:
+                    incidents['date'] = incidents['Timestamp'].dt.date
+                    daily_incident_counts = incidents.groupby('date').size()
+                    
+                    # Check if there are days with significantly higher incidents
+                    avg_incidents = daily_incident_counts.mean()
+                    max_incidents = daily_incident_counts.max()
+                    
+                    if max_incidents > avg_incidents * 1.5:  # 50% more incidents than average
+                        high_incident_day = daily_incident_counts.idxmax()
+                        
+                        insights.append({
+                            'type': 'info',
+                            'message': f"Traffic incidents on {high_incident_day} were significantly higher than average, which may affect prediction accuracy",
+                            'source': 'incident_data',
+                            'incident_count': int(max_incidents)
+                        })
+        except Exception as e:
+            logger.warning(f"Error getting additional insights from incident data: {e}")
         
         return insights
     
@@ -634,11 +706,54 @@ class FeedbackAnalyzer:
         # Add recommendations
         report['recommendations'] = self._generate_recommendations(analysis)
         
+        # Add contextual data from other sources
+        report['context'] = self._get_contextual_data()
+        
         # Store report in Firestore
         report_id = f"{prediction_type}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         self.model_performance_collection.document(report_id).set(report)
         
         return report
+    
+    def _get_contextual_data(self):
+        """Get contextual data from other sources to enrich the report."""
+        context = {}
+        
+        try:
+            # Get recent incidents
+            incidents = self.data_loader.get_incidents(days=7)
+            if not incidents.empty:
+                context['recent_incidents'] = {
+                    'count': len(incidents),
+                    'types': incidents['Type'].value_counts().to_dict() if 'Type' in incidents.columns else {}
+                }
+            
+            # Get weather info
+            weather = self.data_loader.get_weather_data(days=1)
+            if not weather.empty:
+                context['weather_conditions'] = {
+                    'forecast': weather.iloc[0]['general_forecast'] if 'general_forecast' in weather.columns else 'Unknown',
+                    'temperature_range': f"{weather.iloc[0]['temp_low']}-{weather.iloc[0]['temp_high']}" 
+                        if all(col in weather.columns for col in ['temp_low', 'temp_high']) else 'Unknown'
+                }
+            
+            # Get public holidays
+            holidays = self.data_loader.get_historical_holidays()
+            if not holidays.empty:
+                # Get upcoming holidays
+                today = datetime.now().date()
+                upcoming = holidays[pd.to_datetime(holidays['Date']).dt.date >= today]
+                
+                if not upcoming.empty:
+                    next_holiday = upcoming.iloc[0]
+                    context['next_holiday'] = {
+                        'name': next_holiday['Name'] if 'Name' in next_holiday else 'Unknown',
+                        'date': next_holiday['Date'].strftime('%Y-%m-%d') if hasattr(next_holiday['Date'], 'strftime') else str(next_holiday['Date'])
+                    }
+        except Exception as e:
+            logger.warning(f"Error getting contextual data: {e}")
+        
+        return context
     
     def _generate_recommendations(self, analysis):
         """Generate recommendations based on analysis results."""
@@ -707,6 +822,35 @@ class FeedbackAnalyzer:
                     'source': 'bias_analysis',
                     'action': 'Adjust model to account for under-prediction of severe traffic conditions'
                 })
+        
+        # Add data quality recommendations
+        try:
+            # Check for potential data issues by looking at other data sources
+            has_data_issue = False
+            data_issue_reason = []
+            
+            # Check traffic speed band data
+            speed_bands = self.data_loader.get_traffic_speed_bands(days=1)
+            if speed_bands.empty:
+                has_data_issue = True
+                data_issue_reason.append("Missing recent traffic speed data")
+            
+            # Check incidents data
+            incidents = self.data_loader.get_incidents(days=1)
+            if incidents.empty:
+                has_data_issue = True
+                data_issue_reason.append("Missing recent incident data")
+            
+            # If data issues detected, add recommendation
+            if has_data_issue:
+                recommendations.append({
+                    'priority': 'high',
+                    'source': 'data_quality',
+                    'action': f"Investigate data pipeline issues: {', '.join(data_issue_reason)}"
+                })
+                
+        except Exception as e:
+            logger.warning(f"Error generating data quality recommendations: {e}")
         
         return recommendations
     
@@ -817,4 +961,140 @@ class FeedbackAnalyzer:
                     }
                 }
         
+        # Add contextual information from other data sources
+        try:
+            # Add traffic data context
+            speed_bands = self.data_loader.get_traffic_speed_bands(days=7)
+            
+            if not speed_bands.empty and 'Timestamp' in speed_bands.columns and 'SpeedBand' in speed_bands.columns:
+                # Group by day and calculate average speed
+                speed_bands['date'] = speed_bands['Timestamp'].dt.date
+                daily_speeds = speed_bands.groupby('date')['SpeedBand'].mean().reset_index()
+                
+                # Add to visualizations
+                viz_data['chart_configs'].append({
+                    'chart_type': 'line',
+                    'title': 'Average Traffic Speed Bands',
+                    'x_label': 'Date',
+                    'y_label': 'Average Speed Band',
+                    'data': {
+                        'labels': [date.strftime('%Y-%m-%d') for date in daily_speeds['date']],
+                        'datasets': [{
+                            'label': 'Average Speed Band',
+                            'data': [round(speed, 2) for speed in daily_speeds['SpeedBand']],
+                            'borderColor': 'rgba(75, 192, 192, 1)',
+                            'backgroundColor': 'rgba(75, 192, 192, 0.2)'
+                        }]
+                    }
+                })
+        except Exception as e:
+            logger.warning(f"Error adding contextual visualizations: {e}")
+        
         return viz_data
+    
+    def compare_model_versions(self, prediction_type, version1, version2):
+        """
+        Compare the performance of two model versions.
+        
+        Args:
+            prediction_type (str): Type of prediction to analyze
+            version1 (str): First model version identifier
+            version2 (str): Second model version identifier
+            
+        Returns:
+            dict: Comparison results
+        """
+        # Get performance reports for both versions
+        reports = {}
+        
+        for version in [version1, version2]:
+            report_query = (self.model_performance_collection
+                           .where('prediction_type', '==', prediction_type)
+                           .where('version', '==', version)
+                           .limit(1))
+            
+            report_docs = report_query.stream()
+            for doc in report_docs:
+                reports[version] = doc.to_dict()
+        
+        # If either report is missing, return error
+        if version1 not in reports:
+            return {
+                'error': f"No performance report found for version {version1}",
+                'status': 'error'
+            }
+        
+        if version2 not in reports:
+            return {
+                'error': f"No performance report found for version {version2}",
+                'status': 'error'
+            }
+        
+        # Create comparison
+        comparison = {
+            'prediction_type': prediction_type,
+            'version1': version1,
+            'version2': version2,
+            'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        # Add metrics comparison
+        metrics1 = reports[version1].get('accuracy_metrics', {})
+        metrics2 = reports[version2].get('accuracy_metrics', {})
+        
+        metrics_diff = {}
+        
+        for key in metrics1:
+            if key in metrics2:
+                value1 = metrics1[key]
+                value2 = metrics2[key]
+                
+                if isinstance(value1, (int, float)) and isinstance(value2, (int, float)):
+                    diff = value2 - value1
+                    pct_change = diff / value1 * 100 if value1 != 0 else 0
+                    
+                    # Determine if change is positive or negative
+                    is_improvement = False
+                    
+                    if prediction_type == 'travel_time' and key in ['avg_absolute_error', 'avg_percentage_error']:
+                        # For error metrics, lower is better
+                        is_improvement = diff < 0
+                    elif prediction_type == 'traffic_condition' and key in ['accuracy_rate']:
+                        # For accuracy metrics, higher is better
+                        is_improvement = diff > 0
+                    
+                    metrics_diff[key] = {
+                        'version1': value1,
+                        'version2': value2,
+                        'difference': diff,
+                        'percent_change': pct_change,
+                        'is_improvement': is_improvement
+                    }
+        
+        comparison['metrics_comparison'] = metrics_diff
+        
+        # Determine overall improvement
+        overall_improved = False
+        significant_change = False
+        
+        if prediction_type == 'travel_time':
+            # Check error metrics
+            if 'avg_percentage_error' in metrics_diff:
+                pct_change = metrics_diff['avg_percentage_error']['percent_change']
+                overall_improved = metrics_diff['avg_percentage_error']['is_improvement']
+                significant_change = abs(pct_change) > 5  # More than 5% change
+        elif prediction_type == 'traffic_condition':
+            # Check accuracy metrics
+            if 'accuracy_rate' in metrics_diff:
+                pct_change = metrics_diff['accuracy_rate']['percent_change']
+                overall_improved = metrics_diff['accuracy_rate']['is_improvement']
+                significant_change = abs(pct_change) > 5  # More than 5% change
+        
+        comparison['overall_assessment'] = {
+            'is_improvement': overall_improved,
+            'is_significant': significant_change,
+            'summary': f"Version {version2} {'is better than' if overall_improved else 'is worse than'} version {version1}." +
+                      f" The change is {'significant' if significant_change else 'not significant'}."
+        }
+        
+        return comparison

@@ -10,8 +10,13 @@ from app.dashboard import router as dashboard_router  # Import the dashboard rou
 from app.p2pnavigation import router as p2pnavigation_router  # Import the p2pnavigation router
 from app.notifications import router as notifications_router # Import the notifications router
 from dotenv import load_dotenv
-load_dotenv()
+
+dotenv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+load_dotenv(dotenv_path)
+print("GOOGLE_MAPS_API_KEY =", os.getenv("GOOGLE_MAPS_API_KEY"))
+
 import logging
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

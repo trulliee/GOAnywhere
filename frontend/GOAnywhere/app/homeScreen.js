@@ -9,6 +9,10 @@ import {
   SafeAreaView, 
   Alert,
   Animated,
+  Modal,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
   PanResponder,
   Dimensions
 } from 'react-native';
@@ -20,10 +24,9 @@ import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
-import { fetchAPI } from './utils/apiConfig';
-
 //import {db} from './firebaseConfig' (add in the firebase stuff here)
 //import { collection, addDoc } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 
 import ENV from './env';
 
@@ -66,6 +69,34 @@ export default function HomeScreen() {
     "Accident", "Transit Works", "High Crowd",
     "Weather", "Hazard", "Traffic Police",
     "Delays", "Map Issue"
+  ];
+  const savedLocations = [
+    { name: 'Home', icon: 'home' },
+    { name: 'Work', icon: 'briefcase' },
+    { name: 'Add', icon: 'add' },
+    { name: 'Saved 1', icon: 'star'},
+    { name: 'Saved 2', icon: 'star'},
+  ];
+  const locationHistory = [
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' },
+    { name: '168790', address: '2 Spooner Rd' }
   ];
   const showCrowdModal = () => {
     setReportMode(null);
@@ -118,23 +149,23 @@ export default function HomeScreen() {
     if (!location) return;
   
     try {
-      const data = await fetchAPI('/submit-crowd-report', {
-        method: 'POST',
-        body: JSON.stringify({
-          latitude: location.latitude,
-          longitude: location.longitude,
-          type: reportType,
-          source: reportMode,
-        }),
+      await addDoc(collection(db, "crowdsourcedReports"), {
+        type: reportType,
+        location: location,
+        source: reportMode, // either 'driver' or 'public'
+        createdAt: new Date().toISOString()
       });
   
       Alert.alert("Report Submitted", `You reported: ${reportType}`);
     } catch (error) {
-      console.error("Error submitting report:", error);
+      console.error("Error submitting report: ", error);
       Alert.alert("Submission Failed", "Please try again.");
     }
   };
-  
+
+  //Search Bar
+  const [isModalVisible, setIsModalVisible] = useState(false);
+
   // Animated value for sidebar position
   const sidebarPosition = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
@@ -217,12 +248,6 @@ export default function HomeScreen() {
       },
     })
   ).current;
-  
-  
-  
-  
-  
-  
 
   // Functions to show/hide the sidebar
   const showSidebar = () => {
@@ -314,16 +339,82 @@ export default function HomeScreen() {
       </MapView>
 
 
-      {/* Search Input */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Enter location"
-          value={searchInput}
-          onChangeText={setSearchInput}
-        />
-        <Button title="Search" onPress={handleSearch} />
-      </View>
+      {/* Searchbar stuff */}
+      <TouchableOpacity 
+        style={styles.persistentSearchBar} 
+        onPress={() => setIsModalVisible(true)}
+      >
+        <Text style={styles.persistentSearchText}>Directions To?</Text>
+        <Ionicons name="search" size={20} color="#888" />
+      </TouchableOpacity>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isModalVisible}
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setIsModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.modalContainer}
+              >
+                <ScrollView style={{ flex: 1 }}>
+                  {/* Search Input */}
+                  <View style={styles.modalSearchRow}>
+                    <TextInput
+                      style={styles.modalSearchInput}
+                      placeholder="Enter location"
+                      value={searchInput}
+                      onChangeText={setSearchInput}
+                    />
+                    <TouchableOpacity onPress={handleSearch}>
+                      <Ionicons name="search" size={24} color="#333" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Saved Locations */}
+                  <ScrollView
+                    horizontal
+                    style={styles.savedLocationRow}
+                    showsHorizontalScrollIndicator={false}
+                  >
+                    {savedLocations.map((loc, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.savedLocationButton}
+                        onPress={() => handleSavedPress(loc)}
+                      >
+                        <Ionicons name={loc.icon} size={24} />
+                        <Text>{loc.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  {/* Location History */}
+                  <View style={styles.locationHistoryScroll}>
+                    {locationHistory.map((entry, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        onPress={() => handleHistoryPress(entry)}
+                        style={styles.historyEntry}
+                      >
+                        <Ionicons name="time-outline" size={28} style={{ marginRight: 5 }}/>
+                        <View style={{ marginLeft: 5 }}>
+                          <Text style={styles.historyTitle}>{entry.name}</Text>
+                          <Text style={styles.historySubtitle}>{entry.address}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </KeyboardAvoidingView>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* Dark overlay when sidebar is visible */}
       {isSidebarVisible ? (
@@ -678,25 +769,85 @@ const styles = StyleSheet.create({
     height: "100%", 
     width: "100%",
   },
-  searchContainer: {
-    position: "absolute",
-    bottom: 5,
-    left: 5,
-    right: 5,
-    flexDirection: "row",
-    backgroundColor: "white",
-    padding: 6,
-    borderRadius: 5,
-    alignItems: "center",
+  persistentSearchBar: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 15,
+    padding: 10,
+    margin: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    position: 'absolute',
+    bottom: 50, // adjust based on your layout
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
-  searchInput: {
+  persistentSearchText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#666',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalContainer: {
+    height: '50%',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  modalSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    marginBottom: 15,
+  },
+  modalSearchInput: {
     flex: 1,
     height: 40,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    marginRight: 6,
+  },
+  savedLocationRow: {
+    marginBottom: 15,
+  },
+  savedLocationButton: {
+    alignItems: 'center',
+    marginRight: 15,
+    padding: 10,             
+    borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 2,
+    borderColor: '#333333',        
+    backgroundColor: '#f0f0f0', 
+    width: 80,               
+    height: 80,              
+    justifyContent: 'center' 
+  },
+  locationHistoryScroll: {
+    flex: 1,
+  },
+  historyEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  historyTitle: {
+    fontWeight: 'bold',
+    fontSize: 20,
+  },
+  historySubtitle: {
+    fontSize: 16,
+    color: '#888',
   },
   overlayTouchable: {
     flex: 1, 
@@ -706,7 +857,7 @@ const styles = StyleSheet.create({
 
   crowdsourceButton: {
     position: 'absolute',
-    bottom: 80, // Adjust as needed to sit above your search bar
+    bottom: 130, // 
     right: 20,
     width: 60,
     height: 60,

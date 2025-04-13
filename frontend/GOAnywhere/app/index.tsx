@@ -52,6 +52,7 @@ export default function Index() {
       <Button title="Go to Traffic Incidents" onPress={() => router.push("./TrafficIncidentsNav")} />
       <Button title="Go to Traffic Prediction" onPress={() => router.push("./trafficPrediction")} />
       <Button title="Go to Notification" onPress={() => router.push("./Notification")} />
+      <Button title="Go to Hard Coded Admin Traffic Incident with Updated UI" onPress={() => router.push("./AdminNotification")} />
 
       
       {/* Optional: Show a different view if user is logged in */}

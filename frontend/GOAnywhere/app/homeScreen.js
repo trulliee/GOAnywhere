@@ -252,12 +252,6 @@ export default function HomeScreen() {
       },
     })
   ).current;
-  
-  
-  
-  
-  
-  
 
   // Functions to show/hide the sidebar
   const showSidebar = () => {

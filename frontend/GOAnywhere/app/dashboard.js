@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import React, { useState } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from "react-native";
 
@@ -60,68 +59,10 @@ const TrafficApp = () => {
     } finally {
       setLoading(false);
     }
-=======
-import React, { useState } from 'react';
-import { 
-  View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, 
-  Dimensions, Pressable 
-} from 'react-native';
-
-const { width, height } = Dimensions.get('window');
-
-const Dashboard = () => {
-  // State for filters
-  const [distance, setDistance] = useState(5);
-  const [date, setDate] = useState(new Date());
-  const [time, setTime] = useState(new Date());
-  
-  // Modal visibility states
-  const [isDistanceModalVisible, setDistanceModalVisible] = useState(false);
-  const [isDateModalVisible, setDateModalVisible] = useState(false);
-  const [isTimeModalVisible, setTimeModalVisible] = useState(false);
-
-  // Format date for display
-  const formatDate = (date) => {
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  // Format time for display
-  const formatTime = (time) => {
-    return time.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
->>>>>>> 7c3b9d078f6c48c4a496c3d52fe85af49ad6547c
   };
 
   return (
     <View style={styles.container}>
-<<<<<<< HEAD
-      <Text style={styles.title}>🚦 Singapore Traffic Info</Text>
-
-      {/* Fetch Traffic Data Button */}
-      <TouchableOpacity style={styles.button} onPress={fetchTrafficData}>
-        <Text style={styles.buttonText}>Get Traffic Updates</Text>
-      </TouchableOpacity>
-
-      {/* Loading Indicator */}
-      {loading && <ActivityIndicator size="large" color="#007bff" />}
-
-      {/* Display Traffic Data */}
-      {trafficData && (
-        <View style={styles.trafficContainer}>
-          <Text style={styles.trafficText}>🛑 Congestion Level: {trafficData.congestionLevel}</Text>
-          <Text style={styles.trafficText}>🚗 Total Jams: {trafficData.totalJams} incidents</Text>
-          <Text style={styles.trafficText}>📏 Total Jam Length: {trafficData.totalJamLength.toFixed(2)} km</Text>
-          <Text style={styles.trafficText}>📊 Avg Speed: {trafficData.avgSpeed} km/h</Text>
-          <Text style={styles.trafficText}>⏳ Travel Time (10km): {trafficData.travelTimePer10km} min</Text>
-        </View>
-      )}
-=======
       {/* Title */}
       <Text style={styles.title}>Dashboard</Text>
 
@@ -310,23 +251,11 @@ const Dashboard = () => {
 
       {/* Search Bar */}
       <TextInput style={styles.searchBar} placeholder="Search..." placeholderTextColor="#999" />
->>>>>>> 7c3b9d078f6c48c4a496c3d52fe85af49ad6547c
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-<<<<<<< HEAD
-  container: { flex: 1, padding: 20, backgroundColor: "#f5f5f5", justifyContent: "center" },
-  title: { fontSize: 22, fontWeight: "bold", textAlign: "center", marginBottom: 20 },
-  button: { backgroundColor: "#007bff", padding: 15, borderRadius: 8, alignItems: "center" },
-  buttonText: { color: "white", fontWeight: "bold", fontSize: 16 },
-  trafficContainer: { marginTop: 20, padding: 15, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#ddd" },
-  trafficText: { fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 5 },
-});
-
-export default TrafficApp;
-=======
   container: { 
     flex: 1, 
     backgroundColor: '#2B2B2B', 
@@ -548,4 +477,3 @@ export default TrafficApp;
 });
 
 export default Dashboard;
->>>>>>> 7c3b9d078f6c48c4a496c3d52fe85af49ad6547c

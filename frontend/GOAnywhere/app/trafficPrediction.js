@@ -1,20 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  ActivityIndicator, 
-  Alert,
-  Platform
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Switch } from 'react-native';
 import AuthService from './authService';
-import apiConfig from './utils/apiConfig'; // Import as default
+import { useRouter } from 'expo-router';
+import { API_URL, fetchAPI } from './utils/apiConfig';
 
-export default function TrafficPrediction() {
+export default function TrafficPredictionScreen() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -24,6 +14,11 @@ export default function TrafficPrediction() {
   const [startLocation, setStartLocation] = useState('');
   const [destination, setDestination] = useState('');
   const [transportMode, setTransportMode] = useState('driving');
+  const [useCurrentTime, setUseCurrentTime] = useState(true);
+  
+  // User preferences
+  const [avoidCongestion, setAvoidCongestion] = useState(false);
+  const [preferFastest, setPreferFastest] = useState(true);
   
   // Prediction results
   const [prediction, setPrediction] = useState(null);
@@ -35,14 +30,8 @@ export default function TrafficPrediction() {
         const currentUser = await AuthService.getCurrentUser();
         console.log("Current user:", currentUser);
         
-        // Set user only if it's a registered (non-anonymous) user
-        if (currentUser && !currentUser.isAnonymous) {
-          console.log("Setting registered user");
-          setUser(currentUser);
-        } else {
-          console.log("User is anonymous or not logged in");
-          setUser(null); // Ensure user is null for anonymous users
-        }
+        // Since all users are expected to be registered, we'll set the user state
+        setUser(currentUser);
       } catch (err) {
         console.error("Error fetching user:", err);
         setUser(null);
@@ -51,11 +40,20 @@ export default function TrafficPrediction() {
     
     fetchUser();
   }, []);
-
-  const formatDate = (date) => {
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+  
+  const formatLocationForGeocoding = (location) => {
+    // Add "Singapore" to the location if it's not already there
+    if (location && !location.toLowerCase().includes('singapore')) {
+      // Check if it's likely a postal code (6 digits in Singapore)
+      if (/^\d{6}$/.test(location)) {
+        return `${location}, Singapore`;
+      }
+      // Otherwise, append Singapore to the location name
+      return `${location}, Singapore`;
+    }
+    return location;
   };
-
+  
   const handleSubmit = async () => {
     // Validate inputs
     if (!startLocation || !destination) {
@@ -68,200 +66,87 @@ export default function TrafficPrediction() {
     setPrediction(null);
     
     try {
-      // Always use current date and time for prediction
-      const currentTime = new Date();
+      // Format locations for better geocoding results
+      const formattedStartLocation = formatLocationForGeocoding(startLocation);
+      const formattedDestLocation = formatLocationForGeocoding(destination);
       
       // Prepare request payload
       const requestPayload = {
-        start_location: {
-          name: startLocation
-        },
-        destination_location: {
-          name: destination
-        },
-        mode_of_transport: transportMode === 'transit' ? 'public_transport' : transportMode,
-        prediction_time: currentTime.toISOString()
+        start_location: formattedStartLocation,
+        destination_location: formattedDestLocation,
+        transport_mode: transportMode,
+        departure_time: useCurrentTime ? null : new Date().toISOString(),
+        preferences: {
+          avoid_congestion: avoidCongestion,
+          prefer_fastest: preferFastest,
+          avoid_incidents: true
+        }
       };
       
       console.log("Sending request payload:", requestPayload);
       
-      // Set up base request options without auth header
-      const requestOptions = {
+      // Make direct fetch instead of using fetchAPI helper to debug
+      const response = await fetch(`${API_URL}/api/predict/prediction/route`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await AuthService.getToken()}`
         },
         body: JSON.stringify(requestPayload)
-      };
+      });
       
-      // Only add Authorization header if user is logged in and not anonymous
-      if (user && !user.isAnonymous) {
-        try {
-          const token = await AuthService.getToken();
-          if (token) {
-            console.log("Adding auth token to request");
-            requestOptions.headers['Authorization'] = `Bearer ${token}`;
-          }
-        } catch (tokenError) {
-          console.error("Error getting token:", tokenError);
-          // Continue without the token
-        }
-      } else {
-        console.log("No authenticated user, proceeding without token");
-      }
-      
-      // Use the apiConfig directly to get the API URL
-      const apiUrl = apiConfig.getApiUrl();
-      console.log("API URL:", `${apiUrl}/api/predict/traffic`);
-      
-      // Make API request to your backend endpoint
-      const response = await fetch(`${apiUrl}/api/predict/traffic`, requestOptions);
-      
-      // Handle response
-      if (!response.ok) {
-        console.log("Response not OK. Status:", response.status);
-        let errorDetail = "Server error: " + response.status;
-        try {
-          const errorText = await response.text();
-          console.log("Error response text:", errorText);
-          if (errorText) {
-            try {
-              const errorData = JSON.parse(errorText);
-              errorDetail = errorData.detail || 'Failed to fetch prediction';
-            } catch (parseError) {
-              errorDetail = errorText;
-            }
-          }
-        } catch (textError) {
-          console.log("Error getting response text:", textError);
-        }
-        throw new Error(errorDetail);
-      }
-      
-      // Get the response data
       const data = await response.json();
       console.log("RAW prediction response:", JSON.stringify(data, null, 2));
-  
-      // Set the prediction data
+      
+      if (data.error) {
+        // If there's an error field in the response
+        throw new Error(data.error);
+      }
+      
       setPrediction(data);
+
     } catch (err) {
       console.error('Prediction Error:', err);
-      setError(err.message || 'Unable to fetch prediction');
+      
+      if (err.message.includes('geocode')) {
+        // Show more helpful error for geocoding problems
+        setError('Could not find the location. Please try entering a more specific address or postal code in Singapore.');
+      } else {
+        setError(err.message || 'Unable to fetch prediction');
+      }
     } finally {
       setLoading(false);
     }
   };
-
-  // Render prediction for unregistered users
-  const renderBasicPrediction = () => {
+  
+  // Render detailed prediction
+  const renderPrediction = () => {
     if (!prediction) return null;
+    
+    const routes = prediction.routes || [];
+    const mainRoute = routes.length > 0 ? routes[0] : null;
+    const alternativeRoutes = routes.slice(1);
     
     return (
       <View style={styles.predictionContainer}>
         <Text style={styles.sectionTitle}>Traffic Prediction</Text>
         
-        <View style={styles.predictionItem}>
-          <Text style={styles.predictionLabel}>Road Conditions:</Text>
-          <Text style={[
-            styles.predictionValue,
-            prediction.road_conditions === 'Congested' ? styles.redText :
-            prediction.road_conditions === 'Moderate' ? styles.yellowText :
-            styles.greenText
-          ]}>
-            {prediction.road_conditions || "Clear"}
-          </Text>
-        </View>
-        
-        <View style={styles.predictionItem}>
-          <Text style={styles.predictionLabel}>Possible Delays:</Text>
-          <Text style={[
-            styles.predictionValue,
-            prediction.possible_delays === 'Yes' ? styles.redText : styles.greenText
-          ]}>
-            {prediction.possible_delays || "No"}
-          </Text>
-        </View>
-        
-        <View style={styles.predictionItem}>
-          <Text style={styles.predictionLabel}>Weather Conditions:</Text>
-          <Text style={styles.predictionValue}>{prediction.weather_conditions || "Clear"}</Text>
-        </View>
-        
-        {!user && (
-          <TouchableOpacity 
-            style={styles.registerButton}
-            onPress={() => router.push('/login')}
-          >
-            <Text style={styles.registerButtonText}>Register for detailed predictions</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
-  
-  // Render detailed prediction for registered users
-  const renderDetailedPrediction = () => {
-    if (!prediction || !user) return null;
-    
-    console.log("Rendering detailed prediction with:", prediction);
-    return (
-      <View style={styles.predictionContainer}>
-        <Text style={styles.sectionTitle}>Detailed Traffic Prediction</Text>
-        
-        {/* Basic Info Summary at Top */}
-        <View style={styles.basicInfoCard}>
-          <View style={styles.basicInfoItem}>
-            <Text style={styles.basicInfoLabel}>Road Conditions:</Text>
-            <Text style={[
-              styles.basicInfoValue,
-              prediction.road_conditions === 'Congested' ? styles.redText :
-              prediction.road_conditions === 'Moderate' ? styles.yellowText :
-              styles.greenText
-            ]}>
-              {prediction.road_conditions}
-            </Text>
-          </View>
-          
-          <View style={styles.basicInfoItem}>
-            <Text style={styles.basicInfoLabel}>Weather:</Text>
-            <Text style={styles.basicInfoValue}>{prediction.weather_conditions}</Text>
-          </View>
-          
-          <View style={styles.basicInfoItem}>
-            <Text style={styles.basicInfoLabel}>Recommendation:</Text>
-            <Text style={[
-              styles.basicInfoValue,
-              prediction.general_travel_recommendation === 'Ideal' ? styles.greenText : styles.redText
-            ]}>
-              {prediction.general_travel_recommendation || "Unavailable"}
-            </Text>
-          </View>
-        </View>
-        
-        {/* Road Conditions Probability */}
+        {/* Traffic Condition */}
         <View style={styles.detailSection}>
-          <Text style={styles.detailTitle}>Road Conditions Probability</Text>
+          <Text style={styles.detailTitle}>Traffic Condition</Text>
           
-          {prediction.road_conditions_probability && Object.keys(prediction.road_conditions_probability).length > 0 ? (
-            Object.entries(prediction.road_conditions_probability).map(([condition, probability]) => (
-              <View key={condition} style={styles.probabilityItem}>
-                <Text style={styles.conditionLabel}>{condition}:</Text>
-                <View style={styles.probabilityBar}>
-                  <View 
-                    style={[
-                      styles.probabilityFill, 
-                      { width: `${probability}%` },
-                      condition === 'Congested' ? styles.congested : 
-                      condition === 'Moderate' ? styles.moderate : 
-                      styles.clear
-                    ]}
-                  />
-                </View>
-                <Text style={styles.probabilityText}>{probability}%</Text>
-              </View>
-            ))
+          {mainRoute ? (
+            <View style={styles.trafficLevelContainer}>
+              <Text style={[
+                styles.trafficLevel,
+                mainRoute.traffic_level === 'Heavy' || mainRoute.traffic_level === 'Severe' ? styles.congested :
+                mainRoute.traffic_level === 'Moderate' ? styles.moderate : styles.clear
+              ]}>
+                {mainRoute.traffic_level || "Unknown"}
+              </Text>
+            </View>
           ) : (
-            <Text style={styles.noDataText}>No probability data available</Text>
+            <Text style={styles.noDataText}>No traffic data available</Text>
           )}
         </View>
         
@@ -269,33 +154,77 @@ export default function TrafficPrediction() {
         <View style={styles.detailSection}>
           <Text style={styles.detailTitle}>Estimated Travel Time</Text>
           
-          <View style={styles.timeItem}>
-            <Text style={styles.timeLabel}>Estimated Time:</Text>
-            <Text style={styles.timeValue}>
-              {prediction.estimated_travel_time ? `${prediction.estimated_travel_time} min` : 'Not available'}
-            </Text>
-          </View>
+          {mainRoute ? (
+            <>
+              <View style={styles.timeItem}>
+                <Text style={styles.timeLabel}>Normal Travel Time:</Text>
+                <Text style={styles.timeValue}>{mainRoute.normal_travel_time_minutes} min</Text>
+              </View>
+              
+              <View style={styles.timeItem}>
+                <Text style={styles.timeLabel}>Estimated Travel Time:</Text>
+                <Text style={styles.timeValue}>{mainRoute.estimated_travel_time_minutes} min</Text>
+              </View>
+              
+              {mainRoute.estimated_travel_time_minutes > mainRoute.normal_travel_time_minutes && (
+                <View style={styles.timeItem}>
+                  <Text style={styles.timeLabel}>Expected Delay:</Text>
+                  <Text style={[styles.timeValue, styles.delayText]}>
+                    +{mainRoute.estimated_travel_time_minutes - mainRoute.normal_travel_time_minutes} min
+                  </Text>
+                </View>
+              )}
+              
+              <View style={styles.timeItem}>
+                <Text style={styles.timeLabel}>Distance:</Text>
+                <Text style={styles.timeValue}>{mainRoute.distance_km} km</Text>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.noDataText}>No travel time data available</Text>
+          )}
         </View>
         
+        {/* Main Route Segments */}
+        {mainRoute && mainRoute.segments && mainRoute.segments.length > 0 && (
+          <View style={styles.detailSection}>
+            <Text style={styles.detailTitle}>Main Route Segments</Text>
+            
+            {mainRoute.segments.map((segment, index) => (
+              <View key={index} style={styles.segmentItem}>
+                <Text style={styles.segmentName}>{segment.name}</Text>
+                <View style={styles.segmentDetails}>
+                  <Text style={styles.segmentDistance}>{segment.distance_km} km</Text>
+                  <Text style={[
+                    styles.segmentTraffic,
+                    segment.traffic_level === 'Heavy' ? styles.congested :
+                    segment.traffic_level === 'Moderate' ? styles.moderate : styles.clear
+                  ]}>
+                    {segment.traffic_level}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+        
         {/* Alternative Routes */}
-        {prediction.alternative_routes && prediction.alternative_routes.length > 0 && (
+        {alternativeRoutes.length > 0 && (
           <View style={styles.detailSection}>
             <Text style={styles.detailTitle}>Alternative Routes</Text>
             
-            {prediction.alternative_routes.map((route, index) => (
+            {alternativeRoutes.map((route, index) => (
               <View key={index} style={styles.routeItem}>
                 <Text style={styles.routeName}>{route.name}</Text>
-                <Text style={styles.routeTime}>Est. Time: {route.estimated_time_min} min</Text>
-                {route.congestion_level && (
-                  <Text style={[
-                    styles.routeCongestion,
-                    route.congestion_level === 'Low' ? styles.greenText :
-                    route.congestion_level === 'Moderate' ? styles.yellowText :
-                    styles.redText
-                  ]}>
-                    Congestion: {route.congestion_level}
-                  </Text>
-                )}
+                <Text style={styles.routeTime}>Est. Time: {route.estimated_travel_time_minutes} min</Text>
+                <Text style={styles.routeDistance}>Distance: {route.distance_km} km</Text>
+                <Text style={[
+                  styles.routeTraffic,
+                  route.traffic_level === 'Heavy' || route.traffic_level === 'Severe' ? styles.heavyTraffic :
+                  route.traffic_level === 'Moderate' ? styles.moderateTraffic : styles.lightTraffic
+                ]}>
+                  Traffic: {route.traffic_level}
+                </Text>
                 {route.description && <Text style={styles.routeDescription}>{route.description}</Text>}
               </View>
             ))}
@@ -303,43 +232,43 @@ export default function TrafficPrediction() {
         )}
         
         {/* Incident Alerts */}
-        {prediction.incident_alerts && prediction.incident_alerts.length > 0 && (
+        {prediction.incident_summary && prediction.incident_summary.count > 0 && (
           <View style={styles.detailSection}>
             <Text style={styles.detailTitle}>Incident Alerts</Text>
             
-            {prediction.incident_alerts.map((incident, index) => (
+            <Text style={styles.incidentSummary}>{prediction.incident_summary.summary}</Text>
+            
+            {prediction.incident_summary.incidents && prediction.incident_summary.incidents.map((incident, index) => (
               <View key={index} style={styles.incidentItem}>
-                <Text style={styles.incidentType}>{incident.type}</Text>
-                <Text style={styles.incidentMessage}>{incident.message}</Text>
-                {incident.distance_from_start && (
-                  <Text style={styles.incidentDistance}>
-                    {incident.distance_from_start} km from start
-                  </Text>
-                )}
+                <Text style={styles.incidentType}>{incident.type || 'Incident'}</Text>
+                <Text style={styles.incidentMessage}>{incident.message || incident.location?.road_name}</Text>
+                <Text style={styles.incidentSeverity}>Severity: {incident.severity || 'Unknown'}</Text>
               </View>
             ))}
           </View>
         )}
         
-        {/* Weather Recommendations */}
-        {prediction.weather_based_recommendations && prediction.weather_based_recommendations.length > 0 && (
+        {/* Weather Impact */}
+        {prediction.weather_summary && (
           <View style={styles.detailSection}>
-            <Text style={styles.detailTitle}>Weather Recommendations</Text>
+            <Text style={styles.detailTitle}>Weather Impact</Text>
             
-            {prediction.weather_based_recommendations.map((recommendation, index) => (
-              <Text key={index} style={styles.recommendationText}>• {recommendation}</Text>
-            ))}
+            <View style={styles.weatherItem}>
+              <Text style={styles.weatherCondition}>{prediction.weather_summary.condition}</Text>
+              {prediction.weather_summary.temperature && (
+                <Text style={styles.weatherTemp}>{prediction.weather_summary.temperature}°C</Text>
+              )}
+              <Text style={styles.weatherImpact}>{prediction.weather_summary.impact}</Text>
+            </View>
           </View>
         )}
         
-        {/* General Travel Recommendation */}
-        <View style={styles.detailSection}>
-          <Text style={styles.detailTitle}>Travel Recommendation</Text>
-          <Text style={[
-            styles.recommendationValue,
-            prediction.general_travel_recommendation === 'Ideal' ? styles.idealTravel : styles.notIdealTravel
-          ]}>
-            {prediction.general_travel_recommendation || "No recommendation available"}
+        {/* Natural Language Recommendation */}
+        <View style={styles.recommendationSection}>
+          <Text style={styles.recommendationTitle}>Recommendation</Text>
+          <Text style={styles.recommendationText}>
+            {prediction.recommendation || 
+             "Based on current conditions, follow the main route and allow extra time for potential delays."}
           </Text>
         </View>
       </View>
@@ -355,7 +284,7 @@ export default function TrafficPrediction() {
           <Text style={styles.label}>Start Location</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter starting point"
+            placeholder="Enter starting point (e.g., Blk 162 Mei Ling Street Singapore 140162)"
             value={startLocation}
             onChangeText={setStartLocation}
           />
@@ -365,7 +294,7 @@ export default function TrafficPrediction() {
           <Text style={styles.label}>Destination</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter destination"
+            placeholder="Enter destination (e.g., Orchard MRT Station Singapore)"
             value={destination}
             onChangeText={setDestination}
           />
@@ -384,10 +313,10 @@ export default function TrafficPrediction() {
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={[styles.modeButton, transportMode === 'transit' && styles.modeButtonSelected]} 
-              onPress={() => setTransportMode('transit')}
+              style={[styles.modeButton, transportMode === 'public_transport' && styles.modeButtonSelected]} 
+              onPress={() => setTransportMode('public_transport')}
             >
-              <Text style={[styles.modeButtonText, transportMode === 'transit' && styles.modeButtonTextSelected]}>
+              <Text style={[styles.modeButtonText, transportMode === 'public_transport' && styles.modeButtonTextSelected]}>
                 Public Transport
               </Text>
             </TouchableOpacity>
@@ -395,15 +324,49 @@ export default function TrafficPrediction() {
         </View>
         
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Date & Time for Prediction</Text>
+          <View style={styles.timeSelectHeader}>
+            <Text style={styles.label}>Departure Time</Text>
+            <View style={styles.switchContainer}>
+              <Text style={styles.switchLabel}>Use current time</Text>
+              <Switch
+                value={useCurrentTime}
+                onValueChange={setUseCurrentTime}
+                trackColor={{ false: "#767577", true: "#81b0ff" }}
+                thumbColor={useCurrentTime ? "#3498db" : "#f4f3f4"}
+              />
+            </View>
+          </View>
+          
           <View style={styles.dateButton}>
-            <Text style={styles.dateButtonText}>
-              {formatDate(new Date())} (Current time)
+            <Text style={[styles.dateButtonText, useCurrentTime && styles.disabledText]}>
+              {useCurrentTime ? "Current Time" : "Future departure is not available yet"}
             </Text>
           </View>
-          <Text style={styles.dateHelpText}>
-            Predictions are based on current conditions
-          </Text>
+        </View>
+        
+        {/* User Preferences Section */}
+        <View style={styles.preferencesContainer}>
+          <Text style={styles.preferencesTitle}>Route Preferences</Text>
+          
+          <View style={styles.preferenceItem}>
+            <Text style={styles.preferenceLabel}>Avoid congested roads</Text>
+            <Switch
+              value={avoidCongestion}
+              onValueChange={setAvoidCongestion}
+              trackColor={{ false: "#767577", true: "#81b0ff" }}
+              thumbColor={avoidCongestion ? "#3498db" : "#f4f3f4"}
+            />
+          </View>
+          
+          <View style={styles.preferenceItem}>
+            <Text style={styles.preferenceLabel}>Prefer fastest routes</Text>
+            <Switch
+              value={preferFastest}
+              onValueChange={setPreferFastest}
+              trackColor={{ false: "#767577", true: "#81b0ff" }}
+              thumbColor={preferFastest ? "#3498db" : "#f4f3f4"}
+            />
+          </View>
         </View>
         
         <TouchableOpacity 
@@ -425,13 +388,7 @@ export default function TrafficPrediction() {
         )}
       </View>
       
-      {prediction && (
-        <>
-          {/* Log what view we're showing for debugging */}
-          {console.log("Showing prediction for user type:", user ? "registered" : "unregistered")}
-          {user ? renderDetailedPrediction() : renderBasicPrediction()}
-        </>
-      )}
+      {prediction && renderPrediction()}
     </ScrollView>
   );
 }
@@ -500,21 +457,56 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
+  timeSelectHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  switchLabel: {
+    marginRight: 10,
+    fontSize: 14,
+  },
   dateButton: {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 5,
     padding: 12,
-    backgroundColor: '#f5f5f5', // Light gray background to indicate non-interactive
+    backgroundColor: '#f5f5f5',
   },
   dateButtonText: {
     fontSize: 16,
   },
-  dateHelpText: {
-    fontSize: 12,
-    color: '#777',
-    marginTop: 4,
-    fontStyle: 'italic',
+  disabledText: {
+    color: '#888',
+  },
+  // Preferences styles
+  preferencesContainer: {
+    marginTop: 10,
+    marginBottom: 15,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+  },
+  preferencesTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  preferenceItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  preferenceLabel: {
+    fontSize: 15,
   },
   submitButton: {
     backgroundColor: '#3498db',
@@ -565,54 +557,6 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: 'center',
   },
-  predictionItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  predictionLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  predictionValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  registerButton: {
-    backgroundColor: '#3498db',
-    padding: 12,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  registerButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  
-  // Basic info card for registered users
-  basicInfoCard: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 20,
-    flexDirection: 'column',
-  },
-  basicInfoItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 5,
-  },
-  basicInfoLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  basicInfoValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
   
   // Detailed Prediction Styling
   detailSection: {
@@ -628,36 +572,19 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
   },
   
-  // Probability Items
-  probabilityItem: {
-    marginBottom: 8,
+  // Traffic Condition
+  trafficLevelContainer: {
+    alignItems: 'center',
+    padding: 10,
   },
-  conditionLabel: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  probabilityBar: {
-    height: 15,
-    backgroundColor: '#e0e0e0',
+  trafficLevel: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    padding: 15,
     borderRadius: 10,
     overflow: 'hidden',
-  },
-  probabilityFill: {
-    height: '100%',
-  },
-  congested: {
-    backgroundColor: '#e74c3c',
-  },
-  moderate: {
-    backgroundColor: '#f39c12',
-  },
-  clear: {
-    backgroundColor: '#2ecc71',
-  },
-  probabilityText: {
-    fontSize: 12,
-    textAlign: 'right',
-    marginTop: 2,
+    textAlign: 'center',
+    width: '80%',
   },
   
   // Time Items
@@ -675,6 +602,35 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
   },
+  delayText: {
+    color: '#e74c3c',
+  },
+  
+  // Route Segments
+  segmentItem: {
+    marginBottom: 8,
+    padding: 8,
+    backgroundColor: 'white',
+    borderRadius: 5,
+  },
+  segmentName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  segmentDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  segmentDistance: {
+    fontSize: 14,
+  },
+  segmentTraffic: {
+    fontSize: 14,
+    fontWeight: '500',
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
   
   // Route Items
   routeItem: {
@@ -691,12 +647,26 @@ const styles = StyleSheet.create({
   },
   routeTime: {
     fontSize: 14,
-    color: '#555',
     marginTop: 2,
   },
-  routeCongestion: {
-    fontSize: 14, 
+  routeDistance: {
+    fontSize: 14,
     marginTop: 2,
+    color: '#555',
+  },
+  routeTraffic: {
+    fontSize: 14,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  heavyTraffic: {
+    color: '#e74c3c',
+  },
+  moderateTraffic: {
+    color: '#f39c12',
+  },
+  lightTraffic: {
+    color: '#2ecc71',
   },
   routeDescription: {
     fontSize: 14,
@@ -705,6 +675,14 @@ const styles = StyleSheet.create({
   },
   
   // Incident Items
+  incidentSummary: {
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 10,
+    padding: 8,
+    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+    borderRadius: 5,
+  },
   incidentItem: {
     marginBottom: 10,
     padding: 10,
@@ -722,45 +700,65 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
   },
-  incidentDistance: {
-    fontSize: 12,
+  incidentSeverity: {
+    fontSize: 13,
     marginTop: 4,
-    color: '#777',
     fontStyle: 'italic',
   },
   
-  // Weather Recommendations
-  recommendationText: {
-    fontSize: 14,
-    marginBottom: 5,
-    lineHeight: 20,
-  },
-  
-  // General Travel Recommendation
-  recommendationValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    paddingVertical: 8,
+  // Weather Items
+  weatherItem: {
+    padding: 10,
+    alignItems: 'center',
+    backgroundColor: 'white',
     borderRadius: 5,
   },
-  idealTravel: {
-    color: '#2ecc71',
-    backgroundColor: 'rgba(46, 204, 113, 0.1)',
+  weatherCondition: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 5,
   },
-  notIdealTravel: {
-    color: '#e74c3c',
-    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+  weatherTemp: {
+    fontSize: 15,
+    marginBottom: 5,
+  },
+  weatherImpact: {
+    fontSize: 14,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   
-  // Text colors
-  redText: {
+  // Recommendation
+  recommendationSection: {
+    backgroundColor: '#e8f4fd',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  recommendationTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  recommendationText: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  
+  // Common styles
+  congested: {
+    backgroundColor: 'rgba(231, 76, 60, 0.2)',
     color: '#e74c3c',
   },
-  yellowText: {
+  moderate: {
+    backgroundColor: 'rgba(243, 156, 18, 0.2)',
     color: '#f39c12',
   },
-  greenText: {
+  clear: {
+    backgroundColor: 'rgba(46, 204, 113, 0.2)',
     color: '#2ecc71',
   },
   

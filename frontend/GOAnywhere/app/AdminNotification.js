@@ -1,10 +1,12 @@
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Button, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 const Notification = () => {
   const [notifications, setNotifications] = useState([]);
+  const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   useEffect(() => {
     const exampleNotifications = [
@@ -15,6 +17,8 @@ const Notification = () => {
         title: 'Heavy Traffic Reported',
         message: 'Heavy traffic reported on PIE (Tuas bound)',
         timeCategory: 'today',
+        type: 'driver',
+        status: 'pending',
       },
       {
         id: 2,
@@ -23,6 +27,8 @@ const Notification = () => {
         title: 'Moderate Traffic Reported',
         message: 'Moderate traffic reported on PIE (Tuas bound)',
         timeCategory: 'today',
+        type: 'public',
+        status: 'accepted',
       },
       {
         id: 3,
@@ -31,6 +37,8 @@ const Notification = () => {
         title: 'Bad Weather Reported',
         message: 'Flash Floods Reported along Upper Bukit Timah Road.',
         timeCategory: 'yesterday',
+        type: 'public',
+        status: 'flagged',
       },
       {
         id: 4,
@@ -39,34 +47,19 @@ const Notification = () => {
         title: 'Traffic Incident Reported',
         message: 'Accident reported along Upper Bukit Timah Road.',
         timeCategory: '2days',
-      },
-      {
-        id: 5,
-        icon: 'alert-circle',
-        iconColor: '#000000',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
-      },
-      {
-        id: 6,
-        icon: 'alert-circle',
-        iconColor: '#000000',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
-      },
-      {
-        id: 7,
-        icon: 'alert-circle',
-        iconColor: '#000000',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
+        type: 'driver',
+        status: 'pending',
       },
     ];
     setNotifications(exampleNotifications);
   }, []);
+
+  const handleStatusChange = (id, newStatus) => {
+    const updated = notifications.map((item) =>
+      item.id === id ? { ...item, status: newStatus } : item
+    );
+    setNotifications(updated);
+  };
 
   const renderCard = (item, index) => (
     <View key={index} style={styles.notificationCard}>
@@ -74,6 +67,11 @@ const Notification = () => {
       <View style={{ flex: 1 }}>
         <Text style={styles.notificationTitle}>{item.title}</Text>
         <Text style={styles.notificationMessage}>{item.message}</Text>
+        <Text style={styles.notificationTime}>Type: {item.type} | Status: {item.status}</Text>
+        <View style={styles.actionButtons}>
+          <Button title="Accept" onPress={() => handleStatusChange(item.id, 'accepted')} />
+          <Button title="Flag" onPress={() => handleStatusChange(item.id, 'flagged')} color="#D9534F" />
+        </View>
       </View>
     </View>
   );
@@ -84,15 +82,33 @@ const Notification = () => {
     '2days': [],
   };
 
-  notifications.forEach((notif) => {
-    if (grouped[notif.timeCategory]) {
-      grouped[notif.timeCategory].push(notif);
-    }
-  });
+  notifications
+    .filter((n) => (filterType === 'all' || n.type === filterType) && (filterStatus === 'all' || n.status === filterStatus))
+    .forEach((notif) => {
+      if (grouped[notif.timeCategory]) {
+        grouped[notif.timeCategory].push(notif);
+      }
+    });
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Notifications</Text>
+      <Text style={styles.title}>Traffic Incidents</Text>
+
+      <View style={styles.filterContainer}>
+        <Text>Filter Type:</Text>
+        {['all', 'driver', 'public'].map((type) => (
+          <TouchableOpacity key={type} onPress={() => setFilterType(type)} style={styles.filterBtn}>
+            <Text style={{ color: filterType === type ? 'blue' : '#000' }}>{type}</Text>
+          </TouchableOpacity>
+        ))}
+        <Text>Filter Status:</Text>
+        {['all', 'pending', 'accepted', 'flagged'].map((status) => (
+          <TouchableOpacity key={status} onPress={() => setFilterStatus(status)} style={styles.filterBtn}>
+            <Text style={{ color: filterStatus === status ? 'blue' : '#000' }}>{status}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <ScrollView contentContainerStyle={styles.notificationContainer}>
         {grouped.today.length > 0 && (
           <>
@@ -129,7 +145,20 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     marginBottom: 20,
+    gap: 10,
+  },
+  filterBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderRadius: 6,
+    marginRight: 5,
   },
   notificationContainer: {
     paddingBottom: 20,
@@ -151,11 +180,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
   },
+  notificationTime: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 5,
+  },
   sectionHeader: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 8,
     marginTop: 20,
     color: '#555',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginTop: 10,
+    gap: 10,
   },
 });

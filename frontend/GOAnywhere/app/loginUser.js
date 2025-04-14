@@ -1,63 +1,32 @@
-// app/loginUser.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+} from 'react-native';
 import AuthService from './authService';
+import { useNavigation } from '@react-navigation/native';
 
 export default function LoginUser() {
-  const router = useRouter();
-  const [isLogin, setIsLogin] = useState(true);
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Handle form submission (login or signup)
-  const handleSubmit = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Email and password are required');
-      return;
-    }
+  //sign up page
+  const navigation = useNavigation();
 
+  const handleLogin = async () => {
     setLoading(true);
     try {
-      let userData;
-      
-      if (isLogin) {
-        // Handle login
-        userData = await AuthService.login(email, password);
-      } else {
-        // Handle signup
-        userData = await AuthService.signUp(email, password, name, phoneNumber);
-      }
-      
-      // Fetch additional user info after successful authentication
-      try {
-        await AuthService.getUserInfo();
-      } catch (infoError) {
-        console.log('Non-critical error fetching user info:', infoError);
-        // Continue with navigation even if this fails
-      }
-      
-      router.replace('/home');
+      const userData = await AuthService.login(email, password);
+      console.log('Logged in:', userData);
+      // Navigate to your main/home screen here
     } catch (error) {
-      console.error(isLogin ? 'Login error:' : 'Signup error:', error);
-      // AuthService already shows an alert on error
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle anonymous login
-  const handleAnonymousLogin = async () => {
-    setLoading(true);
-    try {
-      await AuthService.loginAnonymously();
-      router.replace('/home');
-    } catch (error) {
-      console.error('Anonymous login error:', error);
-      // AuthService already shows an alert on error
+      console.error('Login failed:', error.message);
+      // Show toast or alert here
     } finally {
       setLoading(false);
     }
@@ -65,19 +34,8 @@ export default function LoginUser() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{isLogin ? 'Login' : 'Sign Up'}</Text>
-      
-      {/* Name input (signup only) */}
-      {!isLogin && (
-        <TextInput
-          style={styles.input}
-          placeholder="Name (optional)"
-          value={name}
-          onChangeText={setName}
-          editable={!loading}
-        />
-      )}
-      
+      <Text style={styles.title}>Login</Text>
+
       {/* Email input */}
       <TextInput
         style={styles.input}
@@ -87,20 +45,9 @@ export default function LoginUser() {
         keyboardType="email-address"
         autoCapitalize="none"
         editable={!loading}
+        placeholderTextColor="#999"
       />
-      
-      {/* Phone number input (signup only) */}
-      {!isLogin && (
-        <TextInput
-          style={styles.input}
-          placeholder="Phone Number (optional)"
-          value={phoneNumber}
-          onChangeText={setPhoneNumber}
-          keyboardType="phone-pad"
-          editable={!loading}
-        />
-      )}
-      
+
       {/* Password input */}
       <TextInput
         style={styles.input}
@@ -109,35 +56,23 @@ export default function LoginUser() {
         onChangeText={setPassword}
         secureTextEntry
         editable={!loading}
+        placeholderTextColor="#999"
       />
-      
-      {/* Login/Signup button */}
-      <TouchableOpacity 
+
+      {/* Login button */}
+      <TouchableOpacity
         style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleSubmit}
+        onPress={handleLogin}
         disabled={loading}
       >
         {loading ? (
           <ActivityIndicator color="#fff" size="small" />
         ) : (
-          <Text style={styles.buttonText}>{isLogin ? 'Login' : 'Sign Up'}</Text>
+          <Text style={styles.buttonText}>Login</Text>
         )}
       </TouchableOpacity>
-      
-      {/* Toggle login/signup */}
-      <TouchableOpacity onPress={() => setIsLogin(!isLogin)} disabled={loading}>
-        <Text style={styles.toggleText}>
-          {isLogin ? 'New user? Sign up' : 'Already have an account? Login'}
-        </Text>
-      </TouchableOpacity>
-      
-      {/* Anonymous login */}
-      <TouchableOpacity 
-        style={[styles.anonymousButton, loading && styles.buttonDisabled]}
-        onPress={handleAnonymousLogin}
-        disabled={loading}
-      >
-        <Text style={styles.anonymousButtonText}>Continue without an account</Text>
+      <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+        <Text style={styles.signupText}>Don’t have an account? Sign up</Text>
       </TouchableOpacity>
     </View>
   );
@@ -176,19 +111,9 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-  toggleText: {
+  signupText: {
     textAlign: 'center',
     color: '#3498db',
-    marginBottom: 20,
-  },
-  anonymousButton: {
-    padding: 15,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    alignItems: 'center',
-  },
-  anonymousButtonText: {
-    color: '#777',
-  },
+    textDecorationLine: 'underline',
+  }
 });

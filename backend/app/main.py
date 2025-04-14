@@ -12,8 +12,8 @@ from app.p2pnavigation import router as p2pnavigation_router  # Import the p2pna
 from app.notifications import router as notifications_router # Import the notifications router
 from app.crowdsourced import router as crowd_router
 from dotenv import load_dotenv
-load_dotenv()
 
+load_dotenv()
 
 # Initialize FastAPI
 app = FastAPI()

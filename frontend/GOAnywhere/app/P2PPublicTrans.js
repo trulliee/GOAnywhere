@@ -23,7 +23,6 @@ const transitModes = [
   },
 ];
 
-
 const P2PPublicTrans = async (startLocation, endLocation) => {
   if (!startLocation || !endLocation) {
     alert('Please enter both origin and destination.');
@@ -35,24 +34,21 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
       const [lat, lng] = address.split(',').map(Number);
       return { lat, lng };
     }
-  
+
     const formattedAddress = address.toLowerCase().includes("singapore")
       ? address
       : `${address}, Singapore`;
-  
+
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(formattedAddress)}&key=${GOOGLE_MAPS_API_KEY}`;
     const response = await axios.get(url);
-  
+
     if (!response.data.results || response.data.results.length === 0) {
       Alert.alert("Invalid Location", `Could not find location for: "${address}"`);
       throw new Error(`No geocoding result for address: ${address}`);
     }
-  
+
     return response.data.results[0].geometry.location;
   };
-  
-  
-  
 
   try {
     const originCoords = await getCoordinates(startLocation);
@@ -60,17 +56,16 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
 
     const results = await Promise.all(transitModes.map(async ({ label, options }) => {
       const baseUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${originCoords.lat},${originCoords.lng}&destination=${destinationCoords.lat},${destinationCoords.lng}&mode=transit&departure_time=now&key=${GOOGLE_MAPS_API_KEY}`;
-      const fullUrl = options ? `${baseUrl}&${options}` : baseUrl;      
+      const fullUrl = options ? `${baseUrl}&${options}` : baseUrl;
       const response = await axios.get(fullUrl);
       const route = response.data.routes[0];
 
       if (!route || !route.legs || !route.legs[0]?.steps) return null;
-      
+
       const hasTransit = route.legs[0].steps.some(
         step => step.travel_mode === 'TRANSIT'
       );
       if (!hasTransit) return null;
-      
 
       const decodedPolyline = polyline.decode(route.overview_polyline.points)
         .map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
@@ -86,8 +81,29 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
           headsign: step.transit_details.headsign,
           numStops: step.transit_details.num_stops,
           vehicleType: step.transit_details.line.vehicle.type,
+          departureCoords: step.transit_details.departure_stop.location,
+          arrivalCoords: step.transit_details.arrival_stop.location,
         } : null,
       }));
+
+      const allMarkers = [
+        { latitude: originCoords.lat, longitude: originCoords.lng, title: 'Start' },
+        { latitude: destinationCoords.lat, longitude: destinationCoords.lng, title: 'Destination' },
+        ...steps
+          .filter(s => s.transitInfo)
+          .flatMap(s => [
+            {
+              latitude: s.transitInfo.departureCoords.lat,
+              longitude: s.transitInfo.departureCoords.lng,
+              title: `Board at ${s.transitInfo.departureStop}`,
+            },
+            {
+              latitude: s.transitInfo.arrivalCoords.lat,
+              longitude: s.transitInfo.arrivalCoords.lng,
+              title: `Alight at ${s.transitInfo.arrivalStop}`,
+            }
+          ])
+      ];
 
       return {
         summary: label,
@@ -95,13 +111,9 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
         duration: route.legs[0].duration.text,
         steps,
         polyline: decodedPolyline,
-        markers: [
-          { latitude: originCoords.lat, longitude: originCoords.lng, title: 'Start' },
-          { latitude: destinationCoords.lat, longitude: destinationCoords.lng, title: 'Destination' },
-        ]
+        markers: allMarkers,
       };
     }));
-    
 
     const validRoutes = results.filter(route => route !== null);
 

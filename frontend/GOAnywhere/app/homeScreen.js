@@ -70,6 +70,17 @@ export default function HomeScreen() {
     "Weather", "Hazard", "Traffic Police",
     "Delays", "Map Issue"
   ];
+  const categoryIcons = {
+    "Accident": { name: "skull-outline", library: "Ionicons" },              
+    "Road Works": { name: "construct", library: "Ionicons" },               
+    "Transit Works": { name: "train", library: "FontAwesome" },             
+    "High Crowd": { name: "people", library: "Ionicons" },                  
+    "Weather": { name: "rainy", library: "Ionicons" },                      
+    "Hazard": { name: "exclamation-triangle", library: "FontAwesome" },     
+    "Traffic Police": { name: "shield-checkmark", library: "Ionicons" },    
+    "Delays": { name: "time", library: "Ionicons" },                        
+    "Map Issue": { name: "map", library: "FontAwesome" }                    
+  };
   const savedLocations = [
     { name: 'Home', icon: 'home' },
     { name: 'Work', icon: 'briefcase' },
@@ -416,6 +427,15 @@ export default function HomeScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
+      {!isSidebarVisible && (
+        <TouchableOpacity 
+          style={styles.hamburgerButton}
+          onPress={showSidebar}
+        >
+          <Ionicons name="menu" size={28} color="#000" />
+        </TouchableOpacity>
+      )}
+
       {/* Dark overlay when sidebar is visible */}
       {isSidebarVisible ? (
         <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
@@ -426,7 +446,13 @@ export default function HomeScreen() {
       {/* Crowdsourced Button */}
       {isCrowdModalVisible && (
         <TouchableOpacity style={styles.modalOverlay} onPress={hideCrowdModal} activeOpacity={1}>
-          <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
+          <Animated.View style={[
+            styles.bottomSheet,
+            { 
+              transform: [{ translateY: slideAnim }],
+              alignSelf: 'stretch'
+            }
+          ]}>
             <Text style={styles.sheetTitle}>Report As</Text>
             <TouchableOpacity style={styles.sheetButton} onPress={() => {
               handleReportModeSelect('driver');
@@ -444,7 +470,9 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
       {reportMode && (
-        <View style={styles.modalOverlay}>
+        <TouchableWithoutFeedback onPress={() => setReportMode(null)}>
+  <View style={styles.modalOverlay}>
+    <TouchableWithoutFeedback>
           <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
             <Text style={styles.sheetTitle}>
               {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
@@ -453,36 +481,56 @@ export default function HomeScreen() {
             {reportMode === 'driver' && (
               <View style={styles.reportCategoryContainer}>
                 {driverCategories.map((category, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.reportButton}
-                    onPress={() => submitCrowdsourcedReport(category)}
-                  >
-                    <Text style={styles.buttonText}>{category}</Text>
-                  </TouchableOpacity>
-                ))}
+                <TouchableOpacity
+                  key={index}
+                  style={styles.reportButton}
+                  onPress={() => submitCrowdsourcedReport(category)}
+                >
+                  {(() => {
+                    const iconInfo = categoryIcons[category] || {};
+                    const IconComponent = iconInfo.library === "FontAwesome" ? require('@expo/vector-icons').FontAwesome : Ionicons;
+                    return (
+                      <IconComponent
+                        name={iconInfo.name || "help-circle"}
+                        size={28}
+                        style={{ marginBottom: 5 }}
+                      />
+                    );
+                  })()}
+                  <Text style={styles.buttonText}>{category}</Text>
+                </TouchableOpacity>
+              ))}
               </View>
             )}
 
             {reportMode === 'public' && (
               <View style={styles.reportCategoryContainer}>
                 {publicCategories.map((category, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.reportButton}
-                    onPress={() => submitCrowdsourcedReport(category)}
-                  >
-                    <Text style={styles.buttonText}>{category}</Text>
-                  </TouchableOpacity>
-                ))}
+                <TouchableOpacity
+                  key={index}
+                  style={styles.reportButton}
+                  onPress={() => submitCrowdsourcedReport(category)}
+                >
+                  {(() => {
+                    const iconInfo = categoryIcons[category] || {};
+                    const IconComponent = iconInfo.library === "FontAwesome" ? require('@expo/vector-icons').FontAwesome : Ionicons;
+                    return (
+                      <IconComponent
+                        name={iconInfo.name || "help-circle"}
+                        size={28}
+                        style={{ marginBottom: 5 }}
+                      />
+                    );
+                  })()}
+                  <Text style={styles.buttonText}>{category}</Text>
+                </TouchableOpacity>
+              ))}
               </View>
             )}
-
-            <TouchableOpacity onPress={() => setReportMode(null)} style={styles.sheetButton}>
-              <Text style={styles.sheetButtonText}>Cancel</Text>
-            </TouchableOpacity>
           </Animated.View>
-        </View>
+        </TouchableWithoutFeedback>
+  </View>
+</TouchableWithoutFeedback>
       )}
 
       {/* Sidebar */}
@@ -782,7 +830,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 2 },
     position: 'absolute',
-    bottom: 50, // adjust based on your layout
+    bottom: 50, 
     left: 0,
     right: 0,
     zIndex: 10,
@@ -861,8 +909,8 @@ const styles = StyleSheet.create({
     right: 20,
     width: 60,
     height: 60,
-    backgroundColor: '#4A4A4A', // dark grey
-    borderRadius: 15, // rounded edges
+    backgroundColor: '#4A4A4A', 
+    borderRadius: 15, 
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 5, // for Android shadow
@@ -918,11 +966,23 @@ const styles = StyleSheet.create({
   
   reportButton: {
     width: '30%',
-    marginVertical: 8,
+    marginVertical: 10,
     backgroundColor: '#eee',
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 20,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 2,
+  },
+  
+  hamburgerButton: {
+    position: 'absolute',
+    top: 50,  // adjust depending on status bar
+    left: 20,
+    zIndex: 100,
+    backgroundColor: '#fff',
+    padding: 10,
+    borderRadius: 10,
+    elevation: 3,
   }
 });

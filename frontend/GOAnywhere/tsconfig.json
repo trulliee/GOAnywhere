@@ -13,5 +13,14 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
-, "app/loginUser.js"  ]
+  ],
+  "dependencies": {
+    "expo-device": "~7.0.2",
+    "expo-notifications": "~0.29.13",
+    "react-native-svg": "^15.11.2",
+    "expo-sensors": "~14.0.2"
+  },
+  "devDependencies": {
+    "react-native-svg-transformer": "^1.5.0"
+  }
 }

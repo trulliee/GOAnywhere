@@ -2,16 +2,16 @@
 
 import pandas as pd
 import numpy as np
-import joblib
-import os
 from datetime import datetime, timedelta
 import logging
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.model_selection import train_test_split, TimeSeriesSplit
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+import joblib
+import os
+from app.data.firestore_dataloader import FirestoreDataLoader
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 class TravelTimeModel:
     """
-    Model to predict travel times for routes in Singapore based on traffic conditions,
-    weather, incidents, and events.
+    Model for predicting travel times between locations based on current
+    traffic conditions and historical patterns.
     """
     
     def __init__(self, model_path=None):
@@ -28,398 +28,831 @@ class TravelTimeModel:
         Initialize the travel time prediction model.
         
         Args:
-            model_path (str, optional): Path to saved model file. If None, a new model is created.
+            model_path (str, optional): Path to saved model files
         """
-        self.model = None
-        self.preprocessor = None
         self.model_path = model_path
+        self.travel_time_model = None
+        self.expressway_models = {}
+        self.data_loader = FirestoreDataLoader()
         
+        # Load models if path is provided
         if model_path and os.path.exists(model_path):
-            self.load_model()
-        else:
-            self._initialize_model()
+            self.load_models()
     
-    def _initialize_model(self):
-        """Initialize a new Gradient Boosting Regressor for travel time prediction."""
-        self.model = GradientBoostingRegressor(
-            n_estimators=200,
-            learning_rate=0.1,
-            max_depth=5,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            subsample=0.8,
-            random_state=42
-        )
+    def load_data(self, days=30, include_weather=True, include_incidents=True):
+        """
+        Load training data from Firestore using the data loader.
         
-        # Create preprocessing pipeline
-        numeric_features = [
-            'distance_km', 'avg_speed_band', 'hour_of_day', 'day_of_week',
-            'month', 'temperature', 'humidity', 'rainfall', 'incident_count'
+        Args:
+            days (int): Number of days of data to retrieve
+            include_weather (bool): Whether to include weather data
+            include_incidents (bool): Whether to include incident data
+            
+        Returns:
+            pandas.DataFrame: Combined dataset for training
+        """
+        logger.info(f"Loading data for travel time model training (days={days})")
+        
+        # Load travel time data
+        travel_times_df = self.data_loader.get_travel_times(days=days)
+        
+        if travel_times_df.empty:
+            logger.warning("No travel time data available for training")
+            return pd.DataFrame()
+        
+        # Start with travel times as base dataset
+        dataset = travel_times_df.copy()
+        
+        # Add time-based features
+        if 'Timestamp' in dataset.columns:
+            dataset['hour'] = dataset['Timestamp'].dt.hour
+            dataset['day_of_week'] = dataset['Timestamp'].dt.dayofweek
+            dataset['is_weekend'] = dataset['day_of_week'].apply(lambda x: 1 if x >= 5 else 0)
+            dataset['is_peak'] = dataset['hour'].apply(lambda x: 1 if (x >= 7 and x <= 9) or (x >= 17 and x <= 19) else 0)
+            dataset['month'] = dataset['Timestamp'].dt.month
+        
+        # Add holiday information
+        holidays_df = self.data_loader.get_historical_holidays()
+        if not holidays_df.empty and 'Timestamp' in dataset.columns:
+            # Convert date column to date only for joining
+            dataset['date'] = dataset['Timestamp'].dt.date
+            
+            # Convert holidays to date only
+            holidays_df['date'] = pd.to_datetime(holidays_df['Date']).dt.date
+            
+            # Create a set of holiday dates for efficient lookup
+            holiday_dates = set(holidays_df['date'])
+            
+            # Mark holidays in the dataset
+            dataset['is_holiday'] = dataset['date'].apply(lambda x: 1 if x in holiday_dates else 0)
+            
+            # Drop temporary column
+            dataset.drop('date', axis=1, inplace=True)
+        else:
+            # Default value if holiday data is not available
+            dataset['is_holiday'] = 0
+        
+        # Add weather data if requested
+        if include_weather:
+            weather_df = self.data_loader.get_weather_data(days=days)
+            
+            if not weather_df.empty:
+                # Process weather features
+                weather_features = weather_df.copy()
+                
+                # Process nested weather features if needed
+                if 'temp_high' not in weather_features.columns and 'temperature' in weather_features.columns:
+                    try:
+                        weather_features['temp_high'] = weather_features['temperature'].apply(
+                            lambda x: x.get('high') if isinstance(x, dict) else None
+                        )
+                        weather_features['temp_low'] = weather_features['temperature'].apply(
+                            lambda x: x.get('low') if isinstance(x, dict) else None
+                        )
+                    except:
+                        logger.warning("Could not extract nested temperature data")
+                
+                # Extract rainfall prediction if available
+                if 'general_forecast' in weather_features.columns:
+                    weather_features['rain_forecast'] = weather_features['general_forecast'].apply(
+                        lambda x: 1 if 'rain' in str(x).lower() or 'shower' in str(x).lower() else 0
+                    )
+                
+                # For simplicity, we'll merge weather data with the main dataset
+                # based on closest date
+                if 'timestamp' in weather_features.columns and 'Timestamp' in dataset.columns:
+                    # Convert dataset timestamps to date for matching
+                    dataset['date'] = dataset['Timestamp'].dt.date
+                    weather_features['date'] = pd.to_datetime(weather_features['timestamp']).dt.date
+                    
+                    # Merge based on date
+                    dataset = pd.merge(
+                        dataset,
+                        weather_features[['date', 'temp_high', 'temp_low', 'rain_forecast']],
+                        on='date',
+                        how='left'
+                    )
+                    
+                    # Drop temporary columns
+                    dataset.drop('date', axis=1, inplace=True)
+                else:
+                    # Add default weather values
+                    dataset['temp_high'] = 30.0
+                    dataset['temp_low'] = 25.0
+                    dataset['rain_forecast'] = 0
+            else:
+                logger.warning("No weather data available, adding default values")
+                # Add default weather values
+                dataset['temp_high'] = 30.0
+                dataset['temp_low'] = 25.0
+                dataset['rain_forecast'] = 0
+        
+        # Add incident data if requested
+        if include_incidents:
+            incidents_df = self.data_loader.get_incidents(days=days)
+            
+            if not incidents_df.empty:
+                # Add incident counts by expressway and timestamp
+                if 'Expressway' in dataset.columns and 'Timestamp' in dataset.columns:
+                    # Create a time window for each travel time record
+                    dataset['window_start'] = dataset['Timestamp'] - timedelta(hours=1)
+                    dataset['window_end'] = dataset['Timestamp'] + timedelta(hours=1)
+                    
+                    # Initialize incident count column
+                    dataset['incident_count'] = 0
+                    
+                    # For each expressway, count relevant incidents
+                    for expressway in dataset['Expressway'].unique():
+                        # Filter incidents that mention this expressway
+                        if 'Message' in incidents_df.columns and 'Timestamp' in incidents_df.columns:
+                            expressway_incidents = incidents_df[
+                                incidents_df['Message'].str.contains(expressway, na=False)
+                            ]
+                            
+                            # For each travel time record
+                            for idx, row in dataset[dataset['Expressway'] == expressway].iterrows():
+                                # Count incidents in the time window
+                                relevant_incidents = expressway_incidents[
+                                    (expressway_incidents['Timestamp'] >= row['window_start']) &
+                                    (expressway_incidents['Timestamp'] <= row['window_end'])
+                                ]
+                                
+                                # Update the count
+                                dataset.at[idx, 'incident_count'] = len(relevant_incidents)
+                    
+                    # Drop temporary columns
+                    dataset.drop(['window_start', 'window_end'], axis=1, inplace=True)
+                else:
+                    # Default incident count
+                    dataset['incident_count'] = 0
+            else:
+                # Default incident count
+                dataset['incident_count'] = 0
+        
+        # Add traffic speed data if available
+        speed_bands_df = self.data_loader.get_traffic_speed_bands(days=days)
+        
+        if not speed_bands_df.empty:
+            # For each expressway, find the average speed band in the last hour
+            if 'Expressway' in dataset.columns and 'Timestamp' in dataset.columns:
+                dataset['avg_speed_band'] = 3.0  # Default middle value
+                
+                # Create a time window for each travel time record
+                dataset['window_start'] = dataset['Timestamp'] - timedelta(hours=1)
+                
+                # Map expressway names to relevant road names in speed bands data
+                expressway_map = {
+                    'PIE': 'PIE',
+                    'AYE': 'AYE',
+                    'CTE': 'CTE',
+                    'ECP': 'ECP',
+                    'TPE': 'TPE',
+                    'SLE': 'SLE',
+                    'BKE': 'BKE',
+                    'KJE': 'KJE',
+                    'KPE': 'KPE'
+                }
+                
+                # For each expressway, add average speed
+                for exp_code, exp_name in expressway_map.items():
+                    if 'RoadName' in speed_bands_df.columns and 'Timestamp' in speed_bands_df.columns:
+                        # Filter speed bands for this expressway
+                        exp_speeds = speed_bands_df[
+                            speed_bands_df['RoadName'].str.contains(exp_name, na=False)
+                        ]
+                        
+                        if not exp_speeds.empty and 'SpeedBand' in exp_speeds.columns:
+                            # For each travel time record for this expressway
+                            for idx, row in dataset[dataset['Expressway'] == exp_code].iterrows():
+                                # Find recent speed bands
+                                recent_speeds = exp_speeds[
+                                    (exp_speeds['Timestamp'] >= row['window_start']) &
+                                    (exp_speeds['Timestamp'] <= row['Timestamp'])
+                                ]
+                                
+                                if not recent_speeds.empty:
+                                    # Calculate average speed band
+                                    avg_speed = recent_speeds['SpeedBand'].mean()
+                                    dataset.at[idx, 'avg_speed_band'] = avg_speed
+                
+                # Drop temporary column
+                dataset.drop('window_start', axis=1, inplace=True)
+        
+        logger.info(f"Data loading complete, travel time dataset has {len(dataset)} rows and {len(dataset.columns)} columns")
+        return dataset
+    
+    def train_model(self, training_data=None, by_expressway=True, test_size=0.2, n_estimators=100):
+        """
+        Train the travel time prediction model.
+        
+        Args:
+            training_data (pandas.DataFrame, optional): Pre-loaded training data
+            by_expressway (bool): Whether to train separate models for each expressway
+            test_size (float): Proportion of data to use for testing
+            n_estimators (int): Number of estimators for the gradient boosting
+            
+        Returns:
+            dict: Training performance metrics
+        """
+        logger.info("Training travel time prediction model")
+        
+        # Load data if not provided
+        if training_data is None or training_data.empty:
+            training_data = self.load_data(days=30)
+            
+            if training_data.empty:
+                logger.error("No training data available for travel time model")
+                return {"error": "No training data available"}
+        
+        # Ensure target variable is present
+        if 'Esttime' not in training_data.columns:
+            logger.error("Target column 'Esttime' missing from training data")
+            return {"error": "Target column 'Esttime' missing"}
+        
+        # Prepare features
+        feature_cols = [
+            'hour', 'day_of_week', 'is_weekend', 'is_holiday', 'is_peak',
+            'Direction', 'temp_high', 'rain_forecast', 'incident_count'
         ]
         
-        categorical_features = [
-            'route_type', 'transport_mode', 'weather_condition', 
-            'is_holiday', 'is_peak_hour', 'has_major_event'
-        ]
+        # Add speed band feature if available
+        if 'avg_speed_band' in training_data.columns:
+            feature_cols.append('avg_speed_band')
         
-        numeric_transformer = Pipeline(steps=[
-            ('scaler', StandardScaler())
-        ])
+        # Add categorical features
+        categorical_features = ['Direction']
         
-        categorical_transformer = Pipeline(steps=[
-            ('onehot', OneHotEncoder(handle_unknown='ignore'))
-        ])
+        # For the combined model, add Expressway as a feature
+        if not by_expressway:
+            feature_cols.append('Expressway')
+            categorical_features.append('Expressway')
         
-        self.preprocessor = ColumnTransformer(
-            transformers=[
-                ('num', numeric_transformer, numeric_features),
-                ('cat', categorical_transformer, categorical_features)
-            ],
-            remainder='drop'
-        )
-    
-    def preprocess_data(self, df):
-        """
-        Preprocess the raw data for model training or prediction.
+        # Ensure all required columns exist
+        for col in feature_cols:
+            if col not in training_data.columns:
+                # For optional features, set defaults
+                if col in ['temp_high', 'rain_forecast', 'incident_count', 'avg_speed_band']:
+                    if col == 'temp_high':
+                        training_data[col] = 30.0
+                    elif col == 'rain_forecast':
+                        training_data[col] = 0
+                    elif col == 'incident_count':
+                        training_data[col] = 0
+                    elif col == 'avg_speed_band':
+                        training_data[col] = 3.0
+                else:
+                    logger.error(f"Required column {col} missing from training data")
+                    return {"error": f"Required column {col} missing"}
         
-        Args:
-            df (pandas.DataFrame): Input data containing route and contextual features
+        # Training metrics
+        all_metrics = {}
+        
+        if by_expressway:
+            # Train separate models for each expressway
+            expressways = training_data['Expressway'].unique()
             
-        Returns:
-            tuple: X (features) and y (target) if target is present, otherwise X
-        """
-        # Feature engineering
-        if 'timestamp' in df.columns:
-            df['hour_of_day'] = df['timestamp'].dt.hour
-            df['day_of_week'] = df['timestamp'].dt.dayofweek
-            df['month'] = df['timestamp'].dt.month
-            df['is_peak_hour'] = df['hour_of_day'].apply(
-                lambda x: 1 if (7 <= x <= 9) or (17 <= x <= 19) else 0
-            )
-        
-        # Check for target column
-        if 'travel_time_minutes' in df.columns:
-            y = df['travel_time_minutes']
-            X = df.drop(['travel_time_minutes'], axis=1)
-            return X, y
-        else:
-            return df
-    
-    def train(self, travel_times_data, traffic_data, weather_data, holiday_data, incident_data=None, event_data=None):
-        """
-        Train the travel time prediction model using historical data.
-        
-        Args:
-            travel_times_data (pandas.DataFrame): Historical travel times data
-            traffic_data (pandas.DataFrame): Traffic speed bands data
-            weather_data (pandas.DataFrame): Historical weather data
-            holiday_data (pandas.DataFrame): Holiday information
-            incident_data (pandas.DataFrame, optional): Historical traffic incidents
-            event_data (pandas.DataFrame, optional): Event information
+            for expressway in expressways:
+                logger.info(f"Training model for expressway {expressway}")
+                
+                # Filter data for this expressway
+                expressway_data = training_data[training_data['Expressway'] == expressway]
+                
+                if len(expressway_data) < 50:
+                    logger.warning(f"Limited data for expressway {expressway}: only {len(expressway_data)} samples")
+                    continue
+                
+                # Drop rows with missing values
+                expressway_data = expressway_data.dropna(subset=feature_cols + ['Esttime'])
+                
+                # Split data
+                X = expressway_data[feature_cols]
+                y = expressway_data['Esttime']
+                
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+                
+                # Define model pipeline
+                numeric_features = [col for col in feature_cols if col not in categorical_features]
+                
+                preprocessor = ColumnTransformer(
+                    transformers=[
+                        ('num', StandardScaler(), numeric_features),
+                        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+                    ],
+                    remainder='passthrough'
+                )
+                
+                pipeline = Pipeline([
+                    ('preprocessor', preprocessor),
+                    ('model', GradientBoostingRegressor(n_estimators=n_estimators, random_state=42))
+                ])
+                
+                # Train model
+                pipeline.fit(X_train, y_train)
+                
+                # Evaluate model
+                y_pred = pipeline.predict(X_test)
+                
+                # Calculate metrics
+                mae = np.mean(np.abs(y_test - y_pred))
+                mse = np.mean((y_test - y_pred) ** 2)
+                rmse = np.sqrt(mse)
+                
+                metrics = {
+                    'mean_absolute_error': mae,
+                    'mean_squared_error': mse,
+                    'root_mean_squared_error': rmse,
+                    'training_samples': len(X_train),
+                    'testing_samples': len(X_test)
+                }
+                
+                all_metrics[expressway] = metrics
+                
+                # Save model
+                self.expressway_models[expressway] = pipeline
+                
+                if self.model_path:
+                    os.makedirs(self.model_path, exist_ok=True)
+                    joblib.dump(pipeline, os.path.join(self.model_path, f'travel_time_{expressway}_model.joblib'))
+                    logger.info(f"Model for expressway {expressway} saved")
             
-        Returns:
-            dict: Training metrics (MAE, RMSE, R²)
-        """
-        logger.info("Starting travel time model training process")
-        
-        # Merge datasets for feature enrichment
-        enriched_data = self._merge_datasets(
-            travel_times_data, traffic_data, weather_data, 
-            holiday_data, incident_data, event_data
-        )
-        
-        # Preprocess the data
-        X, y = self.preprocess_data(enriched_data)
-        
-        # Use time series cross-validation to evaluate the model
-        tscv = TimeSeriesSplit(n_splits=5)
-        
-        fold_metrics = []
-        for train_index, test_index in tscv.split(X):
-            X_train, X_test = X.iloc[train_index], X.iloc[test_index]
-            y_train, y_test = y.iloc[train_index], y.iloc[test_index]
-            
-            # Fit the preprocessor and transform the data
-            X_train_processed = self.preprocessor.fit_transform(X_train)
-            X_test_processed = self.preprocessor.transform(X_test)
-            
-            # Train the model
-            self.model.fit(X_train_processed, y_train)
-            
-            # Evaluate the model
-            y_pred = self.model.predict(X_test_processed)
-            metrics = self._calculate_metrics(y_test, y_pred)
-            fold_metrics.append(metrics)
-        
-        # Calculate average metrics across folds
-        avg_metrics = {
-            'mae': np.mean([m['mae'] for m in fold_metrics]),
-            'rmse': np.mean([m['rmse'] for m in fold_metrics]),
-            'r2': np.mean([m['r2'] for m in fold_metrics])
-        }
-        
-        # Retrain on the full dataset
-        X_processed = self.preprocessor.fit_transform(X)
-        self.model.fit(X_processed, y)
-        
-        # Save the trained model
-        self.save_model()
-        
-        logger.info(f"Travel time model training completed. Metrics: {avg_metrics}")
-        return avg_metrics
-    
-    def predict(self, features):
-        """
-        Predict travel times for given features.
-        
-        Args:
-            features (pandas.DataFrame): Input features for prediction
-            
-        Returns:
-            numpy.ndarray: Predicted travel times in minutes
-        """
-        if self.model is None:
-            raise ValueError("Model not trained or loaded")
-        
-        # Preprocess the features
-        X = self.preprocess_data(features)
-        
-        # Transform the features
-        X_processed = self.preprocessor.transform(X)
-        
-        # Make predictions
-        predictions = self.model.predict(X_processed)
-        
-        return predictions
-    
-    def predict_travel_time(self, origin, destination, mode='driving', departure_time=None, 
-                           weather_conditions=None, avoid_congestion=False):
-        """
-        Predict travel time between origin and destination with current conditions.
-        
-        Args:
-            origin (dict): Origin coordinates or location ID
-            destination (dict): Destination coordinates or location ID
-            mode (str): Transport mode ('driving' or 'public_transport')
-            departure_time (datetime, optional): Departure time. Defaults to current time.
-            weather_conditions (dict, optional): Weather conditions
-            avoid_congestion (bool): Whether to avoid congested roads
-            
-        Returns:
-            dict: Travel time prediction with normal and adjusted times
-        """
-        if departure_time is None:
-            departure_time = datetime.now()
-        
-        # Get route information (distance, segments, etc.)
-        route_info = self._get_route_info(origin, destination, mode, avoid_congestion)
-        
-        # Get traffic conditions for the route
-        traffic_conditions = self._get_traffic_conditions(route_info['segments'])
-        
-        # Get weather conditions if not provided
-        if weather_conditions is None:
-            weather_conditions = self._get_weather_conditions()
-        
-        # Get incident information for the route
-        incidents = self._get_route_incidents(route_info['segments'])
-        
-        # Get events information for the route area
-        events = self._get_route_events(route_info['bounding_box'])
-        
-        # Prepare features for prediction
-        features = self._prepare_prediction_features(
-            route_info, traffic_conditions, departure_time, 
-            weather_conditions, incidents, events, mode, avoid_congestion
-        )
-        
-        # Make prediction
-        predicted_time = self.predict(pd.DataFrame([features]))[0]
-        
-        # Calculate normal travel time (without traffic, incidents, etc.)
-        normal_time = self._calculate_normal_travel_time(route_info, mode)
-        
-        # Return both normal and predicted travel time
-        return {
-            'origin': origin,
-            'destination': destination,
-            'mode': mode,
-            'departure_time': departure_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'distance_km': route_info['distance_km'],
-            'normal_travel_time_minutes': round(normal_time, 1),
-            'predicted_travel_time_minutes': round(predicted_time, 1),
-            'delay_minutes': round(predicted_time - normal_time, 1),
-            'delay_percentage': round((predicted_time - normal_time) / normal_time * 100, 1) if normal_time > 0 else 0,
-            'weather_impact': weather_conditions.get('weather_main', 'Unknown'),
-            'incident_count': len(incidents),
-            'event_impact': 'Yes' if events else 'No'
-        }
-    
-    def _get_route_info(self, origin, destination, mode, avoid_congestion):
-        """
-        Get route information between origin and destination.
-        This is a placeholder that should be implemented with actual routing service.
-        """
-        # Placeholder function - in a real implementation, this would call a routing service
-        # such as Google Maps API, OneMap Routing API, or a custom routing engine
-        
-        # Mock response for development
-        return {
-            'distance_km': 15.5,
-            'segments': [
-                {'id': 's1', 'road_name': 'Orchard Road', 'road_category': 'MAJOR'},
-                {'id': 's2', 'road_name': 'Thomson Road', 'road_category': 'MAJOR'},
-                {'id': 's3', 'road_name': 'Bukit Timah Road', 'road_category': 'MAJOR'}
-            ],
-            'bounding_box': {
-                'min_lat': 1.29, 'min_lng': 103.82,
-                'max_lat': 1.34, 'max_lng': 103.87
+            # Combine metrics
+            all_metrics['overall'] = {
+                'models_trained': len(self.expressway_models),
+                'expressways': list(self.expressway_models.keys()),
+                'avg_mae': np.mean([m['mean_absolute_error'] for m in all_metrics.values() if 'mean_absolute_error' in m])
             }
-        }
-    
-    def _get_traffic_conditions(self, segments):
-        """
-        Get current traffic conditions for route segments.
-        This is a placeholder that should be implemented with actual traffic data.
-        """
-        # Placeholder function - in a real implementation, this would query Firestore
-        # or another data source for current traffic speed bands
+            
+        else:
+            # Train a single model for all expressways
+            logger.info("Training combined travel time model")
+            
+            # Drop rows with missing values
+            training_data = training_data.dropna(subset=feature_cols + ['Esttime'])
+            
+            # Split data
+            X = training_data[feature_cols]
+            y = training_data['Esttime']
+            
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+            
+            # Define model pipeline
+            numeric_features = [col for col in feature_cols if col not in categorical_features]
+            
+            preprocessor = ColumnTransformer(
+                transformers=[
+                    ('num', StandardScaler(), numeric_features),
+                    ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+                ],
+                remainder='passthrough'
+            )
+            
+            pipeline = Pipeline([
+                ('preprocessor', preprocessor),
+                ('model', GradientBoostingRegressor(n_estimators=n_estimators, random_state=42))
+            ])
+            
+            # Train model
+            pipeline.fit(X_train, y_train)
+            
+            # Evaluate model
+            y_pred = pipeline.predict(X_test)
+            
+            # Calculate metrics
+            mae = np.mean(np.abs(y_test - y_pred))
+            mse = np.mean((y_test - y_pred) ** 2)
+            rmse = np.sqrt(mse)
+            
+            all_metrics = {
+                'mean_absolute_error': mae,
+                'mean_squared_error': mse,
+                'root_mean_squared_error': rmse,
+                'training_samples': len(X_train),
+                'testing_samples': len(X_test)
+            }
+            
+            # Save model
+            self.travel_time_model = pipeline
+            
+            if self.model_path:
+                os.makedirs(self.model_path, exist_ok=True)
+                joblib.dump(pipeline, os.path.join(self.model_path, 'travel_time_model.joblib'))
+                logger.info("Combined travel time model saved")
         
-        # Mock response for development
-        return [
-            {'segment_id': 's1', 'speed_band': 2.5},
-            {'segment_id': 's2', 'speed_band': 3.1},
-            {'segment_id': 's3', 'speed_band': 2.8}
-        ]
-    
-    def _get_weather_conditions(self):
-        """
-        Get current weather conditions.
-        This is a placeholder that should be implemented with actual weather data.
-        """
-        # Placeholder function - in a real implementation, this would query Firestore
-        # or another data source for current weather data
+        logger.info(f"Travel time model training complete")
         
-        # Mock response for development
+        # Update training timestamp
+        if self.model_path:
+            with open(os.path.join(self.model_path, 'travel_time_model_last_trained.txt'), 'w') as f:
+                f.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        
+        return all_metrics
+    
+    def load_models(self):
+        """Load saved models from disk."""
+        if not self.model_path or not os.path.exists(self.model_path):
+            logger.error(f"Model path does not exist: {self.model_path}")
+            return False
+        
+        try:
+            # Check for combined model
+            combined_model_path = os.path.join(self.model_path, 'travel_time_model.joblib')
+            if os.path.exists(combined_model_path):
+                self.travel_time_model = joblib.load(combined_model_path)
+                logger.info(f"Loaded combined travel time model from {combined_model_path}")
+            
+            # Check for expressway-specific models
+            expressways = ['PIE', 'AYE', 'CTE', 'ECP', 'TPE', 'SLE', 'BKE', 'KJE', 'KPE']
+            
+            for expressway in expressways:
+                model_path = os.path.join(self.model_path, f'travel_time_{expressway}_model.joblib')
+                if os.path.exists(model_path):
+                    self.expressway_models[expressway] = joblib.load(model_path)
+                    logger.info(f"Loaded model for expressway {expressway}")
+            
+            if self.travel_time_model or self.expressway_models:
+                return True
+            else:
+                logger.error("No travel time models found")
+                return False
+        except Exception as e:
+            logger.error(f"Error loading travel time models: {e}")
+            return False
+    
+    def predict_travel_time(self, expressway, direction, current_time=None):
+        """
+        Predict travel time for a specific expressway and direction.
+        
+        Args:
+            expressway (str): Expressway code (e.g., 'PIE', 'CTE')
+            direction (str): Direction code
+            current_time (datetime, optional): Time for prediction. Defaults to current time.
+            
+        Returns:
+            dict: Prediction result with travel time and confidence
+        """
+        if not self.expressway_models and not self.travel_time_model:
+            logger.error("No travel time models available")
+            return {
+                'error': 'Models not available',
+                'status': 'error'
+            }
+        
+        try:
+            # Use current time if not provided
+            if current_time is None:
+                current_time = datetime.now()
+            
+            # Extract time features
+            hour = current_time.hour
+            day_of_week = current_time.weekday()
+            is_weekend = 1 if day_of_week >= 5 else 0
+            is_peak = 1 if (hour >= 7 and hour <= 9) or (hour >= 17 and hour <= 19) else 0
+            
+            # Check if it's a holiday
+            is_holiday = 0
+            holidays_df = self.data_loader.get_historical_holidays()
+            if not holidays_df.empty:
+                current_date = current_time.date()
+                if 'Date' in holidays_df.columns:
+                    holidays_df['date'] = pd.to_datetime(holidays_df['Date']).dt.date
+                    is_holiday = 1 if current_date in set(holidays_df['date']) else 0
+            
+            # Get weather data
+            temp_high = 30.0
+            rain_forecast = 0
+            
+            weather_data = self.data_loader.get_weather_data(days=1)
+            if not weather_data.empty:
+                # Get most recent weather data
+                if 'temp_high' in weather_data.columns:
+                    temp_high = weather_data.iloc[0]['temp_high']
+                
+                if 'rain_forecast' in weather_data.columns:
+                    rain_forecast = weather_data.iloc[0]['rain_forecast']
+                elif 'general_forecast' in weather_data.columns:
+                    forecast = weather_data.iloc[0]['general_forecast']
+                    rain_forecast = 1 if isinstance(forecast, str) and ('rain' in forecast.lower() or 'shower' in forecast.lower()) else 0
+            
+            # Count incidents
+            incident_count = 0
+            incidents = self.data_loader.get_incidents(days=1)
+            
+            if not incidents.empty and 'Message' in incidents.columns:
+                # Filter incidents for this expressway in the last hour
+                recent_incidents = incidents[
+                    (incidents['Timestamp'] >= current_time - timedelta(hours=1)) &
+                    (incidents['Message'].str.contains(expressway, na=False))
+                ]
+                
+                incident_count = len(recent_incidents)
+            
+            # Get speed band if available
+            avg_speed_band = 3.0  # Default middle value
+            
+            speed_bands = self.data_loader.get_traffic_speed_bands(days=1)
+            if not speed_bands.empty and 'RoadName' in speed_bands.columns and 'SpeedBand' in speed_bands.columns:
+                # Filter for this expressway in the last hour
+                recent_speeds = speed_bands[
+                    (speed_bands['Timestamp'] >= current_time - timedelta(hours=1)) &
+                    (speed_bands['RoadName'].str.contains(expressway, na=False))
+                ]
+                
+                if not recent_speeds.empty:
+                    avg_speed_band = recent_speeds['SpeedBand'].mean()
+            
+            # Create feature dictionary
+            features = {
+                'Expressway': expressway,
+                'Direction': direction,
+                'hour': hour,
+                'day_of_week': day_of_week,
+                'is_weekend': is_weekend,
+                'is_holiday': is_holiday,
+                'is_peak': is_peak,
+                'temp_high': temp_high,
+                'rain_forecast': rain_forecast,
+                'incident_count': incident_count,
+                'avg_speed_band': avg_speed_band
+            }
+            
+            # Convert to DataFrame for prediction
+            feature_df = pd.DataFrame([features])
+            
+            # Select model based on availability
+            prediction = None
+            
+            if expressway in self.expressway_models:
+                # Use expressway-specific model
+                model = self.expressway_models[expressway]
+                prediction = model.predict(feature_df[model.feature_names_in_])[0]
+            elif self.travel_time_model:
+                # Use combined model
+                prediction = self.travel_time_model.predict(feature_df[self.travel_time_model.feature_names_in_])[0]
+            else:
+                # Fallback to real-time data
+                return self.get_current_travel_time(expressway, direction)
+            
+            # Calculate confidence interval based on incident count and weather
+            confidence = "high"
+            if incident_count > 0:
+                confidence = "medium"
+            if incident_count > 1 or rain_forecast == 1:
+                confidence = "low"
+            
+            return {
+                'status': 'success',
+                'expressway': expressway,
+                'direction': direction,
+                'predicted_time': round(prediction, 1),
+                'confidence': confidence,
+                'factors': {
+                    'time_of_day': 'peak_hour' if is_peak else 'off_peak',
+                    'day_type': 'weekend' if is_weekend else 'weekday',
+                    'holiday': 'yes' if is_holiday else 'no',
+                    'weather': 'rainy' if rain_forecast else 'clear',
+                    'incidents': incident_count,
+                    'traffic_condition': self._speed_band_to_condition(avg_speed_band)
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error predicting travel time: {e}")
+            return {
+                'error': str(e),
+                'status': 'error'
+            }
+    
+    def get_current_travel_time(self, expressway, direction):
+        """
+        Get the current travel time from realtime data.
+        
+        Args:
+            expressway (str): Expressway code
+            direction (str): Direction code
+            
+        Returns:
+            dict: Current travel time information
+        """
+        try:
+            # Get latest travel time data
+            travel_times = self.data_loader.get_travel_times(days=1)
+            
+            if travel_times.empty:
+                return {
+                    'error': 'No recent travel time data available',
+                    'status': 'error'
+                }
+            
+            # Filter for this expressway and direction
+            filtered = travel_times[
+                (travel_times['Expressway'] == expressway) &
+                (travel_times['Direction'] == direction)
+            ]
+            
+            if filtered.empty:
+                return {
+                    'error': f'No data found for expressway {expressway} direction {direction}',
+                    'status': 'error'
+                }
+            
+            # Sort by timestamp to get the most recent
+            if 'Timestamp' in filtered.columns:
+                filtered = filtered.sort_values('Timestamp', ascending=False)
+            
+            # Get the most recent travel time
+            current_time = filtered.iloc[0]['Esttime']
+            
+            # Get the timestamp
+            timestamp = filtered.iloc[0]['Timestamp'] if 'Timestamp' in filtered.columns else None
+            time_since_update = (datetime.now() - timestamp).total_seconds() / 60 if timestamp else None
+            
+            return {
+                'status': 'success',
+                'expressway': expressway,
+                'direction': direction,
+                'current_time': round(current_time, 1),
+                'last_updated': timestamp.strftime('%Y-%m-%d %H:%M:%S') if timestamp else None,
+                'minutes_since_update': round(time_since_update, 1) if time_since_update else None,
+                'is_realtime': True
+            }
+        except Exception as e:
+            logger.error(f"Error getting current travel time: {e}")
+            return {
+                'error': str(e),
+                'status': 'error'
+            }
+    
+    def _speed_band_to_condition(self, speed_band):
+        """Convert speed band to traffic condition description."""
+        if speed_band <= 1.5:
+            return "severe congestion"
+        elif speed_band <= 2.5:
+            return "heavy traffic"
+        elif speed_band <= 3.5:
+            return "moderate traffic"
+        elif speed_band <= 4.5:
+            return "light traffic"
+        else:
+            return "free flowing"
+    
+    def compare_routes(self, routes):
+        """
+        Compare travel times for different expressway routes.
+        
+        Args:
+            routes (list): List of dictionaries with expressway and direction
+            
+        Returns:
+            dict: Comparison of routes with predicted travel times
+        """
+        if not routes or not isinstance(routes, list):
+            return {
+                'error': 'Invalid routes parameter',
+                'status': 'error'
+            }
+        
+        results = []
+        
+        for route in routes:
+            expressway = route.get('expressway')
+            direction = route.get('direction')
+            
+            if not expressway or not direction:
+                continue
+            
+            # Get prediction for this route
+            prediction = self.predict_travel_time(expressway, direction)
+            
+            if prediction.get('status') == 'success':
+                results.append({
+                    'expressway': expressway,
+                    'direction': direction,
+                    'travel_time': prediction.get('predicted_time'),
+                    'confidence': prediction.get('confidence'),
+                    'factors': prediction.get('factors')
+                })
+        
+        if not results:
+            return {
+                'error': 'Could not generate predictions for any routes',
+                'status': 'error'
+            }
+        
+        # Sort by travel time
+        results = sorted(results, key=lambda x: x.get('travel_time', float('inf')))
+        
+        # Find the fastest route
+        fastest = results[0]
+        
         return {
-            'temperature': 28.5,
-            'humidity': 85.0,
-            'rainfall': 0.0,
-            'weather_main': 'Clear'
+            'status': 'success',
+            'routes': results,
+            'fastest_route': fastest,
+            'comparison_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'route_count': len(results)
         }
     
-    def _get_route_incidents(self, segments):
+    def get_historical_patterns(self, expressway, direction, day_type=None):
         """
-        Get current incidents affecting route segments.
-        This is a placeholder that should be implemented with actual incident data.
+        Get historical travel time patterns for a route.
+        
+        Args:
+            expressway (str): Expressway code
+            direction (str): Direction code
+            day_type (str, optional): 'weekday', 'weekend', or None for all
+            
+        Returns:
+            dict: Historical patterns
         """
-        # Placeholder function - in a real implementation, this would query Firestore
-        # or another data source for current incidents
-        
-        # Mock response for development
-        return []
-    
-    def _get_route_events(self, bounding_box):
-        """
-        Get current events in the route area.
-        This is a placeholder that should be implemented with actual event data.
-        """
-        # Placeholder function - in a real implementation, this would query Firestore
-        # or another data source for current events
-        
-        # Mock response for development
-        return []
-    
-    def _prepare_prediction_features(self, route_info, traffic_conditions, departure_time, 
-                                    weather_conditions, incidents, events, mode, avoid_congestion):
-        """Prepare features for travel time prediction."""
-        # Calculate average speed band across all segments
-        avg_speed_band = np.mean([tc['speed_band'] for tc in traffic_conditions])
-        
-        # Prepare feature dictionary
-        features = {
-            'distance_km': route_info['distance_km'],
-            'avg_speed_band': avg_speed_band,
-            'route_type': 'urban',  # This could be determined from the route
-            'transport_mode': mode,
-            'hour_of_day': departure_time.hour,
-            'day_of_week': departure_time.weekday(),
-            'month': departure_time.month,
-            'is_peak_hour': 1 if (7 <= departure_time.hour <= 9) or (17 <= departure_time.hour <= 19) else 0,
-            'is_holiday': self._is_holiday(departure_time),
-            'temperature': weather_conditions.get('temperature', 28.0),
-            'humidity': weather_conditions.get('humidity', 80.0),
-            'rainfall': weather_conditions.get('rainfall', 0.0),
-            'weather_condition': weather_conditions.get('weather_main', 'Clear'),
-            'incident_count': len(incidents),
-            'has_major_event': 1 if events else 0
-        }
-        
-        return features
-    
-    def _is_holiday(self, date):
-        """Check if a date is a public holiday."""
-        # This is a placeholder - in a real implementation, this would
-        # check against a database of holidays
-        return 0
-    
-    def _calculate_normal_travel_time(self, route_info, mode):
-        """Calculate normal travel time without traffic or incidents."""
-        distance_km = route_info['distance_km']
-        
-        # Estimates based on mode
-        if mode == 'driving':
-            # Assume average speed of 40 km/h in normal conditions
-            normal_time = distance_km / 40 * 60
-        else:  # public_transport
-            # Assume average speed of 25 km/h including waiting times
-            normal_time = distance_km / 25 * 60
-        
-        return normal_time
-    
-    def _merge_datasets(self, travel_times, traffic_data, weather_data, holiday_data, incident_data=None, event_data=None):
-        """Merge multiple datasets for feature enrichment."""
-        # Placeholder implementation - actual implementation would depend on data structure
-        # This method should be customized based on the actual data schema
-        return travel_times
-    
-    def _calculate_metrics(self, y_true, y_pred):
-        """Calculate model performance metrics."""
-        return {
-            'mae': mean_absolute_error(y_true, y_pred),
-            'rmse': np.sqrt(mean_squared_error(y_true, y_pred)),
-            'r2': r2_score(y_true, y_pred)
-        }
-    
-    def save_model(self, path=None):
-        """Save the model to disk."""
-        if path is None:
-            path = self.model_path or 'app/models/travel_time_model.joblib'
-        
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        
-        # Save model and preprocessor
-        model_data = {
-            'model': self.model,
-            'preprocessor': self.preprocessor
-        }
-        
-        joblib.dump(model_data, path)
-        logger.info(f"Travel time model saved to {path}")
-    
-    def load_model(self, path=None):
-        """Load the model from disk."""
-        if path is None:
-            path = self.model_path or 'app/models/travel_time_model.joblib'
-        
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Model file not found at {path}")
-        
-        # Load model and preprocessor
-        model_data = joblib.load(path)
-        
-        self.model = model_data['model']
-        self.preprocessor = model_data['preprocessor']
-        
-        logger.info(f"Travel time model loaded from {path}")
+        try:
+            # Load historical data
+            travel_times = self.data_loader.get_travel_times(days=30)
+            
+            if travel_times.empty:
+                return {
+                    'error': 'No historical travel time data available',
+                    'status': 'error'
+                }
+            
+            # Filter for this expressway and direction
+            filtered = travel_times[
+                (travel_times['Expressway'] == expressway) &
+                (travel_times['Direction'] == direction)
+            ]
+            
+            if filtered.empty:
+                return {
+                    'error': f'No data found for expressway {expressway} direction {direction}',
+                    'status': 'error'
+                }
+            
+            # Add time-based features if not present
+            if 'hour' not in filtered.columns and 'Timestamp' in filtered.columns:
+                filtered['hour'] = filtered['Timestamp'].dt.hour
+                filtered['day_of_week'] = filtered['Timestamp'].dt.dayofweek
+                filtered['is_weekend'] = filtered['day_of_week'].apply(lambda x: 1 if x >= 5 else 0)
+            
+            # Apply day type filter if specified
+            if day_type == 'weekday':
+                filtered = filtered[filtered['is_weekend'] == 0]
+            elif day_type == 'weekend':
+                filtered = filtered[filtered['is_weekend'] == 1]
+            
+            # Group by hour and calculate statistics
+            hourly_stats = filtered.groupby('hour')['Esttime'].agg(['mean', 'min', 'max', 'count']).reset_index()
+            
+            # Convert to dict for JSON serialization
+            hourly_data = []
+            for _, row in hourly_stats.iterrows():
+                hourly_data.append({
+                    'hour': int(row['hour']),
+                    'avg_time': round(row['mean'], 1),
+                    'min_time': round(row['min'], 1),
+                    'max_time': round(row['max'], 1),
+                    'sample_count': int(row['count'])
+                })
+            
+            # Calculate peak hours
+            if not hourly_data:
+                peak_morning = None
+                peak_evening = None
+            else:
+                morning_hours = [h for h in hourly_data if h['hour'] >= 6 and h['hour'] <= 10]
+                evening_hours = [h for h in hourly_data if h['hour'] >= 16 and h['hour'] <= 20]
+                
+                peak_morning = max(morning_hours, key=lambda x: x['avg_time']) if morning_hours else None
+                peak_evening = max(evening_hours, key=lambda x: x['avg_time']) if evening_hours else None
+            
+            # Get day of week patterns
+            day_stats = filtered.groupby('day_of_week')['Esttime'].mean().reset_index()
+            day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            
+            day_data = []
+            for _, row in day_stats.iterrows():
+                day_idx = int(row['day_of_week'])
+                if 0 <= day_idx < len(day_names):
+                    day_data.append({
+                        'day': day_names[day_idx],
+                        'avg_time': round(row['Esttime'], 1)
+                    })
+            
+            return {
+                'status': 'success',
+                'expressway': expressway,
+                'direction': direction,
+                'day_type': day_type or 'all',
+                'hourly_patterns': hourly_data,
+                'daily_patterns': day_data,
+                'peak_morning': peak_morning,
+                'peak_evening': peak_evening,
+                'data_range': {
+                    'start_date': filtered['Timestamp'].min().strftime('%Y-%m-%d') if 'Timestamp' in filtered.columns else None,
+                    'end_date': filtered['Timestamp'].max().strftime('%Y-%m-%d') if 'Timestamp' in filtered.columns else None,
+                    'days': (filtered['Timestamp'].max() - filtered['Timestamp'].min()).days + 1 if 'Timestamp' in filtered.columns else None
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error getting historical patterns: {e}")
+            return {
+                'error': str(e),
+                'status': 'error'
+            }

@@ -118,7 +118,7 @@ export default function HomeScreen() {
     if (!location) return;
   
     try {
-      const data = await fetchAPI('/submit-crowd-report', {
+      const data = await fetchAPI('/submit-crowd-data', {
         method: 'POST',
         body: JSON.stringify({
           latitude: location.latitude,

@@ -469,7 +469,7 @@ export default function HomeScreen() {
           </Animated.View>
         </TouchableOpacity>
       )}
-      {reportMode && (
+      {reportMode && (8
         <TouchableWithoutFeedback onPress={() => setReportMode(null)}>
   <View style={styles.modalOverlay}>
     <TouchableWithoutFeedback>

@@ -8,7 +8,7 @@ client = secretmanager.SecretManagerServiceClient()
 # Access OpenWeatherMap API key from Secret Manager
 def get_secret(secret_name):
     response = client.access_secret_version(name=secret_name)
-    return response.payload.data.decode("UTF-8")
+    return response.payload.data.decode("UTF-8").strip()
 
 # Fetch OpenWeatherMap API key from Secret Manager
 WEATHER_API_KEY = get_secret("projects/541900038032/secrets/openweather-api-key/versions/latest")
@@ -33,9 +33,13 @@ def fetch_weather_data(city="Singapore"):
 
         # Store in Firebase Firestore
         store_weather_data(weather_info)
+        print(f"Weather data fetched and stored: {weather_info}")
 
         return {"message": "Weather data fetched and stored", "data": weather_info}
 
     except requests.exceptions.RequestException as e:
         print(f"Error fetching weather data: {e}")
         return {"error": str(e)}
+    
+if __name__ == "__main__":
+    fetch_weather_data()

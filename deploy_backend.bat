@@ -20,7 +20,7 @@ gcloud run deploy goanywhere-backend ^
   --image=trolley124/goanywhere-backend:latest ^
   --platform=managed ^
   --region=asia-southeast1 ^
-  --project=goanywhere-c55c8 ^
+  --set-env-vars=GCP_PROJECT_ID=goanywhere-c55c8 ^
   --allow-unauthenticated
 
 IF %ERRORLEVEL% EQU 0 (

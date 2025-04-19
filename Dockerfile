@@ -9,19 +9,16 @@ COPY backend/requirements3-12-7.txt ./requirements.txt
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only the app folder to ensure correct structure
+# Copy backend code
 COPY backend/app /app/app
 
-# Copy the Firebase service account JSON
-COPY backend/app/service-account-key.json /app/service-account-key.json
-ENV FIREBASE_SERVICE_ACCOUNT=/app/service-account-key.json
+# Create directory for trained models
+RUN mkdir -p /app/app/models/trained
 
 # Set environment variables
 ENV PORT=8080
 ENV GMAPS_API_KEY=AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g
-
-# 🔍 TEMP DEBUG: Show contents of /app/app/routes
-RUN echo "Routes directory content:" && ls /app/app/routes
+ENV GCP_PROJECT_ID=goanywhere-c55c8
 
 # Command to run the FastAPI app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

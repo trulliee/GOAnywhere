@@ -5,11 +5,11 @@ from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
-from app.models.traffic_prediction_model import TrafficPredictionModel
-from app.models.travel_time_model import TravelTimeModel
-from app.models.incident_impact_model import IncidentImpactModel
+from backend.app.models.traffic_congestion_model import TrafficPredictionModel
+from backend.app.models.travel_time_prediction import TravelTimeModel
 from app.models.route_recommendation import RouteRecommendationModel
 from app.models.feedback_analyzer import FeedbackAnalyzer
+from app.services.vertex import submit_training_job, deploy_model_to_endpoint
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -26,7 +26,6 @@ router = APIRouter(
 MODEL_PATH = "./models"
 traffic_model = TrafficPredictionModel(model_path=MODEL_PATH)
 travel_time_model = TravelTimeModel(model_path=MODEL_PATH)
-incident_model = IncidentImpactModel(model_path=MODEL_PATH)
 route_model = RouteRecommendationModel()
 feedback_analyzer = FeedbackAnalyzer()
 
@@ -37,7 +36,6 @@ async def check_models_status():
     status = {
         "traffic_model": traffic_model.speed_model is not None,
         "travel_time_model": travel_time_model.travel_time_model is not None or bool(travel_time_model.expressway_models),
-        "incident_model": incident_model.impact_model is not None,
         "route_model": route_model.road_graph is not None,
         "feedback_analyzer": True  # Always available as it doesn't need pre-loaded models
     }
@@ -132,34 +130,6 @@ class IncidentImpactInput(BaseModel):
     road_name: str
     type: str
     timestamp: Optional[datetime] = None
-
-@router.post("/incident_impact")
-async def predict_incident_impact(input_data: IncidentImpactInput):
-    """Predict the impact of a traffic incident."""
-    try:
-        # Check if model is loaded
-        if incident_model.impact_model is None:
-            incident_model.load_model()
-            if incident_model.impact_model is None:
-                raise HTTPException(status_code=500, detail="Incident impact model not loaded")
-        
-        # Prepare input for model
-        incident_data = {
-            "road_name": input_data.road_name,
-            "type": input_data.type,
-            "timestamp": input_data.timestamp or datetime.now()
-        }
-        
-        # Make prediction
-        result = incident_model.predict_impact(incident_data)
-        
-        if result.get("status") == "error":
-            raise HTTPException(status_code=500, detail=result.get("error", "Prediction failed"))
-        
-        return result
-    except Exception as e:
-        logger.error(f"Error in incident impact prediction: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 class Coordinates(BaseModel):
     lat: float
@@ -284,3 +254,21 @@ async def generate_performance_report(input_data: AnalysisInput):
     except Exception as e:
         logger.error(f"Error generating report: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/train-models")
+async def train_models_endpoint():
+    """Trigger model training on Vertex AI"""
+    try:
+        job_result = submit_training_job()
+        return {"success": True, "job_info": job_result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Training job failed: {str(e)}")
+
+@router.post("/deploy-model")
+async def deploy_model_endpoint(model_path: str, model_name: str):
+    """Deploy a trained model to a Vertex AI endpoint"""
+    try:
+        deployment_result = deploy_model_to_endpoint(model_path, model_name)
+        return {"success": True, "deployment_info": deployment_result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Model deployment failed: {str(e)}")

@@ -574,6 +574,13 @@ def get_train_service_alerts():
         print(f"Failed to fetch train service alerts: {response.status_code} - {response.text}")
 
 def get_estimated_travel_times():
+    """
+    Fetches estimated travel times for expressway segments from LTA DataMall API,
+    filters out incomplete or invalid records, and stores only clean data into Firestore.
+    
+    Returns:
+        None
+    """
     headers = {'AccountKey': LTA_API_KEY}
     response = requests.get(ESTIMATED_TRAVEL_TIMES_URL, headers=headers)
     
@@ -584,8 +591,29 @@ def get_estimated_travel_times():
         travel_times = data.get('value', [])
         
         if isinstance(travel_times, list):
-            store_estimated_travel_times(travel_times)  # Store estimated travel times in Firestore
-            print("Estimated travel times stored successfully!")
+            valid_travel_times = []
+            invalid_count = 0
+
+            for record in travel_times:
+                # Validate the record before storing
+                if (
+                    record.get('Name') and
+                    record.get('StartPoint') and
+                    record.get('EndPoint') and
+                    isinstance(record.get('EstTime'), (int, float)) and record['EstTime'] > 0
+                ):
+                    valid_travel_times.append(record)
+                else:
+                    invalid_count += 1
+
+            if valid_travel_times:
+                store_estimated_travel_times(valid_travel_times)
+                print(f"Stored {len(valid_travel_times)} valid estimated travel time records.")
+            else:
+                print("No valid estimated travel times found to store.")
+
+            if invalid_count > 0:
+                print(f"Skipped {invalid_count} invalid records (missing fields or zero travel time).")
         else:
             print("Error: Estimated travel times data is not a list!")
     else:
@@ -943,3 +971,6 @@ def rate_limited_request(url, headers, params=None, max_retries=3, retry_delay=1
     # If we've exhausted all retries
     print("Max retries reached. Unable to complete request.")
     return None
+
+if __name__ == "__main__":
+    get_traffic_incidents()

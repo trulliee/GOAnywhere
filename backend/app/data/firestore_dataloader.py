@@ -1,14 +1,17 @@
-# app/data/firestore_dataloader.py
-
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from firebase_admin import firestore
 from google.cloud import storage
+from google.cloud.firestore_v1.base_query import FieldFilter
 import tempfile
 import os
 import logging
 import json
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -17,7 +20,7 @@ logger = logging.getLogger(__name__)
 class FirestoreDataLoader:
     """
     Utility class for loading data from Firestore and Google Cloud Storage 
-    for machine learning models.
+    for machine learning models and data analysis.
     """
     
     def __init__(self, gcs_bucket_name=None):
@@ -27,9 +30,24 @@ class FirestoreDataLoader:
         Args:
             gcs_bucket_name (str, optional): Name of the GCS bucket for auxiliary data.
         """
+        # Initialize the Firestore client
         self.db = firestore.client()
+        
+        # Initialize the Storage client with the same credentials
+        firebase_creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+        if firebase_creds_path and os.path.exists(firebase_creds_path):
+            # Set the credentials for storage client
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = firebase_creds_path
+        
         self.gcs_bucket_name = gcs_bucket_name or "goanywhere-traffic-data-history"
-        self.storage_client = storage.Client()
+        
+        try:
+            self.storage_client = storage.Client()
+            logger.info("Successfully initialized Storage client")
+        except Exception as e:
+            logger.error(f"Error initializing Storage client: {e}")
+            # Create a mock storage client that logs errors but doesn't fail
+            self.storage_client = None
     
     # LTA DataMall 2.1: Bus Arrival
     def get_bus_arrivals(self, bus_stop_code=None, limit=10):
@@ -103,7 +121,88 @@ class FirestoreDataLoader:
         
         return pd.DataFrame(records)
     
-    # LTA DataMall 2.2: Bus Services
+    # LTA DataMall: Bus Arrival History
+    def get_bus_arrival_history(self, bus_stop_code=None, days=7, limit=1000):
+        """
+        Get historical bus arrival data from Firestore.
+        
+        Args:
+            bus_stop_code (str, optional): Specific bus stop code to query.
+            days (int): Number of days of history to retrieve.
+            limit (int): Maximum number of records to retrieve.
+            
+        Returns:
+            pandas.DataFrame: Historical bus arrival data
+        """
+        logger.info(f"Loading historical bus arrival data for stop {bus_stop_code or 'all stops'}")
+        
+        try:
+            # Calculate the cutoff date
+            cutoff_date = datetime.now() - timedelta(days=days)
+            
+            # Query Firestore
+            history_ref = self.db.collection("bus_arrivals_history")
+            
+            # Build query
+            query = history_ref
+            
+            if bus_stop_code:
+                # Using a compound query to filter by bus stop code
+                # Note: This requires a composite index to be created in Firestore
+                query = query.where("bus_stop_code", "==", bus_stop_code)
+            
+            # Filter by timestamp and order by timestamp
+            query = query.where(filter=FieldFilter("timestamp", ">=", cutoff_date))
+            query = query.order_by("timestamp", direction=firestore.Query.DESCENDING)
+            query = query.limit(limit)
+            
+            # Execute query
+            docs = query.stream()
+            
+            # Convert to DataFrame
+            records = []
+            for doc in docs:
+                record = doc.to_dict()
+                record['id'] = doc.id
+                records.append(record)
+            
+            if not records:
+                logger.warning("No historical bus arrival data found")
+                return pd.DataFrame()
+            
+            # Process to flattened DataFrame format
+            flat_records = []
+            for record in records:
+                bus_stop_code = record.get('bus_stop_code')
+                timestamp = record.get('timestamp')
+                
+                for service in record.get('services', []):
+                    flat_record = {
+                        'bus_stop_code': bus_stop_code,
+                        'timestamp': timestamp,
+                        'service_no': service.get('service_no'),
+                        'operator': service.get('operator'),
+                        'estimated_arrival': service.get('estimated_arrival'),
+                        'load': service.get('load')
+                    }
+                    flat_records.append(flat_record)
+            
+            df = pd.DataFrame(flat_records)
+            
+            # Convert timestamps
+            if 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+            if 'estimated_arrival' in df.columns:
+                df['estimated_arrival'] = pd.to_datetime(df['estimated_arrival'], errors='coerce')
+            
+            logger.info(f"Loaded {len(df)} historical bus arrival records")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error loading historical bus arrival data: {e}")
+            return pd.DataFrame()
+    
+    # Bus Services
     def get_bus_services(self, service_no=None):
         """
         Get bus services information from Firestore.
@@ -120,7 +219,7 @@ class FirestoreDataLoader:
             # Query Firestore
             if service_no:
                 # Query for specific service
-                doc = self.db.collection("bus_services_info").document(service_no).get()
+                doc = self.db.collection("bus_services").document(service_no).get()
                 if not doc.exists:
                     logger.warning(f"No data found for bus service {service_no}")
                     return pd.DataFrame()
@@ -128,7 +227,7 @@ class FirestoreDataLoader:
                 data = [doc.to_dict()]
             else:
                 # Query for all services
-                docs = self.db.collection("bus_services_info").stream()
+                docs = self.db.collection("bus_services").stream()
                 data = [doc.to_dict() for doc in docs]
             
             if not data:
@@ -141,6 +240,46 @@ class FirestoreDataLoader:
             
         except Exception as e:
             logger.error(f"Error loading bus services data: {e}")
+            return pd.DataFrame()
+    
+    # Bus Services Info
+    def get_bus_services_info(self, service_no=None):
+        """
+        Get detailed bus services information from Firestore.
+        
+        Args:
+            service_no (str, optional): Specific bus service number to query.
+            
+        Returns:
+            pandas.DataFrame: Bus services info data
+        """
+        logger.info(f"Loading bus services info for service {service_no or 'all services'}")
+        
+        try:
+            # Query Firestore
+            if service_no:
+                # Query for specific service
+                doc = self.db.collection("bus_services_info").document(service_no).get()
+                if not doc.exists:
+                    logger.warning(f"No info found for bus service {service_no}")
+                    return pd.DataFrame()
+                
+                data = [doc.to_dict()]
+            else:
+                # Query for all services
+                docs = self.db.collection("bus_services_info").stream()
+                data = [doc.to_dict() for doc in docs]
+            
+            if not data:
+                logger.warning("No bus services info found")
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(data)
+            logger.info(f"Loaded {len(df)} bus service info records")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error loading bus services info: {e}")
             return pd.DataFrame()
     
     # LTA DataMall 2.3: Bus Routes
@@ -194,85 +333,54 @@ class FirestoreDataLoader:
         except Exception as e:
             logger.error(f"Error loading bus routes data: {e}")
             return pd.DataFrame()
-    
-    # LTA DataMall 2.4: Bus Stops
-    def get_bus_stops(self, bus_stop_code=None):
-        """
-        Get bus stops information from Firestore.
-        
-        Args:
-            bus_stop_code (str, optional): Specific bus stop code to query.
-            
-        Returns:
-            pandas.DataFrame: Bus stops data
-        """
-        logger.info(f"Loading bus stops data for stop {bus_stop_code or 'all stops'}")
-        
-        try:
-            # Query Firestore - assuming bus stops are stored in a collection
-            bus_stops_ref = self.db.collection("bus_stops")
-            
-            if bus_stop_code:
-                # Query for specific bus stop
-                doc = bus_stops_ref.document(bus_stop_code).get()
-                if not doc.exists:
-                    logger.warning(f"No data found for bus stop {bus_stop_code}")
-                    return pd.DataFrame()
-                
-                data = [doc.to_dict()]
-            else:
-                # Query for all bus stops
-                docs = bus_stops_ref.stream()
-                data = [doc.to_dict() for doc in docs]
-            
-            if not data:
-                logger.warning("No bus stops data found")
-                return pd.DataFrame()
-            
-            df = pd.DataFrame(data)
-            logger.info(f"Loaded {len(df)} bus stop records")
-            return df
-            
-        except Exception as e:
-            logger.error(f"Error loading bus stops data: {e}")
-            return pd.DataFrame()
-    
-    # LTA DataMall 2.5: Passenger Volume by Bus Stops
-    def get_bus_passenger_volume(self, date=None):
+
+    # LTA DataMall: Bus Passenger Volume
+    def get_bus_passenger_volume(self, date=None, limit=100):
         """
         Get bus passenger volume data from Firestore.
         
         Args:
-            date (str, optional): Date in format YYYYMM. Defaults to latest available.
+            date (str, optional): Date in format YYYYMM to filter by.
+            limit (int): Maximum number of records to retrieve.
             
         Returns:
             pandas.DataFrame: Bus passenger volume data
         """
-        logger.info(f"Loading bus passenger volume data for date {date or 'latest'}")
+        logger.info(f"Loading bus passenger volume data")
         
         try:
             # Query Firestore
             pv_ref = self.db.collection("bus_passenger_volume")
             
-            if date:
-                # Query for specific date
-                docs = pv_ref.where("date", "==", date).stream()
-            else:
-                # Get the latest data
-                docs = pv_ref.order_by("date", direction=firestore.Query.DESCENDING).limit(1).stream()
+            # Build query
+            query = pv_ref
             
-            # Process results
+            if date:
+                # Filter by date prefix
+                query = query.where("date", "==", date)
+            
+            # Execute query to get parent documents
+            parent_docs = query.limit(limit).stream()
+            
             all_records = []
-            for doc in docs:
-                metadata = doc.to_dict()
+            
+            # Fetch records from each parent document's subcollection
+            for parent_doc in parent_docs:
+                parent_data = parent_doc.to_dict()
+                metadata = {
+                    'date': parent_data.get('date'),
+                    'filename': parent_data.get('filename'),
+                    'parent_id': parent_doc.id
+                }
                 
                 # Get records from subcollection
-                records_ref = doc.reference.collection("records")
-                for record_doc in records_ref.stream():
+                records_ref = parent_doc.reference.collection("records")
+                record_docs = records_ref.limit(1000).stream()  # Limit to 1000 records per parent
+                
+                for record_doc in record_docs:
                     record = record_doc.to_dict()
                     # Add metadata
-                    record['date'] = metadata.get('date')
-                    record['filename'] = metadata.get('filename')
+                    record.update(metadata)
                     all_records.append(record)
             
             if not all_records:
@@ -280,6 +388,7 @@ class FirestoreDataLoader:
                 return pd.DataFrame()
             
             df = pd.DataFrame(all_records)
+            
             logger.info(f"Loaded {len(df)} bus passenger volume records")
             return df
             
@@ -287,47 +396,66 @@ class FirestoreDataLoader:
             logger.error(f"Error loading bus passenger volume data: {e}")
             return pd.DataFrame()
     
-    # LTA DataMall 2.6: Passenger Volume by Origin Destination Bus Stops
-    def get_bus_od_passenger_volume(self, date=None):
+    # LTA DataMall: Bus OD Passenger Volume
+    def get_bus_od_passenger_volume(self, date=None, limit=100, chunk_size=1000):
         """
         Get bus origin-destination passenger volume data from Firestore.
         
         Args:
-            date (str, optional): Date in format YYYYMM. Defaults to latest available.
+            date (str, optional): Date in format YYYYMM to filter by.
+            limit (int): Maximum number of parent documents to retrieve.
+            chunk_size (int): Maximum number of records per chunk to retrieve.
             
         Returns:
             pandas.DataFrame: Bus OD passenger volume data
         """
-        logger.info(f"Loading bus OD passenger volume data for date {date or 'latest'}")
+        logger.info(f"Loading bus OD passenger volume data")
         
         try:
             # Query Firestore
-            od_ref = self.db.collection("bus_od_passenger_volume")
+            od_pv_ref = self.db.collection("bus_od_passenger_volume")
+            
+            # Build query
+            query = od_pv_ref
             
             if date:
-                # Query for specific date
-                docs = od_ref.where("date", "==", date).stream()
-            else:
-                # Get the latest data
-                docs = od_ref.order_by("date", direction=firestore.Query.DESCENDING).limit(1).stream()
+                # Filter by date
+                query = query.where("date", "==", date)
             
-            # Process results
+            # Execute query to get parent documents
+            parent_docs = query.limit(limit).stream()
+            
             all_records = []
             
-            for doc in docs:
-                metadata = doc.to_dict()
+            # Fetch records from each parent document's chunks and their subcollections
+            for parent_doc in parent_docs:
+                parent_data = parent_doc.to_dict()
+                metadata = {
+                    'date': parent_data.get('date'),
+                    'filename': parent_data.get('filename'),
+                    'parent_id': parent_doc.id
+                }
                 
                 # Get chunks subcollection
-                chunks_ref = doc.reference.collection("chunks")
-                for chunk_doc in chunks_ref.stream():
-                    # Get records from nested subcollection
-                    records_ref = chunk_doc.reference.collection("records")
+                chunks_ref = parent_doc.reference.collection("chunks")
+                chunk_docs = chunks_ref.limit(5).stream()  # Limit to 5 chunks
+                
+                for chunk_doc in chunk_docs:
+                    chunk_data = chunk_doc.to_dict()
+                    chunk_metadata = {
+                        'chunk_index': chunk_data.get('chunk_index'),
+                        'chunk_id': chunk_doc.id
+                    }
                     
-                    for record_doc in records_ref.stream():
+                    # Get records from chunk's subcollection
+                    records_ref = chunk_doc.reference.collection("records")
+                    record_docs = records_ref.limit(chunk_size).stream()
+                    
+                    for record_doc in record_docs:
                         record = record_doc.to_dict()
                         # Add metadata
-                        record['date'] = metadata.get('date')
-                        record['filename'] = metadata.get('filename')
+                        record.update(metadata)
+                        record.update(chunk_metadata)
                         all_records.append(record)
             
             if not all_records:
@@ -335,6 +463,7 @@ class FirestoreDataLoader:
                 return pd.DataFrame()
             
             df = pd.DataFrame(all_records)
+            
             logger.info(f"Loaded {len(df)} bus OD passenger volume records")
             return df
             
@@ -342,47 +471,66 @@ class FirestoreDataLoader:
             logger.error(f"Error loading bus OD passenger volume data: {e}")
             return pd.DataFrame()
     
-    # LTA DataMall 2.7: Passenger Volume by Origin Destination Train Stations
-    def get_train_od_passenger_volume(self, date=None):
+    # LTA DataMall: Train OD Passenger Volume
+    def get_train_od_passenger_volume(self, date=None, limit=100, chunk_size=1000):
         """
         Get train origin-destination passenger volume data from Firestore.
         
         Args:
-            date (str, optional): Date in format YYYYMM. Defaults to latest available.
+            date (str, optional): Date in format YYYYMM to filter by.
+            limit (int): Maximum number of parent documents to retrieve.
+            chunk_size (int): Maximum number of records per chunk to retrieve.
             
         Returns:
             pandas.DataFrame: Train OD passenger volume data
         """
-        logger.info(f"Loading train OD passenger volume data for date {date or 'latest'}")
+        logger.info(f"Loading train OD passenger volume data")
         
         try:
             # Query Firestore
-            od_ref = self.db.collection("train_od_passenger_volume")
+            od_pv_ref = self.db.collection("train_od_passenger_volume")
+            
+            # Build query
+            query = od_pv_ref
             
             if date:
-                # Query for specific date
-                docs = od_ref.where("date", "==", date).stream()
-            else:
-                # Get the latest data
-                docs = od_ref.order_by("date", direction=firestore.Query.DESCENDING).limit(1).stream()
+                # Filter by date
+                query = query.where("date", "==", date)
             
-            # Process results
+            # Execute query to get parent documents
+            parent_docs = query.limit(limit).stream()
+            
             all_records = []
             
-            for doc in docs:
-                metadata = doc.to_dict()
+            # Fetch records from each parent document's chunks and their subcollections
+            for parent_doc in parent_docs:
+                parent_data = parent_doc.to_dict()
+                metadata = {
+                    'date': parent_data.get('date'),
+                    'filename': parent_data.get('filename'),
+                    'parent_id': parent_doc.id
+                }
                 
                 # Get chunks subcollection
-                chunks_ref = doc.reference.collection("chunks")
-                for chunk_doc in chunks_ref.stream():
-                    # Get records from nested subcollection
-                    records_ref = chunk_doc.reference.collection("records")
+                chunks_ref = parent_doc.reference.collection("chunks")
+                chunk_docs = chunks_ref.limit(5).stream()  # Limit to 5 chunks
+                
+                for chunk_doc in chunk_docs:
+                    chunk_data = chunk_doc.to_dict()
+                    chunk_metadata = {
+                        'chunk_index': chunk_data.get('chunk_index'),
+                        'chunk_id': chunk_doc.id
+                    }
                     
-                    for record_doc in records_ref.stream():
+                    # Get records from chunk's subcollection
+                    records_ref = chunk_doc.reference.collection("records")
+                    record_docs = records_ref.limit(chunk_size).stream()
+                    
+                    for record_doc in record_docs:
                         record = record_doc.to_dict()
                         # Add metadata
-                        record['date'] = metadata.get('date')
-                        record['filename'] = metadata.get('filename')
+                        record.update(metadata)
+                        record.update(chunk_metadata)
                         all_records.append(record)
             
             if not all_records:
@@ -390,6 +538,7 @@ class FirestoreDataLoader:
                 return pd.DataFrame()
             
             df = pd.DataFrame(all_records)
+            
             logger.info(f"Loaded {len(df)} train OD passenger volume records")
             return df
             
@@ -397,47 +546,66 @@ class FirestoreDataLoader:
             logger.error(f"Error loading train OD passenger volume data: {e}")
             return pd.DataFrame()
     
-    # LTA DataMall 2.8: Passenger Volume by Train Stations
-    def get_train_passenger_volume(self, date=None):
+    # LTA DataMall: Train Passenger Volume
+    def get_train_passenger_volume(self, date=None, limit=100, chunk_size=1000):
         """
         Get train passenger volume data from Firestore.
         
         Args:
-            date (str, optional): Date in format YYYYMM. Defaults to latest available.
+            date (str, optional): Date in format YYYYMM to filter by.
+            limit (int): Maximum number of parent documents to retrieve.
+            chunk_size (int): Maximum number of records per chunk to retrieve.
             
         Returns:
             pandas.DataFrame: Train passenger volume data
         """
-        logger.info(f"Loading train passenger volume data for date {date or 'latest'}")
+        logger.info(f"Loading train passenger volume data")
         
         try:
             # Query Firestore
             pv_ref = self.db.collection("train_passenger_volume")
             
-            if date:
-                # Query for specific date
-                docs = pv_ref.where("date", "==", date).stream()
-            else:
-                # Get the latest data
-                docs = pv_ref.order_by("date", direction=firestore.Query.DESCENDING).limit(1).stream()
+            # Build query
+            query = pv_ref
             
-            # Process results
+            if date:
+                # Filter by date
+                query = query.where("date", "==", date)
+            
+            # Execute query to get parent documents
+            parent_docs = query.limit(limit).stream()
+            
             all_records = []
             
-            for doc in docs:
-                metadata = doc.to_dict()
+            # Fetch records from each parent document's chunks and their subcollections
+            for parent_doc in parent_docs:
+                parent_data = parent_doc.to_dict()
+                metadata = {
+                    'date': parent_data.get('date'),
+                    'filename': parent_data.get('filename'),
+                    'parent_id': parent_doc.id
+                }
                 
                 # Get chunks subcollection
-                chunks_ref = doc.reference.collection("chunks")
-                for chunk_doc in chunks_ref.stream():
-                    # Get records from nested subcollection
-                    records_ref = chunk_doc.reference.collection("records")
+                chunks_ref = parent_doc.reference.collection("chunks")
+                chunk_docs = chunks_ref.limit(5).stream()  # Limit to 5 chunks
+                
+                for chunk_doc in chunk_docs:
+                    chunk_data = chunk_doc.to_dict()
+                    chunk_metadata = {
+                        'chunk_index': chunk_data.get('chunk_index'),
+                        'chunk_id': chunk_doc.id
+                    }
                     
-                    for record_doc in records_ref.stream():
+                    # Get records from chunk's subcollection
+                    records_ref = chunk_doc.reference.collection("records")
+                    record_docs = records_ref.limit(chunk_size).stream()
+                    
+                    for record_doc in record_docs:
                         record = record_doc.to_dict()
                         # Add metadata
-                        record['date'] = metadata.get('date')
-                        record['filename'] = metadata.get('filename')
+                        record.update(metadata)
+                        record.update(chunk_metadata)
                         all_records.append(record)
             
             if not all_records:
@@ -445,6 +613,7 @@ class FirestoreDataLoader:
                 return pd.DataFrame()
             
             df = pd.DataFrame(all_records)
+            
             logger.info(f"Loaded {len(df)} train passenger volume records")
             return df
             
@@ -452,13 +621,13 @@ class FirestoreDataLoader:
             logger.error(f"Error loading train passenger volume data: {e}")
             return pd.DataFrame()
     
-    # LTA DataMall 2.11: Train Service Alerts
+    # LTA DataMall: Train Service Alerts
     def get_train_service_alerts(self, active_only=True):
         """
         Get train service alerts from Firestore.
         
         Args:
-            active_only (bool): Whether to return only active alerts. Defaults to True.
+            active_only (bool): Whether to retrieve only active alerts.
             
         Returns:
             pandas.DataFrame: Train service alerts data
@@ -469,10 +638,11 @@ class FirestoreDataLoader:
             # Query Firestore
             alerts_ref = self.db.collection("train_service_alerts")
             
+            # Build query
+            query = alerts_ref
+            
             if active_only:
-                query = alerts_ref.where("is_active", "==", True)
-            else:
-                query = alerts_ref
+                query = query.where("is_active", "==", True)
             
             # Execute query
             docs = query.stream()
@@ -490,7 +660,7 @@ class FirestoreDataLoader:
             
             df = pd.DataFrame(records)
             
-            # Process timestamps if they exist
+            # Convert timestamps if they exist
             timestamp_cols = ['last_updated', 'deactivated_at']
             for col in timestamp_cols:
                 if col in df.columns:
@@ -503,58 +673,124 @@ class FirestoreDataLoader:
             logger.error(f"Error loading train service alerts: {e}")
             return pd.DataFrame()
     
+    # Train Alert History
+    def get_train_alert_history(self, days=30):
+        """
+        Get historical train service alert data from Firestore.
+        
+        Args:
+            days (int): Number of days of history to retrieve.
+            
+        Returns:
+            pandas.DataFrame: Train alert history data
+        """
+        logger.info(f"Loading train alert history for the past {days} days")
+        
+        try:
+            # Calculate the cutoff date
+            cutoff_date = datetime.now() - timedelta(days=days)
+            
+            # Query Firestore
+            history_ref = self.db.collection("train_alerts_history")
+            
+            # Execute query
+            docs = history_ref.stream()
+            
+            # Convert to DataFrame
+            records = []
+            for doc in docs:
+                record = doc.to_dict()
+                record['id'] = doc.id
+                records.append(record)
+            
+            if not records:
+                logger.warning("No train alert history found")
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(records)
+            
+            # Convert timestamps if they exist
+            if 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                
+                # Filter by cutoff date
+                df = df[df['timestamp'] >= cutoff_date]
+            
+            logger.info(f"Loaded {len(df)} train alert history records")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error loading train alert history: {e}")
+            return pd.DataFrame()
+
     # LTA DataMall 2.13: Estimated Travel Times
     def get_travel_times(self, days=30):
         """
-        Get estimated travel times from Firestore.
-        
+        Get validated estimated travel times from Firestore.
+
         Args:
             days (int): Number of days of data to retrieve
-            
+
         Returns:
-            pandas.DataFrame: Travel times data
+            pandas.DataFrame: Clean travel times data
         """
         logger.info(f"Loading estimated travel times data for the past {days} days")
-        
-        # Calculate the cutoff date
-        cutoff_date = datetime.now() - timedelta(days=days)
-        
-        # Query Firestore
-        travel_times_ref = self.db.collection("estimated_travel_times")
-        query = (travel_times_ref
-                .where("Timestamp", ">=", cutoff_date)
-                .order_by("Timestamp", direction=firestore.Query.DESCENDING))
-        
-        # Execute query
-        docs = query.stream()
-        
-        # Convert to list
-        records = []
-        for doc in docs:
-            record = doc.to_dict()
-            record['id'] = doc.id
-            records.append(record)
-        
-        if not records:
-            logger.warning("No estimated travel times data found")
+
+        try:
+            # Calculate the cutoff date
+            cutoff_date = datetime.now() - timedelta(days=days)
+
+            # Query Firestore
+            travel_times_ref = self.db.collection("estimated_travel_times")
+            query = (travel_times_ref
+                    .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
+                    .order_by("Timestamp", direction=firestore.Query.DESCENDING))
+
+            # Execute query
+            docs = query.stream()
+
+            # Convert to list
+            records = []
+            for doc in docs:
+                record = doc.to_dict()
+                record['id'] = doc.id
+                # Validate basic fields here too
+                if (
+                    record.get('Expressway') and
+                    record.get('Startpoint') and
+                    record.get('Endpoint') and
+                    isinstance(record.get('Esttime'), (int, float)) and record['Esttime'] > 0
+                ):
+                    records.append(record)
+                else:
+                    logger.warning(f"Skipped invalid travel time record (doc id: {doc.id})")
+
+            if not records:
+                logger.warning("No valid estimated travel times data found")
+                return pd.DataFrame()
+
+            df = pd.DataFrame(records)
+
+            # Process timestamps if they exist
+            if 'Timestamp' in df.columns:
+                df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
+                df['date'] = df['Timestamp'].dt.date
+
+            logger.info(f"Loaded {len(df)} valid estimated travel time records")
+            return df
+
+        except Exception as e:
+            logger.error(f"Error loading estimated travel times data: {e}")
             return pd.DataFrame()
-        
-        df = pd.DataFrame(records)
-        
-        # Process timestamps if they exist
-        if 'Timestamp' in df.columns:
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-        
-        logger.info(f"Loaded {len(df)} estimated travel time records")
-        return df
-    
-    # LTA DataMall 2.14: Faulty Traffic Lights
-    def get_faulty_traffic_lights(self, active_only=True):
+
+    # LTA DataMall: Faulty Traffic Lights
+    def get_faulty_traffic_lights(self, active_only=True, type_filter=None):
         """
         Get faulty traffic lights data from Firestore.
         
         Args:
-            active_only (bool): Whether to return only active faults. Defaults to True.
+            active_only (bool): Whether to retrieve only active faults.
+            type_filter (int, optional): Filter by fault type (4 for Blackout, 13 for Flashing Yellow).
             
         Returns:
             pandas.DataFrame: Faulty traffic lights data
@@ -565,10 +801,14 @@ class FirestoreDataLoader:
             # Query Firestore
             lights_ref = self.db.collection("faulty_traffic_lights")
             
+            # Build query
+            query = lights_ref
+            
             if active_only:
-                query = lights_ref.where("is_active", "==", True)
-            else:
-                query = lights_ref
+                query = query.where("is_active", "==", True)
+            
+            if type_filter is not None:
+                query = query.where("type", "==", type_filter)
             
             # Execute query
             docs = query.stream()
@@ -586,7 +826,7 @@ class FirestoreDataLoader:
             
             df = pd.DataFrame(records)
             
-            # Process timestamps if they exist
+            # Convert timestamps if they exist
             timestamp_cols = ['last_updated', 'start_timestamp', 'end_timestamp', 'resolved_at']
             for col in timestamp_cols:
                 if col in df.columns:
@@ -597,6 +837,56 @@ class FirestoreDataLoader:
             
         except Exception as e:
             logger.error(f"Error loading faulty traffic lights data: {e}")
+            return pd.DataFrame()
+    
+    # Traffic Light Fault History
+    def get_traffic_light_history(self, days=30):
+        """
+        Get historical traffic light fault data from Firestore.
+        
+        Args:
+            days (int): Number of days of history to retrieve.
+            
+        Returns:
+            pandas.DataFrame: Traffic light fault history data
+        """
+        logger.info(f"Loading traffic light fault history for the past {days} days")
+        
+        try:
+            # Calculate the cutoff date
+            cutoff_date = datetime.now() - timedelta(days=days)
+            
+            # Query Firestore
+            history_ref = self.db.collection("traffic_lights_history")
+            
+            # Execute query
+            docs = history_ref.stream()
+            
+            # Convert to DataFrame
+            records = []
+            for doc in docs:
+                record = doc.to_dict()
+                record['id'] = doc.id
+                records.append(record)
+            
+            if not records:
+                logger.warning("No traffic light fault history found")
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(records)
+            
+            # Convert timestamps if they exist
+            if 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                
+                # Filter by cutoff date
+                df = df[df['timestamp'] >= cutoff_date]
+            
+            logger.info(f"Loaded {len(df)} traffic light fault history records")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error loading traffic light fault history: {e}")
             return pd.DataFrame()
     
     # LTA DataMall 2.15: Planned Road Openings
@@ -651,128 +941,7 @@ class FirestoreDataLoader:
         except Exception as e:
             logger.error(f"Error loading planned road openings data: {e}")
             return pd.DataFrame()
-    
-    # LTA DataMall 2.16: Approved Road Works
-    def get_approved_road_works(self, status=None):
-        """
-        Get approved road works data from Firestore.
-        
-        Args:
-            status (str, optional): Filter by status ('scheduled', 'in_progress', 'completed').
-            
-        Returns:
-            pandas.DataFrame: Approved road works data
-        """
-        logger.info(f"Loading approved road works data (status={status or 'all'})")
-        
-        try:
-            # Query Firestore
-            works_ref = self.db.collection("approved_road_works")
-            
-            # Base query for active road works
-            query = works_ref.where("is_active", "==", True)
-            
-            # Add status filter if specified
-            if status:
-                query = query.where("status", "==", status)
-            
-            # Execute query
-            docs = query.stream()
-            
-            # Convert to DataFrame
-            records = []
-            for doc in docs:
-                record = doc.to_dict()
-                record['id'] = doc.id
-                records.append(record)
-            
-            if not records:
-                logger.warning("No approved road works data found")
-                return pd.DataFrame()
-            
-            df = pd.DataFrame(records)
-            
-            # Process timestamps if they exist
-            timestamp_cols = ['last_updated', 'start_timestamp', 'end_timestamp', 'completed_at']
-            for col in timestamp_cols:
-                if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
-            
-            logger.info(f"Loaded {len(df)} approved road work records")
-            return df
-            
-        except Exception as e:
-            logger.error(f"Error loading approved road works data: {e}")
-            return pd.DataFrame()
-    
-    # LTA DataMall 2.18: Traffic Incidents
-    def get_incidents(self, days=30, include_user_reported=True):
-        """
-        Get traffic incidents from Firestore.
-        
-        Args:
-            days (int): Number of days of data to retrieve
-            include_user_reported (bool): Whether to include user-reported incidents
-            
-        Returns:
-            pandas.DataFrame: Incidents data
-        """
-        logger.info(f"Loading traffic incidents data for the past {days} days")
-        
-        # Calculate the cutoff date
-        cutoff_date = datetime.now() - timedelta(days=days)
-        
-        # Query official incidents
-        incidents_ref = self.db.collection("traffic_incidents")
-        query = (incidents_ref
-                .where("Timestamp", ">=", cutoff_date)
-                .order_by("Timestamp", direction=firestore.Query.DESCENDING))
-        
-        # Execute query
-        docs = query.stream()
-        
-        # Convert to list
-        records = []
-        for doc in docs:
-            record = doc.to_dict()
-            record['id'] = doc.id
-            record['source'] = 'official'
-            records.append(record)
-        
-        # Include user-reported incidents if requested
-        if include_user_reported:
-            user_incidents_ref = self.db.collection("user_reported_incidents")
-            user_query = (user_incidents_ref
-                         .where("time_reported", ">=", cutoff_date)
-                         .where("status", "==", "active")
-                         .order_by("time_reported", direction=firestore.Query.DESCENDING))
-            
-            user_docs = user_query.stream()
-            
-            for doc in user_docs:
-                record = doc.to_dict()
-                record['id'] = doc.id
-                record['source'] = 'user-reported'
-                # Normalize field names
-                if 'time_reported' in record and 'Timestamp' not in record:
-                    record['Timestamp'] = record['time_reported']
-                records.append(record)
-        
-        if not records:
-            logger.warning("No incidents data found")
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(records)
-        
-        # Process timestamps if they exist
-        timestamp_cols = ['Timestamp', 'time_reported']
-        for col in timestamp_cols:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
-        
-        logger.info(f"Loaded {len(df)} traffic incident records")
-        return df
-    
+
     # LTA DataMall 2.19: Traffic Speed Bands
     def get_traffic_speed_bands(self, days=7, limit=10000):
         """
@@ -787,55 +956,19 @@ class FirestoreDataLoader:
         """
         logger.info(f"Loading traffic speed bands data for the past {days} days")
         
-        # Calculate the cutoff date
-        cutoff_date = datetime.now() - timedelta(days=days)
-        
-        # Query Firestore
-        speed_bands_ref = self.db.collection("traffic_speed_bands")
-        query = (speed_bands_ref
-                .where("Timestamp", ">=", cutoff_date)
-                .order_by("Timestamp", direction=firestore.Query.DESCENDING)
-                .limit(limit))
-        
-        # Execute query
-        docs = query.stream()
-        
-        # Convert to DataFrame
-        records = []
-        for doc in docs:
-            record = doc.to_dict()
-            record['id'] = doc.id
-            records.append(record)
-        
-        if not records:
-            logger.warning("No traffic speed bands data found")
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(records)
-        
-        # Process timestamps if they exist
-        if 'Timestamp' in df.columns:
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-        
-        logger.info(f"Loaded {len(df)} traffic speed band records")
-        return df
-    
-    # LTA DataMall 2.20: VMS/EMAS
-    def get_vms_messages(self):
-        """
-        Get Variable Message Services (VMS) data from Firestore.
-        
-        Returns:
-            pandas.DataFrame: VMS messages data
-        """
-        logger.info("Loading VMS messages data")
-        
         try:
+            # Calculate the cutoff date
+            cutoff_date = datetime.now() - timedelta(days=days)
+            
             # Query Firestore
-            vms_ref = self.db.collection("vms_messages")
+            speed_bands_ref = self.db.collection("traffic_speed_bands")
+            query = (speed_bands_ref
+                    .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
+                    .order_by("Timestamp", direction=firestore.Query.DESCENDING)
+                    .limit(limit))
             
             # Execute query
-            docs = vms_ref.stream()
+            docs = query.stream()
             
             # Convert to DataFrame
             records = []
@@ -845,7 +978,7 @@ class FirestoreDataLoader:
                 records.append(record)
             
             if not records:
-                logger.warning("No VMS messages data found")
+                logger.warning("No traffic speed bands data found")
                 return pd.DataFrame()
             
             df = pd.DataFrame(records)
@@ -854,70 +987,316 @@ class FirestoreDataLoader:
             if 'Timestamp' in df.columns:
                 df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
             
-            logger.info(f"Loaded {len(df)} VMS message records")
+            logger.info(f"Loaded {len(df)} traffic speed band records")
             return df
             
         except Exception as e:
-            logger.error(f"Error loading VMS messages data: {e}")
+            logger.error(f"Error loading traffic speed bands data: {e}")
             return pd.DataFrame()
-    
-    # LTA DataMall 2.24: Station Crowd Density Real Time
-    def get_station_crowd_density(self, train_line=None):
+
+    # LTA DataMall 2.18: Traffic Incidents
+    def get_incidents(self, days=7, include_user_reported=False):
         """
-        Get station crowd density data from Firestore.
+        Get traffic incidents from Firestore.
         
         Args:
-            train_line (str, optional): Train line code. If None, get all lines.
+            days (int): Number of days of data to retrieve
+            include_user_reported (bool): Whether to include user-reported incidents
             
         Returns:
-            dict or pandas.DataFrame: Station crowd density data
+            pandas.DataFrame: Incidents data
         """
-        logger.info(f"Loading station crowd density data for line {train_line or 'all'}")
+        logger.info(f"Loading traffic incidents data for the past {days} days")
+        
+        try:
+            # Calculate the cutoff date
+            cutoff_date = datetime.now() - timedelta(days=days)
+            
+            # Query official incidents
+            incidents_ref = self.db.collection("traffic_incidents")
+            query = (incidents_ref
+                    .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
+                    .order_by("Timestamp", direction=firestore.Query.DESCENDING))
+            
+            # Execute query
+            docs = query.stream()
+            
+            # Convert to list
+            records = []
+            for doc in docs:
+                record = doc.to_dict()
+                record['id'] = doc.id
+                record['source'] = 'official'
+                records.append(record)
+            
+            if not records:
+                logger.warning("No incidents data found")
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(records)
+            
+            # Process timestamps if they exist
+            timestamp_cols = ['Timestamp', 'time_reported']
+            for col in timestamp_cols:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors='coerce')
+            
+            if 'Timestamp' in df.columns:
+                df['date'] = df['Timestamp'].dt.date
+
+            logger.info(f"Loaded {len(df)} traffic incident records")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error loading traffic incidents data: {e}")
+            return pd.DataFrame()
+
+    # Weather data
+    def get_weather_data(self, days=1, location=None):
+        """
+        Load weather data from Firestore.
+        
+        Args:
+            days (int): Number of days of data to retrieve
+            location (str, optional): Specific location to filter by (default: "Singapore")
+            
+        Returns:
+            pandas.DataFrame: Weather data formatted for model compatibility
+        """
+        try:
+            logging.info(f"Loading weather data for the past {days} days")
+            
+            # Reference to the weather collection
+            weather_ref = self.db.collection('weather_data')
+            
+            # Calculate the start time for the query
+            start_time = datetime.now() - timedelta(days=days)
+            
+            # Apply location filter if specified
+            query = weather_ref
+            if location:
+                query = query.where("city", "==", location)
+            
+            # Execute query
+            docs = query.stream()
+            
+            # Convert to list of dicts
+            weather_data = []
+            for doc in docs:
+                data = doc.to_dict()
+                data['id'] = doc.id
+                # Add stored_at timestamp if not present
+                if 'stored_at' not in data:
+                    data['stored_at'] = doc.create_time
+                    
+                weather_data.append(data)
+            
+            if not weather_data:
+                logging.warning("No weather data found")
+                return pd.DataFrame()
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(weather_data)
+            
+            # Ensure the DataFrame has the expected columns
+            if 'temperature' not in df.columns and 'temp' in df.columns:
+                df['temperature'] = df['temp']
+                
+            # Make sure humidity is present
+            if 'humidity' not in df.columns:
+                df['humidity'] = 70.0  # Default value if missing
+            
+            # Convert timestamp if present
+            if 'stored_at' in df.columns:
+                df['stored_at'] = pd.to_datetime(df['stored_at'])
+            
+            logging.info(f"Loaded {len(df)} weather records")
+            return df
+        
+        except Exception as e:
+            logging.error(f"Error loading weather data: {e}")
+            return pd.DataFrame()
+
+    def get_historical_holidays(self, years=None):
+        """
+        Load public holiday data from Google Cloud Storage.
+        
+        Args:
+            years (list, optional): List of years to retrieve data for
+            
+        Returns:
+            pandas.DataFrame: Holiday data
+        """
+        try:
+            logging.info("Loading historical holiday data")
+            
+            # Check if our uploaded holidays CSV is in GCS
+            if self.storage_client:
+                try:
+                    bucket = self.storage_client.bucket(self.gcs_bucket_name)
+                    blob = bucket.blob("uploads/PublicHolidaysfor2025.csv")
+                    
+                    # Create temp file path but DO NOT open it
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as temp_file:
+                        temp_file_path = temp_file.name  # just get the path
+
+                    # Download to that path
+                    blob.download_to_filename(temp_file_path)
+                    
+                    # Now read
+                    holidays_df = pd.read_csv(temp_file_path)
+                    
+                    # Optional: delete temp file after reading
+                    os.remove(temp_file_path)
+                    
+                    # Rename columns to match expected format (if needed)
+                    column_mapping = {
+                        'date': 'Date',
+                        'day': 'Day',
+                        'holiday': 'Name'
+                    }
+                    holidays_df.rename(columns={k: v for k, v in column_mapping.items() 
+                                                if k in holidays_df.columns and v not in holidays_df.columns}, 
+                                    inplace=True)
+                        
+                    # Convert date column to datetime format
+                    if 'Date' in holidays_df.columns:
+                        holidays_df['Date'] = pd.to_datetime(holidays_df['Date'])
+                    
+                    # Filter by years if specified
+                    if years:
+                        holidays_df = holidays_df[holidays_df['Date'].dt.year.isin(years)]
+                    
+                    logging.info(f"Loaded {len(holidays_df)} holiday records")
+                    return holidays_df
+
+                except Exception as e:
+                    # Fallback: create a minimal holidays dataset with expected columns
+                    logging.warning("Creating default holiday dataset")
+                    default_holidays = pd.DataFrame({
+                        'Date': pd.to_datetime([
+                            '2025-01-01', '2025-01-29', '2025-01-30', '2025-03-31', 
+                            '2025-04-18', '2025-05-01', '2025-05-12', '2025-06-07', 
+                            '2025-08-09', '2025-10-20', '2025-12-25'
+                        ]),
+                        'Day': ['Wednesday', 'Wednesday', 'Thursday', 'Monday', 
+                            'Friday', 'Thursday', 'Monday', 'Saturday', 
+                            'Saturday', 'Monday', 'Thursday'],
+                        'Name': ["New Year's Day", "Chinese New Year", "Chinese New Year", "Hari Raya Puasa",
+                                "Good Friday", "Labour Day", "Vesak Day", "Hari Raya Haji",
+                                "National Day", "Deepavali", "Christmas Day"]
+                    })
+                    
+                    # Filter by years if specified
+                    if years:
+                        default_holidays = default_holidays[default_holidays['Date'].dt.year.isin(years)]
+                        
+                    return default_holidays
+        
+        except Exception as e:
+            logging.error(f"Error loading holiday data: {e}")
+            return pd.DataFrame(columns=['Date', 'Day', 'Name'])
+
+    # Singapore Events data
+    def get_events_data(self, active_only=True, days_ahead=30):
+        """
+        Get Singapore events data from Firestore.
+        
+        Args:
+            active_only (bool): Whether to retrieve only active events.
+            days_ahead (int): For active events, how many days ahead to consider.
+            
+        Returns:
+            pandas.DataFrame: Events data
+        """
+        logger.info(f"Loading Singapore events data (active_only={active_only})")
         
         try:
             # Query Firestore
-            crowd_ref = self.db.collection("station_crowd_density")
+            events_ref = self.db.collection("singapore_events")
             
-            if train_line:
-                # Get specific train line
-                doc = crowd_ref.document(train_line).get()
-                if not doc.exists:
-                    logger.warning(f"No crowd density data found for train line {train_line}")
-                    return pd.DataFrame()
+            # Get all events
+            docs = events_ref.stream()
+            
+            # Convert to DataFrame
+            records = []
+            for doc in docs:
+                record = doc.to_dict()
+                record['id'] = doc.id
+                records.append(record)
+            
+            if not records:
+                logger.warning("No events data found")
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(records)
+            
+            # Filter for active events if requested
+            if active_only and 'is_active' in df.columns:
+                df = df[df['is_active'] == True]
+            
+            # Process date/time fields
+            date_cols = ['start_date', 'end_date', 'imported_at', 'last_updated', 'scraped_at']
+            for col in date_cols:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors='coerce')
+            
+            # Filter for upcoming events if active_only is True
+            if active_only and 'end_date' in df.columns:
+                cutoff_date = datetime.now() + timedelta(days=days_ahead)
+                df = df[df['end_date'] >= datetime.now()]
+                df = df[df['start_date'] <= cutoff_date]
+            
+            logger.info(f"Loaded {len(df)} event records")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error loading events data: {e}")
+            return pd.DataFrame()
+
+    # Traffic Flow Data
+    def get_traffic_flow_data(self, quarter=None):
+        """
+        Get traffic flow data from Firestore.
+        
+        Args:
+            quarter (str, optional): Quarter identifier (e.g., 'Q1_2023').
+            
+        Returns:
+            dict: Traffic flow data including metadata.
+        """
+        logger.info(f"Loading traffic flow data for quarter {quarter or 'latest'}")
+        
+        try:
+            # Query Firestore
+            traffic_flow_ref = self.db.collection("traffic_flow")
+            
+            # If quarter is provided, get that specific quarter's data
+            if quarter:
+                quarter_doc = traffic_flow_ref.document(quarter).get()
                 
-                data = doc.to_dict()
-                # Convert to DataFrame
-                stations_data = data.get('stations', {})
-                records = []
-                for station_code, station_data in stations_data.items():
-                    station_data['station_code'] = station_code
-                    station_data['train_line'] = train_line
-                    station_data['last_updated'] = data.get('last_updated')
-                    records.append(station_data)
+                if not quarter_doc.exists:
+                    logger.warning(f"No traffic flow data found for quarter {quarter}")
+                    return {}
                 
-                return pd.DataFrame(records)
+                metadata = quarter_doc.to_dict()
+                
+                # Return metadata
+                return {'metadata': metadata, 'has_nodes': True, 'has_links': True}
+            
+            # If no quarter specified, return all quarters' metadata
             else:
-                # Get all train lines
-                docs = crowd_ref.stream()
-                all_records = []
+                results = {}
                 
-                for doc in docs:
-                    train_line = doc.id
-                    data = doc.to_dict()
-                    stations_data = data.get('stations', {})
+                for quarter_doc in traffic_flow_ref.stream():
+                    results[quarter_doc.id] = quarter_doc.to_dict()
+                
+                if not results:
+                    logger.warning("No traffic flow data found")
+                    return {}
                     
-                    for station_code, station_data in stations_data.items():
-                        station_data['station_code'] = station_code
-                        station_data['train_line'] = train_line
-                        station_data['last_updated'] = data.get('last_updated')
-                        all_records.append(station_data)
-                
-                if not all_records:
-                    logger.warning("No station crowd density data found")
-                    return pd.DataFrame()
-                
-                return pd.DataFrame(all_records)
+                return results
                 
         except Exception as e:
-            logger.error(f"Error loading station crowd density data: {e}")
-            return pd.DataFrame()
+            logger.error(f"Error loading traffic flow data: {e}")
+            return {}

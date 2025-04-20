@@ -254,8 +254,8 @@ export default function HomeScreen() {
         
         Animated.spring(sidebarPosition, {
           toValue: finalPosition,
-          bounciness: 0, // Remove extra bounce effect
-          speed: 15, // Faster return speed to prevent detachment
+          bounciness: 0, 
+          speed: 15, 
           useNativeDriver: false,
         }).start();
       },
@@ -275,7 +275,7 @@ export default function HomeScreen() {
     // Ensure animation updates properly
     Animated.timing(sidebarPosition, {
       toValue: -SIDEBAR_WIDTH,
-      duration: 200, // Smooth transition
+      duration: 200, 
       useNativeDriver: false,
     }).start(() => {
       // This forces re-render to remove the overlay
@@ -632,7 +632,7 @@ export default function HomeScreen() {
           {/* Settings Section */}
           <TouchableOpacity 
             style={styles.menuItem} 
-            onPress={() => navigateTo('settings')}
+            onPress={() => navigateTo('Settings')}
           >
             <View style={styles.menuItemRow}>
               <MaterialIcons name="settings" size={24} color="#fff" style={styles.menuIcon} />

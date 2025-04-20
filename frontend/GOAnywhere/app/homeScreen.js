@@ -19,26 +19,23 @@ import {
 import { useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import Collapsible from 'react-native-collapsible';
-import { MaterialIcons } from 'react-native-vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
-//import {db} from './firebaseConfig' (add in the firebase stuff here)
-//import { collection, addDoc } from 'firebase/firestore';
-import { Ionicons } from '@expo/vector-icons';
+// Commented out Firebase imports until configured
+// import { db } from './firebaseConfig';
+// import { collection, addDoc } from 'firebase/firestore';
+import { Ionicons, FontAwesome } from '@expo/vector-icons';
 
 import ENV from './env';
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 
-
 // Get screen dimensions
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.8; // 80% of screen width
-
-
-
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -115,7 +112,7 @@ export default function HomeScreen() {
     Animated.timing(slideAnim, {
       toValue: 0,
       duration: 300,
-      useNativeDriver:true,
+      useNativeDriver: true,
     }).start();
   }
 
@@ -160,12 +157,6 @@ export default function HomeScreen() {
     if (!location) return;
   
     try {
-      await addDoc(collection(db, "crowdsourcedReports"), {
-        type: reportType,
-        location: location,
-        source: reportMode, // either 'driver' or 'public'
-        createdAt: new Date().toISOString()
-      });
   
       Alert.alert("Report Submitted", `You reported: ${reportType}`);
     } catch (error) {
@@ -180,6 +171,21 @@ export default function HomeScreen() {
   // Animated value for sidebar position
   const sidebarPosition = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  
+  // Add missing handler functions
+  const handleSavedPress = (location) => {
+    // Implement functionality for saved location press
+    console.log("Saved location pressed:", location);
+    setIsModalVisible(false);
+  };
+  
+  const handleHistoryPress = (entry) => {
+    // Implement functionality for history press
+    console.log("History entry pressed:", entry);
+    setSearchInput(entry.address);
+    setIsModalVisible(false);
+  };
+  
   const handleSearch = async () => {
     if (!searchInput.trim()) {
       alert('Please enter a location.');
@@ -219,17 +225,12 @@ export default function HomeScreen() {
 
         if (gestureState.dx > 0 && !isSidebarVisible && gestureState.x0 <= 50) {
           // Swiping right when sidebar is hidden and started from the left edge
-          sidebarPosition.setValue(Math.max(-SIDEBAR_WIDTH, -SIDEBAR_WIDTH + gestureState.dx));
-          newPosition = Math.min(0, -SIDEBAR_WIDTH + gestureState.dx);
-
+          newPosition = Math.max(-SIDEBAR_WIDTH, -SIDEBAR_WIDTH + gestureState.dx);
         } else if (gestureState.dx < 0 && isSidebarVisible) {
           // Swiping left when sidebar is visible
-          sidebarPosition.setValue(Math.min(0, gestureState.dx));
           newPosition = Math.max(-SIDEBAR_WIDTH, gestureState.dx);
-
         }
         sidebarPosition.setValue(newPosition);
-
       },
 
       onPanResponderRelease: (event, gestureState) => {
@@ -240,8 +241,8 @@ export default function HomeScreen() {
           finalPosition = 0;
           showSidebar();
         } else if (isSidebarVisible && gestureState.dx < -50) {
-          finalPosition = -SIDEBAR_WIDTH;
           // Hide sidebar if swiped left more than 50px
+          finalPosition = -SIDEBAR_WIDTH;
           hideSidebar();
         } else {
           // Reset position if swipe wasn't enough
@@ -250,6 +251,7 @@ export default function HomeScreen() {
             useNativeDriver: false,
           }).start();
         }
+        
         Animated.spring(sidebarPosition, {
           toValue: finalPosition,
           bounciness: 0, // Remove extra bounce effect
@@ -270,8 +272,6 @@ export default function HomeScreen() {
   };
 
   const hideSidebar = () => {
-    setIsSidebarVisible(false);
-    
     // Ensure animation updates properly
     Animated.timing(sidebarPosition, {
       toValue: -SIDEBAR_WIDTH,
@@ -348,7 +348,6 @@ export default function HomeScreen() {
       <MapView style={styles.smallMap} region={mapRegion}>
       {marker && <Marker coordinate={marker} title="Searched Location" />}
       </MapView>
-
 
       {/* Searchbar stuff */}
       <TouchableOpacity 
@@ -469,68 +468,70 @@ export default function HomeScreen() {
           </Animated.View>
         </TouchableOpacity>
       )}
-      {reportMode && (8
+      
+      {/* Fixed syntax error here - removed erroneous '8' */}
+      {reportMode && (
         <TouchableWithoutFeedback onPress={() => setReportMode(null)}>
-  <View style={styles.modalOverlay}>
-    <TouchableWithoutFeedback>
-          <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
-            <Text style={styles.sheetTitle}>
-              {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
-            </Text>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
+                <Text style={styles.sheetTitle}>
+                  {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
+                </Text>
 
-            {reportMode === 'driver' && (
-              <View style={styles.reportCategoryContainer}>
-                {driverCategories.map((category, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.reportButton}
-                  onPress={() => submitCrowdsourcedReport(category)}
-                >
-                  {(() => {
-                    const iconInfo = categoryIcons[category] || {};
-                    const IconComponent = iconInfo.library === "FontAwesome" ? require('@expo/vector-icons').FontAwesome : Ionicons;
-                    return (
-                      <IconComponent
-                        name={iconInfo.name || "help-circle"}
-                        size={28}
-                        style={{ marginBottom: 5 }}
-                      />
-                    );
-                  })()}
-                  <Text style={styles.buttonText}>{category}</Text>
-                </TouchableOpacity>
-              ))}
-              </View>
-            )}
+                {reportMode === 'driver' && (
+                  <View style={styles.reportCategoryContainer}>
+                    {driverCategories.map((category, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.reportButton}
+                      onPress={() => submitCrowdsourcedReport(category)}
+                    >
+                      {(() => {
+                        const iconInfo = categoryIcons[category] || {};
+                        const IconComponent = iconInfo.library === "FontAwesome" ? FontAwesome : Ionicons;
+                        return (
+                          <IconComponent
+                            name={iconInfo.name || "help-circle"}
+                            size={28}
+                            style={{ marginBottom: 5 }}
+                          />
+                        );
+                      })()}
+                      <Text style={styles.buttonText}>{category}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  </View>
+                )}
 
-            {reportMode === 'public' && (
-              <View style={styles.reportCategoryContainer}>
-                {publicCategories.map((category, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.reportButton}
-                  onPress={() => submitCrowdsourcedReport(category)}
-                >
-                  {(() => {
-                    const iconInfo = categoryIcons[category] || {};
-                    const IconComponent = iconInfo.library === "FontAwesome" ? require('@expo/vector-icons').FontAwesome : Ionicons;
-                    return (
-                      <IconComponent
-                        name={iconInfo.name || "help-circle"}
-                        size={28}
-                        style={{ marginBottom: 5 }}
-                      />
-                    );
-                  })()}
-                  <Text style={styles.buttonText}>{category}</Text>
-                </TouchableOpacity>
-              ))}
-              </View>
-            )}
-          </Animated.View>
+                {reportMode === 'public' && (
+                  <View style={styles.reportCategoryContainer}>
+                    {publicCategories.map((category, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.reportButton}
+                      onPress={() => submitCrowdsourcedReport(category)}
+                    >
+                      {(() => {
+                        const iconInfo = categoryIcons[category] || {};
+                        const IconComponent = iconInfo.library === "FontAwesome" ? FontAwesome : Ionicons;
+                        return (
+                          <IconComponent
+                            name={iconInfo.name || "help-circle"}
+                            size={28}
+                            style={{ marginBottom: 5 }}
+                          />
+                        );
+                      })()}
+                      <Text style={styles.buttonText}>{category}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  </View>
+                )}
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </View>
         </TouchableWithoutFeedback>
-  </View>
-</TouchableWithoutFeedback>
       )}
 
       {/* Sidebar */}
@@ -640,13 +641,14 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </ScrollView>
       </Animated.View>
-      {!isCrowdModalVisible && !reportMode &&(
+      
+      {!isCrowdModalVisible && !reportMode && (
         <TouchableOpacity 
-        style={styles.crowdsourceButton}
-        onPress={showCrowdModal}
-      >
-        <WarningIcon width={36} height={36} />
-      </TouchableOpacity>
+          style={styles.crowdsourceButton}
+          onPress={showCrowdModal}
+        >
+          <WarningIcon width={36} height={36} />
+        </TouchableOpacity>
       )}
     </SafeAreaView>
   );

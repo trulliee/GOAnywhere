@@ -1,3 +1,4 @@
+
 // app/homeScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -157,8 +158,29 @@ export default function HomeScreen() {
     if (!location) return;
   
     try {
-  
-      Alert.alert("Report Submitted", `You reported: ${reportType}`);
+      // Prepare the data to send to the backend
+      const reportData = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        reportType: reportType,
+        username: userName,
+        userId: user?.id || 'anonymous', // Use user ID if available, otherwise default to anonymous
+        timestamp: Date.now()
+      };
+      
+      console.log('Sending report to backend:', reportData);
+      
+      // When you connect to backend, you'll send the data something like this:
+      // await fetch('your-api-endpoint', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify(reportData),
+      // });
+      
+      // For now, just show a success message
+      Alert.alert("Report Submitted", `You reported: ${reportType} at coordinates (${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})`);
     } catch (error) {
       console.error("Error submitting report: ", error);
       Alert.alert("Submission Failed", "Please try again.");
@@ -637,6 +659,17 @@ export default function HomeScreen() {
             <View style={styles.menuItemRow}>
               <MaterialIcons name="settings" size={24} color="#fff" style={styles.menuIcon} />
               <Text style={styles.menuText}>Settings</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* User Management Section (Admin only) */}
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => navigateTo('UserManagement')}
+          >
+            <View style={styles.menuItemRow}>
+              <MaterialIcons name="people" size={24} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>User Management</Text>
             </View>
           </TouchableOpacity>
         </ScrollView>

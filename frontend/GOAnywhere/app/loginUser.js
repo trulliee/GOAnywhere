@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   },
   topCurve: {
     height: 150,
-    backgroundColor: '#9de3d2', // Mint green
+    backgroundColor: '#9de3d2', 
     borderBottomRightRadius: 150,
     position: 'absolute',
     top: 0,

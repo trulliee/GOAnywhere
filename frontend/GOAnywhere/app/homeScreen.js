@@ -672,6 +672,16 @@ export default function HomeScreen() {
               <Text style={styles.menuText}>User Management</Text>
             </View>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => navigateTo('weatherPull')}
+          >
+            <View style={styles.menuItemRow}>
+              <MaterialIcons name="people" size={24} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>pull weather</Text>
+            </View>
+          </TouchableOpacity>
         </ScrollView>
       </Animated.View>
       

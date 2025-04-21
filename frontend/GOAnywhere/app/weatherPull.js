@@ -2,13 +2,14 @@ import React, { useState, useEffect } from "react";
 import { 
   View, 
   Text, 
-  TextInput, 
   TouchableOpacity, 
   ActivityIndicator, 
   StyleSheet,
   SafeAreaView,
   StatusBar,
-  ScrollView
+  ScrollView,
+  FlatList,
+  Modal
 } from "react-native";
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,27 +21,66 @@ const API_KEY = "1c6a0489337511175419c64f0fbba7d1";
 const CURRENT_WEATHER_URL = "https://api.openweathermap.org/data/2.5/weather";
 const FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast";
 
+// List of available Singapore areas with coordinates
+// Using coordinates ensures more accurate results
+const SINGAPORE_AREAS = [
+  { id: '1', name: 'Singapore (Central)', lat: 1.290270, lon: 103.851959 },
+  { id: '2', name: 'Ang Mo Kio', lat: 1.3691, lon: 103.8454 },
+  { id: '3', name: 'Bedok', lat: 1.3236, lon: 103.9273 },
+  { id: '4', name: 'Bishan', lat: 1.3526, lon: 103.8352 },
+  { id: '5', name: 'Bukit Batok', lat: 1.3590, lon: 103.7637 },
+  { id: '6', name: 'Bukit Merah', lat: 1.2819, lon: 103.8239 },
+  { id: '7', name: 'Bukit Panjang', lat: 1.3774, lon: 103.7719 },
+  { id: '8', name: 'Bukit Timah', lat: 1.3294, lon: 103.8021 },
+  { id: '9', name: 'Changi', lat: 1.3644, lon: 103.9915 },
+  { id: '10', name: 'Choa Chu Kang', lat: 1.3840, lon: 103.7470 },
+  { id: '11', name: 'Clementi', lat: 1.3162, lon: 103.7649 },
+  { id: '12', name: 'Geylang', lat: 1.3201, lon: 103.8918 },
+  { id: '13', name: 'Hougang', lat: 1.3612, lon: 103.8863 },
+  { id: '14', name: 'Jurong East', lat: 1.3329, lon: 103.7436 },
+  { id: '15', name: 'Jurong West', lat: 1.3404, lon: 103.7090 },
+  { id: '16', name: 'Kallang', lat: 1.3100, lon: 103.8714 },
+  { id: '17', name: 'Marine Parade', lat: 1.3016, lon: 103.8997 },
+  { id: '18', name: 'Novena', lat: 1.3203, lon: 103.8439 },
+  { id: '19', name: 'Pasir Ris', lat: 1.3721, lon: 103.9474 },
+  { id: '20', name: 'Punggol', lat: 1.3984, lon: 103.9072 },
+  { id: '21', name: 'Queenstown', lat: 1.2942, lon: 103.7861 },
+  { id: '22', name: 'Sembawang', lat: 1.4491, lon: 103.8185 },
+  { id: '23', name: 'Sengkang', lat: 1.3868, lon: 103.8914 },
+  { id: '24', name: 'Serangoon', lat: 1.3554, lon: 103.8679 },
+  { id: '25', name: 'Tampines', lat: 1.3496, lon: 103.9568 },
+  { id: '26', name: 'Tanglin', lat: 1.3077, lon: 103.8197 },
+  { id: '27', name: 'Toa Payoh', lat: 1.3343, lon: 103.8563 },
+  { id: '28', name: 'Woodlands', lat: 1.4382, lon: 103.7890 },
+  { id: '29', name: 'Yishun', lat: 1.4304, lon: 103.8354 },
+];
+
 const WeatherApp = () => {
   const router = useRouter();
-  const [location, setLocation] = useState("");
+  const [selectedArea, setSelectedArea] = useState(SINGAPORE_AREAS[0]); // Default to Singapore Central
   const [weatherData, setWeatherData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showAreaSelector, setShowAreaSelector] = useState(false);
 
   // Load default Singapore weather on component mount
   useEffect(() => {
-    fetchWeather("Singapore");
+    fetchWeatherByCoords(selectedArea.lat, selectedArea.lon);
   }, []);
 
-  // Function to fetch current rain data & rain trend predictions
-  const fetchWeather = async (city = "Singapore") => {
+  // Function to fetch weather using coordinates instead of area name
+  const fetchWeatherByCoords = async (lat, lon) => {
     setLoading(true);
     try {
-      // Fetch current weather
-      const currentResponse = await fetch(`${CURRENT_WEATHER_URL}?q=${city},SG&appid=${API_KEY}&units=metric`);
+      // Fetch current weather using coordinates
+      const currentResponse = await fetch(
+        `${CURRENT_WEATHER_URL}?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
+      );
       const currentData = await currentResponse.json();
 
-      // Fetch forecast data
-      const forecastResponse = await fetch(`${FORECAST_URL}?q=${city},SG&appid=${API_KEY}&units=metric`);
+      // Fetch forecast data using coordinates
+      const forecastResponse = await fetch(
+        `${FORECAST_URL}?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
+      );
       const forecastData = await forecastResponse.json();
 
       if (currentData.cod === 200 && forecastData.cod === "200") {
@@ -84,11 +124,12 @@ const WeatherApp = () => {
           windSpeed
         });
       } else {
-        alert("Location not found. Please enter a valid Singapore location.");
+        console.error("API Error:", currentData.message || "Unknown error");
+        alert("Failed to fetch weather data. Please try again later.");
       }
     } catch (error) {
       console.error("Error fetching weather data:", error);
-      alert("Failed to fetch weather data.");
+      alert("Network error: Could not connect to weather service.");
     } finally {
       setLoading(false);
     }
@@ -114,6 +155,21 @@ const WeatherApp = () => {
     router.back();
   };
 
+  const handleAreaSelect = (area) => {
+    setSelectedArea(area);
+    setShowAreaSelector(false);
+    fetchWeatherByCoords(area.lat, area.lon);
+  };
+
+  const renderAreaItem = ({ item }) => (
+    <TouchableOpacity
+      style={styles.areaItem}
+      onPress={() => handleAreaSelect(item)}
+    >
+      <Text style={styles.areaItemText}>{item.name}</Text>
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -128,27 +184,14 @@ const WeatherApp = () => {
       </View>
       
       <ScrollView style={styles.contentContainer}>
-        {/* Search Bar */}
-        <View style={styles.searchBar}>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter location (e.g., Marina Bay)"
-            placeholderTextColor="#888"
-            value={location}
-            onChangeText={setLocation}
-          />
-          <TouchableOpacity 
-            style={styles.searchButton} 
-            onPress={() => fetchWeather(location || "Singapore")}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="search" size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
-        </View>
+        {/* Area Selector Button */}
+        <TouchableOpacity 
+          style={styles.areaSelector}
+          onPress={() => setShowAreaSelector(true)}
+        >
+          <Text style={styles.selectedAreaText}>{selectedArea.name}</Text>
+          <Ionicons name="chevron-down" size={20} color="#9de3d2" />
+        </TouchableOpacity>
 
         {/* Weather Data Display */}
         {weatherData && (
@@ -203,13 +246,40 @@ const WeatherApp = () => {
         )}
         
         {/* Loading State (when no data is available yet) */}
-        {loading && !weatherData && (
+        {loading && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#9de3d2" />
             <Text style={styles.loadingText}>Fetching weather data...</Text>
           </View>
         )}
       </ScrollView>
+
+      {/* Area Selection Modal */}
+      <Modal
+        visible={showAreaSelector}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowAreaSelector(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Area</Text>
+              <TouchableOpacity onPress={() => setShowAreaSelector(false)}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={SINGAPORE_AREAS}
+              renderItem={renderAreaItem}
+              keyExtractor={item => item.id}
+              style={styles.areaList}
+              initialNumToRender={10}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -243,27 +313,19 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 15,
   },
-  searchBar: {
+  areaSelector: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#444',
+    padding: 15,
+    borderRadius: 10,
     marginBottom: 20,
   },
-  input: {
-    flex: 1,
-    backgroundColor: '#444',
+  selectedAreaText: {
     color: '#fff',
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    marginRight: 10,
-  },
-  searchButton: {
-    backgroundColor: '#9de3d2',
-    borderRadius: 10,
-    width: 50,
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontSize: 16,
+    fontWeight: '600',
   },
   weatherContainer: {
     paddingVertical: 10,
@@ -351,6 +413,45 @@ const styles = StyleSheet.create({
     color: '#ccc',
     fontSize: 16,
     marginTop: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#333',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: '70%',
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  areaList: {
+    flex: 1,
+  },
+  areaItem: {
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
+  },
+  areaItemText: {
+    color: '#fff',
+    fontSize: 16,
   }
 });
 

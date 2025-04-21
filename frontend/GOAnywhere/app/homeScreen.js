@@ -208,11 +208,13 @@ export default function HomeScreen() {
 
         if (gestureState.dx > 0 && !isSidebarVisible && gestureState.x0 <= 50) {
           // Swiping right when sidebar is hidden and started from the left edge
+          setIsDraggingSidebar(true);
           sidebarPosition.setValue(Math.max(-SIDEBAR_WIDTH, -SIDEBAR_WIDTH + gestureState.dx));
           newPosition = Math.min(0, -SIDEBAR_WIDTH + gestureState.dx);
 
         } else if (gestureState.dx < 0 && isSidebarVisible) {
           // Swiping left when sidebar is visible
+          setIsDraggingSidebar(true);
           sidebarPosition.setValue(Math.min(0, gestureState.dx));
           newPosition = Math.max(-SIDEBAR_WIDTH, gestureState.dx);
 
@@ -245,6 +247,8 @@ export default function HomeScreen() {
           speed: 15, // Faster return speed to prevent detachment
           useNativeDriver: false,
         }).start();
+        setIsDraggingSidebar(false);
+
       },
     })
   ).current;
@@ -333,9 +337,14 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
-      {/* Google Maps (Centered) */}
-      <MapView style={styles.smallMap} region={mapRegion}>
-      {marker && <Marker coordinate={marker} title="Searched Location" />}
+      {/* Google Maps (Centered) */}      
+      <MapView 
+        style={styles.smallMap} 
+        region={mapRegion}
+        scrollEnabled={!isSidebarVisible && !isDraggingSidebar}
+        zoomEnabled={!isSidebarVisible && !isDraggingSidebar}
+      >
+        {marker && <Marker coordinate={marker} title="Searched Location" />}
       </MapView>
 
 

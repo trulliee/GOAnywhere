@@ -1,151 +1,249 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  Image
+} from 'react-native';
+import AuthService from './authService';
+import { useNavigation } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function SignupScreen({ navigation }) {
-  const [email, setEmail] = useState('');
-  const [confirmEmail, setConfirmEmail] = useState('');
-  const [username, setUsername] = useState('');
+//update with actual logo stuff
+const TrafficLightIcon = () => (
+  <View style={styles.trafficLightContainer}>
+    <View style={styles.trafficLightBody}>
+      <View style={styles.trafficLightLight} />
+      <View style={styles.trafficLightLight} />
+      <View style={styles.trafficLightLight} />
+    </View>
+    <View style={styles.trafficLightBase} />
+  </View>
+);
+
+export default function LoginUser() {
+  const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSignup = async () => {
-    if (email !== confirmEmail) {
-      alert('Emails do not match.');
+  const navigation = useNavigation();
+  const router = useRouter();
+
+  const handleLogin = async () => {
+    if (!emailOrPhone || !password) {
+      alert('Please fill in all fields');
       return;
     }
-    if (password !== confirmPassword) {
-      alert('Passwords do not match.');
-      return;
-    }
-    // Add your actual signup logic here
+    
     setLoading(true);
+    
     try {
-      // await AuthService.signUp(email, password, username, phoneNumber);
-      alert('Account created!');
-      navigation.navigate('Login');
+      // Hard-coded credential check for testing
+      if (emailOrPhone === 'ben@gmail.com' && password === 'hehehaha') {
+        // Simulate a delay to show loading state
+        setTimeout(() => {
+          console.log('Logged in with test credentials');
+          router.replace('./homeScreen');
+          setLoading(false);
+        }, 1000);
+        return;
+      }
+      
+      // Regular login flow (when backend is connected)
+      const userData = await AuthService.login(emailOrPhone, password);
+      console.log('Logged in:', userData);
+      router.replace('./homeScreen');
     } catch (error) {
-      alert('Error signing up. Please try again.');
+      console.error('Login failed:', error.message);
+      alert('Login failed. Please check your credentials and try again.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign Up</Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        editable={!loading}
-        placeholderTextColor="#999"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm Email"
-        value={confirmEmail}
-        onChangeText={setConfirmEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        editable={!loading}
-        placeholderTextColor="#999"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Username"
-        value={username}
-        onChangeText={setUsername}
-        editable={!loading}
-        placeholderTextColor="#999"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        editable={!loading}
-        placeholderTextColor="#999"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm Password"
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        secureTextEntry
-        editable={!loading}
-        placeholderTextColor="#999"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Phone Number"
-        value={phoneNumber}
-        onChangeText={setPhoneNumber}
-        keyboardType="phone-pad"
-        editable={!loading}
-        placeholderTextColor="#999"
-      />
-
-      <TouchableOpacity 
-        style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleSignup}
-        disabled={loading}
-        placeholderTextColor="#999"
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidView}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <Text style={styles.buttonText}>Sign Up</Text>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-        <Text style={styles.toggleText}>Already have an account? Login</Text>
-      </TouchableOpacity>
-    </View>
+        {/* Top curved shape */}
+        <View style={styles.topCurve} />
+        
+        <View style={styles.contentContainer}>
+          {/* udpate this with the logo */}
+          <View style={styles.logoContainer}>
+            <TrafficLightIcon />
+            <Text style={styles.logoText}>GOANYWHERE</Text>
+            <Text style={styles.tagline}>The only traffic forecasting website.</Text>
+          </View>
+          
+          {/* Login Form */}
+          <View style={styles.formContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Email / Phone Number"
+              value={emailOrPhone}
+              onChangeText={setEmailOrPhone}
+              autoCapitalize="none"
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+          </View>
+          
+          {/* Sign Up Link */}
+          <TouchableOpacity 
+            style={styles.signupLink}
+            onPress={() => router.push('./SignUp')}
+          >
+            <Text style={styles.signupText}>Don't have an account? Sign up</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Sign in button */}
+        <View style={styles.bottomSection}>
+          <View style={styles.signInContainer}>
+            <Text style={styles.signInText}>Sign In</Text>
+            <TouchableOpacity
+              style={[styles.arrowButton, loading && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="arrow-forward" size={24} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    padding: 20,
+    backgroundColor: 'white',
   },
-  title: {
+  keyboardAvoidView: {
+    flex: 1,
+  },
+  topCurve: {
+    height: 150,
+    backgroundColor: '#9de3d2', // Mint green
+    borderBottomRightRadius: 150,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '50%',
+  },
+  contentContainer: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 50,
+  },
+  trafficLightContainer: {
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  trafficLightBody: {
+    width: 40,
+    height: 70,
+    backgroundColor: '#9de3d2',
+    borderRadius: 10,
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+  },
+  trafficLightLight: {
+    width: 15,
+    height: 15,
+    backgroundColor: 'white',
+    borderRadius: 10,
+  },
+  trafficLightBase: {
+    width: 10,
+    height: 20,
+    backgroundColor: '#9de3d2',
+  },
+  logoText: {
     fontSize: 24,
     fontWeight: 'bold',
+    color: '#9de3d2',
+    marginTop: 10,
+  },
+  tagline: {
+    fontSize: 12,
+    color: '#9de3d2',
+    marginTop: 5,
+  },
+  formContainer: {
+    width: '100%',
     marginBottom: 20,
-    textAlign: 'center',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#ccc',
     padding: 15,
-    borderRadius: 5,
+    borderRadius: 30,
     marginBottom: 15,
+    fontSize: 16,
   },
-  button: {
-    backgroundColor: '#3498db',
-    padding: 15,
-    borderRadius: 5,
+  signupLink: {
+    alignSelf: 'center',
+  },
+  signupText: {
+    color: '#3498db',
+    fontSize: 14,
+  },
+  bottomSection: {
+    height: 180,
+    backgroundColor: '#9de3d2',
+    borderTopLeftRadius: 150,
+    position: 'relative',
+    justifyContent: 'center',
+    paddingLeft: 50,
+  },
+  signInContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+  },
+  signInText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginRight: 15,
+  },
+  arrowButton: {
+    backgroundColor: 'black',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   buttonDisabled: {
-    backgroundColor: '#a0cff1',
-  },
-  buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  toggleText: {
-    textAlign: 'center',
-    color: '#3498db',
+    backgroundColor: '#888',
   },
 });

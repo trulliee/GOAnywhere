@@ -1,9 +1,10 @@
-
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 const Notification = () => {
+  const router = useRouter();
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ const Notification = () => {
       {
         id: 4,
         icon: 'alert-circle',
-        iconColor: '#000000',
+        iconColor: '#9de3d2',
         title: 'Traffic Incident Reported',
         message: 'Accident reported along Upper Bukit Timah Road.',
         timeCategory: '2days',
@@ -43,7 +44,7 @@ const Notification = () => {
       {
         id: 5,
         icon: 'alert-circle',
-        iconColor: '#000000',
+        iconColor: '#9de3d2',
         title: 'Traffic Incident Reported',
         message: 'Accident reported along Upper Bukit Timah Road.',
         timeCategory: '2days',
@@ -51,7 +52,7 @@ const Notification = () => {
       {
         id: 6,
         icon: 'alert-circle',
-        iconColor: '#000000',
+        iconColor: '#9de3d2',
         title: 'Traffic Incident Reported',
         message: 'Accident reported along Upper Bukit Timah Road.',
         timeCategory: '2days',
@@ -59,7 +60,7 @@ const Notification = () => {
       {
         id: 7,
         icon: 'alert-circle',
-        iconColor: '#000000',
+        iconColor: '#9de3d2',
         title: 'Traffic Incident Reported',
         message: 'Accident reported along Upper Bukit Timah Road.',
         timeCategory: '2days',
@@ -67,6 +68,10 @@ const Notification = () => {
     ];
     setNotifications(exampleNotifications);
   }, []);
+
+  const handleGoBack = () => {
+    router.back();
+  };
 
   const renderCard = (item, index) => (
     <View key={index} style={styles.notificationCard}>
@@ -91,9 +96,20 @@ const Notification = () => {
   });
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Notifications</Text>
-      <ScrollView contentContainerStyle={styles.notificationContainer}>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Notifications</Text>
+        <View style={styles.headerRight} />
+      </View>
+
+      <ScrollView 
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.notificationContainer}
+      >
         {grouped.today.length > 0 && (
           <>
             <Text style={styles.sectionHeader}>Today</Text>
@@ -113,7 +129,7 @@ const Notification = () => {
           </>
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -122,21 +138,39 @@ export default Notification;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 20,
-    paddingTop: 50,
+    backgroundColor: '#333',
   },
-  title: {
-    fontSize: 22,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    paddingBottom: 15,
+    paddingHorizontal: 20,
+    backgroundColor: '#333',
+  },
+  backButton: {
+    padding: 5,
+  },
+  headerTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 20,
+    color: '#fff',
+  },
+  headerRight: {
+    width: 30,
+  },
+  scrollContainer: {
+    flex: 1,
+    backgroundColor: '#333',
   },
   notificationContainer: {
-    paddingBottom: 20,
+    padding: 15,
+    paddingBottom: 30,
   },
   notificationCard: {
     flexDirection: 'row',
-    backgroundColor: '#f6f6f6',
+    backgroundColor: '#444',
     padding: 15,
     borderRadius: 10,
     marginBottom: 15,
@@ -146,16 +180,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     marginBottom: 3,
+    color: '#fff',
   },
   notificationMessage: {
     fontSize: 14,
-    color: '#333',
+    color: '#ccc',
   },
   sectionHeader: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 10,
     marginTop: 20,
-    color: '#555',
+    color: '#888',
   },
 });

@@ -5,11 +5,10 @@ from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
-from backend.app.models.traffic_congestion_model import TrafficPredictionModel
-from backend.app.models.travel_time_prediction import TravelTimeModel
+from app.models.traffic_congestion_model import TrafficCongestionModel
+from app.models.travel_time_prediction import TravelTimePredictionModel
 from app.models.route_recommendation import RouteRecommendationModel
 from app.models.feedback_analyzer import FeedbackAnalyzer
-from app.services.vertex import submit_training_job, deploy_model_to_endpoint
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -23,9 +22,8 @@ router = APIRouter(
 )
 
 # Initialize models - you may need to adjust paths based on your setup
-MODEL_PATH = "./models"
-traffic_model = TrafficPredictionModel(model_path=MODEL_PATH)
-travel_time_model = TravelTimeModel(model_path=MODEL_PATH)
+traffic_model = TrafficCongestionModel()
+travel_time_model = TravelTimePredictionModel()
 route_model = RouteRecommendationModel()
 feedback_analyzer = FeedbackAnalyzer()
 
@@ -254,21 +252,3 @@ async def generate_performance_report(input_data: AnalysisInput):
     except Exception as e:
         logger.error(f"Error generating report: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/train-models")
-async def train_models_endpoint():
-    """Trigger model training on Vertex AI"""
-    try:
-        job_result = submit_training_job()
-        return {"success": True, "job_info": job_result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Training job failed: {str(e)}")
-
-@router.post("/deploy-model")
-async def deploy_model_endpoint(model_path: str, model_name: str):
-    """Deploy a trained model to a Vertex AI endpoint"""
-    try:
-        deployment_result = deploy_model_to_endpoint(model_path, model_name)
-        return {"success": True, "deployment_info": deployment_result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Model deployment failed: {str(e)}")

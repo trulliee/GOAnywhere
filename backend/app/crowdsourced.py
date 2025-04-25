@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-from firestore_utils import db
+from app.database.firestore_utils import db
 from datetime import datetime
 from google.cloud import firestore  # Needed for Query
 

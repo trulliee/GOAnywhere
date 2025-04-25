@@ -971,6 +971,3 @@ def rate_limited_request(url, headers, params=None, max_retries=3, retry_delay=1
     # If we've exhausted all retries
     print("Max retries reached. Unable to complete request.")
     return None
-
-if __name__ == "__main__":
-    get_traffic_incidents()

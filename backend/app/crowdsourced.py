@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-from firestore_utils import db
+from app.database.firestore_utils import db
 from datetime import datetime
 from google.cloud import firestore  # Needed for Query
 
@@ -9,11 +9,11 @@ router = APIRouter()
 
 # Pydantic model for incoming crowd data
 class CrowdData(BaseModel):
-    user_id: str  # User ID is now required
+    userId: str  # User ID is now required
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
-    type: str  # e.g., "accident", "traffic jam"
-    source: str
+    reportType: str  # e.g., "accident", "traffic jam"
+    username: str
     timestamp: Optional[str] = None
 
 # Function to check if user is a registered user
@@ -35,19 +35,18 @@ def is_registered_user(user_id: str) -> bool:
 @router.post("/submit-crowd-data")
 def submit_crowdsourced_data(data: CrowdData):
     try:
-        if not data.user_id:
+        if not data.userId:
             raise HTTPException(status_code=400, detail="Missing user_id.")
 
-        if not is_registered_user(data.user_id):
+        if not is_registered_user(data.userId):
             raise HTTPException(status_code=403, detail="Unauthorized: Only registered users can submit reports.")
 
         # Use backend timestamp if none provided
         data_to_store = {
-            "user_id": data.user_id,
+            "user_id": data.userId,
             "latitude": data.latitude,
             "longitude": data.longitude,
-            "type": data.type,
-            "source": data.source,
+            "type": data.reportType,
             "timestamp": data.timestamp or datetime.utcnow().isoformat()
         }
 

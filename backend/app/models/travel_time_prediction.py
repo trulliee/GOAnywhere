@@ -223,6 +223,14 @@ class TravelTimePredictionModel:
         # Would use google.cloud.aiplatform library
         print("Model ready for deployment to Vertex AI")
 
+class TravelTimeModel:
+    def __init__(self):
+        pass
+
+    def predict(self, input_data):
+        return "Travel time prediction not implemented yet"
+
+
 # Example usage:
 # model = TravelTimePredictionModel()
 # X, y = model.prepare_data(travel_times_df, incidents_df, speed_bands_df, weather_df, events_df, holidays_df)

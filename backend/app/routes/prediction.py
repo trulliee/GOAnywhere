@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
-from backend.app.models.traffic_congestion_model import TrafficPredictionModel
-from backend.app.models.travel_time_prediction import TravelTimeModel
+#from app.models.traffic_congestion_model import TrafficPredictionModel
+from app.models.travel_time_prediction import TravelTimeModel
 from app.models.route_recommendation import RouteRecommendationModel
 from app.models.feedback_analyzer import FeedbackAnalyzer
 from app.services.vertex import submit_training_job, deploy_model_to_endpoint

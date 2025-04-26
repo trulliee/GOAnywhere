@@ -1,9 +1,10 @@
-// Modified P2PNavigation.js with working 'Start Navigation' logic
-import React, { useState, useEffect, useRef } from 'react';
+// P2PNavigation.js
+
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, Dimensions, TouchableWithoutFeedback,
-  Keyboard, ScrollView, Modal
+  Keyboard, ScrollView, BackHandler
 } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -15,19 +16,27 @@ const { height, width } = Dimensions.get('window');
 
 const P2PNavigation = () => {
   const navigation = useNavigation();
-
   const [startLocation, setStartLocation] = useState('');
   const [endLocation, setEndLocation] = useState('');
   const [currentRegion, setCurrentRegion] = useState(null);
   const [routes, setRoutes] = useState({ driver: [], public: [] });
   const [activeTab, setActiveTab] = useState('driver');
   const [selectedRoute, setSelectedRoute] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [bottomSheetVisible, setBottomSheetVisible] = useState(false);
 
   useEffect(() => {
     requestLocationPermission();
-  }, []);
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (selectedRoute) {
+        setSelectedRoute(null);
+        setExpanded(false);
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [selectedRoute]);
 
   const requestLocationPermission = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -43,73 +52,124 @@ const P2PNavigation = () => {
   };
 
   const handleSearchPaths = async () => {
+    Keyboard.dismiss();
     try {
       const driverRoutes = await P2PDriver(startLocation, endLocation);
       const publicRoutes = await P2PPublicTrans(startLocation, endLocation);
+      publicRoutes.sort((a, b) => parseInt(a.duration) - parseInt(b.duration));
       setRoutes({ driver: driverRoutes || [], public: publicRoutes || [] });
       setBottomSheetVisible(true);
+      setSelectedRoute(null);
+      setExpanded(false);
     } catch (error) {
       console.error('Error fetching paths:', error);
     }
   };
 
+  const capitalizeWords = (text) => {
+    if (!text) return '';
+    return text.split(' ').map(word => word.length > 2 ? word.charAt(0).toUpperCase() + word.slice(1) : word.toUpperCase()).join(' ');
+  };
+
+  const shortenText = (text) => {
+    if (!text) return '';
+    return text.length > 60 ? text.slice(0, 57) + '...' : text;
+  };
+
+  const cleanInstruction = (text) => {
+    if (!text) return '';
+    let cleaned = text.replace(/<[^>]+>/g, '');
+    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2')
+    return cleaned;
+  };
+
+  const getDriverStepSummary = (steps) => {
+    if (!steps) return '';
+    const importantSteps = steps.map(step => {
+      const cleanInstr = cleanInstruction(step.instruction).toLowerCase();
+      if (cleanInstr.includes('onto')) {
+        const match = cleanInstr.match(/onto (.+?)$/);
+        return match ? capitalizeWords(match[1]) : null;
+      } else if (cleanInstr.includes('toward')) {
+        const match = cleanInstr.match(/toward (.+?)$/);
+        return match ? capitalizeWords(match[1]) : null;
+      } else {
+        return null;
+      }
+    }).filter((road, index, self) => road && self.indexOf(road) === index);
+    return importantSteps.join(' > ');
+  };
+
+  const getPublicStepSummary = (steps) => {
+    if (!steps) return '';
+    return steps.map(step => {
+      if (step.transitInfo) {
+        return `${step.transitInfo.vehicleType === 'SUBWAY' ? 'MRT' : 'Bus ' + step.transitInfo.lineName}`;
+      } else {
+        return `Walk ${step.distance}`;
+      }
+    }).join(' > ');
+  };
+
+  const shortenName = (name) => {
+    if (!name) return '';
+    return name.length > 18 ? name.slice(0, 16) + '...' : name;
+  };
+
+  const countTransfers = (steps) => {
+    if (!steps) return 0;
+    return steps.filter(step => step.transitInfo).length - 1;
+  };
+
+  const countStations = (steps) => {
+    if (!steps) return 0;
+    return steps.reduce((acc, step) => {
+      if (step.transitInfo) acc += step.transitInfo.numStops;
+      return acc;
+    }, 0);
+  };
+
   const renderRouteOption = (route, index) => (
-    <TouchableOpacity
-      key={index}
-      style={styles.routeOption}
-      onPress={() => {
-        setSelectedRoute(route);
-        setModalVisible(true);
-      }}>
-      <Text style={styles.routeText}>Path {index + 1}: {route?.summary || 'Unnamed'} ({route?.duration}, {route?.distance})</Text>
+    <TouchableOpacity key={index} style={styles.routeCard} onPress={() => {
+      setSelectedRoute(route);
+      setBottomSheetVisible(false);
+    }}>
+      <Text style={styles.routeTitle}>Path {index + 1}: {route?.summary || 'Unnamed'}</Text>
+      <Text style={styles.routeSummary}>{activeTab === 'driver' ? getDriverStepSummary(route.steps) : getPublicStepSummary(route.steps)}</Text>
+      <Text style={styles.routeSubSummary}>{route?.duration} ({route?.distance})</Text>
     </TouchableOpacity>
   );
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
-        <MapView
-          style={styles.map}
-          region={currentRegion || {
-            latitude: 1.3521,
-            longitude: 103.8198,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}>
-          {selectedRoute && selectedRoute.polyline && (
-            <Polyline coordinates={selectedRoute.polyline} strokeWidth={4} strokeColor="blue" />
-          )}
+        <MapView style={styles.map} region={currentRegion || { latitude: 1.3521, longitude: 103.8198, latitudeDelta: 0.05, longitudeDelta: 0.05 }}>
+          {selectedRoute && selectedRoute.polyline && (<Polyline coordinates={selectedRoute.polyline} strokeWidth={4} strokeColor="blue" />)}
           {selectedRoute && selectedRoute.markers && selectedRoute.markers.map((marker, index) => (
             <Marker key={index} coordinate={marker} title={marker.title} />
           ))}
         </MapView>
 
-        <View style={styles.topSection}>
-          <TextInput
-            style={styles.input}
-            placeholder="Start Location"
-            value={startLocation}
-            onChangeText={setStartLocation}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="End Location"
-            value={endLocation}
-            onChangeText={setEndLocation}
-          />
-          <TouchableOpacity style={styles.searchButton} onPress={handleSearchPaths}>
-            <Text style={styles.searchButtonText}>Search Path</Text>
-          </TouchableOpacity>
-        </View>
+        {!selectedRoute && (
+          <View style={styles.topSection}>
+            <View style={styles.inputContainer}>
+              <TextInput style={styles.input} placeholder="Start Location" placeholderTextColor="#aaa" value={startLocation} onChangeText={setStartLocation} />
+              <TextInput style={styles.input} placeholder="End Location" placeholderTextColor="#aaa" value={endLocation} onChangeText={setEndLocation} />
+            </View>
+            <TouchableOpacity style={styles.searchButton} onPress={handleSearchPaths}>
+              <Text style={styles.searchButtonText}>Search Path</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {bottomSheetVisible && (
           <View style={styles.bottomSheet}>
             <View style={styles.tabRow}>
               <TouchableOpacity onPress={() => setActiveTab('driver')} style={[styles.tab, activeTab === 'driver' && styles.activeTab]}>
-                <Text>Driver</Text>
+                <Text style={styles.tabText}>Driver</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setActiveTab('public')} style={[styles.tab, activeTab === 'public' && styles.activeTab]}>
-                <Text>Public Transport</Text>
+                <Text style={styles.tabText}>Public Transport</Text>
               </TouchableOpacity>
             </View>
             <ScrollView>
@@ -118,74 +178,82 @@ const P2PNavigation = () => {
           </View>
         )}
 
-        <Modal visible={modalVisible} transparent={true} animationType="slide">
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Route Details</Text>
-              <ScrollView>
-                <Text>Distance: {selectedRoute?.distance}</Text>
-                <Text>Duration: {selectedRoute?.duration}</Text>
+        {selectedRoute && (
+          <View style={styles.selectedTopBar}>
+            <View style={styles.topDarkBox}>
+              <TouchableOpacity onPress={() => { setSelectedRoute(null); setExpanded(false); }} style={styles.backButtonWrapper}>
+                <Text style={styles.backButton}>{'<'}</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.routeName}>{shortenName(startLocation)} ➔ {shortenName(endLocation)}</Text>
+
+              <View style={styles.quickInfoRow}>
+                <View style={styles.infoBox}><Text style={styles.quickInfoText}>🕒 {selectedRoute.duration}</Text></View>
+                <View style={styles.infoBox}><Text style={styles.quickInfoText}>📏 {selectedRoute.distance}</Text></View>
+              </View>
+            </View>
+
+            <TouchableOpacity onPress={() => setExpanded(!expanded)} style={{ marginTop: 2 }}>
+              <Text style={styles.arrowButton}>{expanded ? '▲' : '▼'}</Text>
+            </TouchableOpacity>
+
+            {expanded && (
+              <ScrollView style={styles.expandedPanel}>
                 {selectedRoute?.steps?.map((step, index) => (
-                  <Text key={index}>
-                    • {step.instruction.replace(/([a-z])([A-Z])/g, '$1\n$2')} ({step.distance})
-                  </Text>
+                  <View key={index} style={{ flexDirection: 'row', paddingVertical: 6, borderBottomColor: '#555', borderBottomWidth: 1, marginHorizontal: 10 }}>
+                    <Text style={{ flex: 2, color: 'white', fontSize: 12 }}>{shortenText(cleanInstruction(step.instruction))}</Text>
+                    <Text style={{ flex: 1, color: 'white', fontSize: 12, textAlign: 'right' }}>{step.distance}</Text>
+                  </View>
                 ))}
-              </ScrollView>
-              <TouchableOpacity
-                style={styles.startButton}
-                onPress={() => {
-                  setModalVisible(false);
-                  if (activeTab === 'driver') {
+
+                <TouchableOpacity style={{ marginTop: 20, backgroundColor: 'white', padding: 12, borderRadius: 10, alignSelf: 'center', width: '60%' }}
+                  onPress={() => {
                     navigation.navigate('DriverNavigator', {
                       polyline: selectedRoute.polyline,
                       steps: selectedRoute.steps,
                       markers: selectedRoute.markers,
                     });
-                  } else {
-                    navigation.navigate('PublicNavigator', {
-                      polyline: selectedRoute.polyline,
-                      steps: selectedRoute.steps,
-                      markers: selectedRoute.markers,
-                    });
-                  }
-                }}
-              >
-                <Text style={styles.startButtonText}>Start Navigation</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Text style={{ marginTop: 10 }}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+                  }}>
+                  <Text style={{ color: 'black', fontWeight: 'bold', textAlign: 'center' }}>Start Navigation</Text>
+                </TouchableOpacity>
 
+              </ScrollView>
+            )}
+          </View>
+        )}
       </View>
     </TouchableWithoutFeedback>
   );
 };
 
+
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#393939' },
   map: { position: 'absolute', width: '100%', height: '100%' },
-  topSection: {
-    position: 'absolute', top: 10, alignSelf: 'center', width: '95%', backgroundColor: '#fff', padding: 10, borderRadius: 10
-  },
-  input: { backgroundColor: '#eee', padding: 10, marginBottom: 10, borderRadius: 5 },
-  searchButton: { backgroundColor: '#000', padding: 12, borderRadius: 5 },
-  searchButtonText: { color: '#fff', textAlign: 'center' },
-  bottomSheet: {
-    position: 'absolute', bottom: 0, width: '100%', backgroundColor: '#fff', borderTopLeftRadius: 15, borderTopRightRadius: 15, padding: 10, maxHeight: height * 0.4
-  },
+  topSection: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#393939', padding: 8 },
+  inputContainer: { backgroundColor: 'white', borderRadius: 15, padding: 8, overflow: 'hidden' },
+  input: { backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#ccc', color: 'black', marginBottom: 5, paddingHorizontal: 8, paddingVertical: 6, fontSize: 14 },
+  searchButton: { backgroundColor: 'white', padding: 12, borderRadius: 10, marginTop: 8 },
+  searchButtonText: { color: 'black', fontWeight: 'bold', textAlign: 'center' },
+  bottomSheet: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: '#393939', borderTopLeftRadius: 15, borderTopRightRadius: 15, padding: 10, maxHeight: height * 0.5 },
   tabRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 10 },
   tab: { padding: 10 },
-  activeTab: { borderBottomWidth: 2 },
-  routeOption: { padding: 10, borderBottomWidth: 1, borderColor: '#ccc' },
-  routeText: { fontSize: 14 },
-  modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#fff', padding: 20, borderRadius: 10, width: '90%', maxHeight: '80%' },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  startButton: { marginTop: 10, backgroundColor: '#007bff', padding: 10, borderRadius: 5 },
-  startButtonText: { color: '#fff', textAlign: 'center' }
+  activeTab: { borderBottomWidth: 2, borderBottomColor: 'white' },
+  tabText: { color: 'white', fontWeight: 'bold' },
+  routeCard: { backgroundColor: 'white', borderRadius: 10, padding: 10, marginBottom: 10, elevation: 2 },
+  routeTitle: { color: 'black', fontWeight: 'bold', fontSize: 16 },
+  routeSummary: { color: 'black', fontSize: 14, marginVertical: 4 },
+  routeSubSummary: { color: 'black', fontSize: 12 },
+  selectedTopBar: { position: 'absolute', width: '100%', alignItems: 'center', backgroundColor: '#393939', borderBottomLeftRadius: 15, borderBottomRightRadius: 15 },  topDarkBox: { backgroundColor: '#393939', borderTopLeftRadius: 15, borderTopRightRadius: 15, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, width: '95%', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 15 },
+  backButtonWrapper: { position: 'absolute', left: 10, top: 10 },
+  backButton: { fontSize: 22, color: 'white' },
+  routeName: { fontSize: 16, fontWeight: 'bold', color: 'white', textAlign: 'center', marginTop: 0 },
+  quickInfoRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 8 },
+  infoBox: { backgroundColor: '#4D4D4D', paddingVertical: 8, paddingHorizontal: 15, borderRadius: 10, marginHorizontal: 10 },
+  quickInfoText: { color: 'white', fontSize: 12, textAlign: 'center' },
+  arrowButton: { fontSize: 22, color: 'white', marginBottom: 2 },
+  expandedPanel: { marginTop: 0, backgroundColor: '#393939', width: '100%', height: height }
 });
 
 export default P2PNavigation;

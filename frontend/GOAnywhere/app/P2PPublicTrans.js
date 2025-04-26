@@ -1,130 +1,120 @@
 import axios from 'axios';
 import { Alert } from 'react-native';
-import polyline from '@mapbox/polyline';
 
+const LTA_ACCOUNT_KEY = "CetOCVT4SmqDrAHkHLrf5g==";
+const LTA_RAIL_NETWORK_API = "https://datamall2.mytransport.sg/ltaodataservice/RailNetwork";
+const GOOGLE_GEOCODE_API = "https://maps.googleapis.com/maps/api/geocode/json";
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 
-const transitModes = [
-  {
-    label: 'Fastest',
-    options: '',
-  },
-  {
-    label: 'Minimum Transfer',
-    options: 'transit_routing_preference=less_walking',
-  },
-  {
-    label: 'Bus Only',
-    options: 'transit_mode=bus',
-  },
-  {
-    label: 'MRT Only',
-    options: 'transit_mode=subway',
-  },
-];
+const getAllTrainStations = async () => {
+  const response = await axios.get(LTA_RAIL_NETWORK_API, {
+    headers: { AccountKey: LTA_ACCOUNT_KEY },
+  });
+
+  // Parse features array
+  const features = response.data.features || [];
+
+  // Extract MRT station points
+  const stations = features
+    .filter(feature => feature.geometry?.type === "Point")
+    .map(feature => ({
+      name: feature.properties?.Name || "Unknown Station",
+      line: feature.properties?.Line || "Unknown Line",
+      latitude: feature.geometry.coordinates[1],
+      longitude: feature.geometry.coordinates[0],
+    }));
+
+  return stations;
+};
+
+const getCoordinates = async (address) => {
+  if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(address)) {
+    const [lat, lng] = address.split(',').map(Number);
+    return { lat, lng };
+  }
+  const url = `${GOOGLE_GEOCODE_API}?address=${encodeURIComponent(address)}, Singapore&key=${GOOGLE_MAPS_API_KEY}`;
+  const response = await axios.get(url);
+  const coords = response.data.results[0]?.geometry?.location;
+  if (!coords) throw new Error("Geocoding failed.");
+  return { lat: coords.lat, lng: coords.lng };
+};
+
+const findNearestStation = (lat, lng, stations) => {
+  let nearest = null;
+  let minDist = Infinity;
+  for (const station of stations) {
+    const d = Math.sqrt(Math.pow(station.latitude - lat, 2) + Math.pow(station.longitude - lng, 2));
+    if (d < minDist) {
+      nearest = station;
+      minDist = d;
+    }
+  }
+  return nearest;
+};
 
 const P2PPublicTrans = async (startLocation, endLocation) => {
   if (!startLocation || !endLocation) {
-    alert('Please enter both origin and destination.');
+    Alert.alert('Missing Info', 'Please enter both origin and destination.');
     return [];
   }
 
-  const getCoordinates = async (address) => {
-    if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(address)) {
-      const [lat, lng] = address.split(',').map(Number);
-      return { lat, lng };
-    }
-
-    const formattedAddress = address.toLowerCase().includes("singapore")
-      ? address
-      : `${address}, Singapore`;
-
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(formattedAddress)}&key=${GOOGLE_MAPS_API_KEY}`;
-    const response = await axios.get(url);
-
-    if (!response.data.results || response.data.results.length === 0) {
-      Alert.alert("Invalid Location", `Could not find location for: "${address}"`);
-      throw new Error(`No geocoding result for address: ${address}`);
-    }
-
-    return response.data.results[0].geometry.location;
-  };
-
   try {
-    const originCoords = await getCoordinates(startLocation);
-    const destinationCoords = await getCoordinates(endLocation);
+    const stations = await getAllTrainStations();
+    const startCoords = await getCoordinates(startLocation);
+    const endCoords = await getCoordinates(endLocation);
 
-    const results = await Promise.all(transitModes.map(async ({ label, options }) => {
-      const baseUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${originCoords.lat},${originCoords.lng}&destination=${destinationCoords.lat},${destinationCoords.lng}&mode=transit&departure_time=now&key=${GOOGLE_MAPS_API_KEY}`;
-      const fullUrl = options ? `${baseUrl}&${options}` : baseUrl;
-      const response = await axios.get(fullUrl);
-      const route = response.data.routes[0];
+    const startMRT = findNearestStation(startCoords.lat, startCoords.lng, stations);
+    const endMRT = findNearestStation(endCoords.lat, endCoords.lng, stations);
 
-      if (!route || !route.legs || !route.legs[0]?.steps) return null;
-
-      const hasTransit = route.legs[0].steps.some(
-        step => step.travel_mode === 'TRANSIT'
-      );
-      if (!hasTransit) return null;
-
-      const decodedPolyline = polyline.decode(route.overview_polyline.points)
-        .map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
-
-      const steps = route.legs[0].steps.map((step) => ({
-        instruction: step.html_instructions.replace(/<[^>]+>/g, ''),
-        distance: step.distance.text,
-        travelMode: step.travel_mode,
-        transitInfo: step.transit_details ? {
-          lineName: step.transit_details.line.short_name || step.transit_details.line.name,
-          departureStop: step.transit_details.departure_stop.name,
-          arrivalStop: step.transit_details.arrival_stop.name,
-          headsign: step.transit_details.headsign,
-          numStops: step.transit_details.num_stops,
-          vehicleType: step.transit_details.line.vehicle.type,
-          departureCoords: step.transit_details.departure_stop.location,
-          arrivalCoords: step.transit_details.arrival_stop.location,
-        } : null,
-      }));
-
-      const allMarkers = [
-        { latitude: originCoords.lat, longitude: originCoords.lng, title: 'Start' },
-        { latitude: destinationCoords.lat, longitude: destinationCoords.lng, title: 'Destination' },
-        ...steps
-          .filter(s => s.transitInfo)
-          .flatMap(s => [
-            {
-              latitude: s.transitInfo.departureCoords.lat,
-              longitude: s.transitInfo.departureCoords.lng,
-              title: `Board at ${s.transitInfo.departureStop}`,
-            },
-            {
-              latitude: s.transitInfo.arrivalCoords.lat,
-              longitude: s.transitInfo.arrivalCoords.lng,
-              title: `Alight at ${s.transitInfo.arrivalStop}`,
-            }
-          ])
-      ];
-
-      return {
-        summary: label,
-        distance: route.legs[0].distance.text,
-        duration: route.legs[0].duration.text,
-        steps,
-        polyline: decodedPolyline,
-        markers: allMarkers,
-      };
-    }));
-
-    const validRoutes = results.filter(route => route !== null);
-
-    if (validRoutes.length === 0) {
-      Alert.alert("No Transit Route Found", "Could not find any path involving MRT or Bus.");
+    if (!startMRT || !endMRT) {
+      Alert.alert("Error", "Could not find nearby MRT stations.");
+      return [];
     }
 
-    return validRoutes;
+    const steps = [
+      {
+        instruction: `Walk to ${startMRT.name} MRT Station`,
+        distance: "Approx 200m",
+        travelMode: "WALKING",
+      },
+      {
+        instruction: `Board train on ${startMRT.line} Line at ${startMRT.name}`,
+        distance: "Estimate",
+        travelMode: "TRANSIT",
+        transitInfo: {
+          lineName: startMRT.line,
+          departureStop: startMRT.name,
+          arrivalStop: endMRT.name,
+          headsign: "Unknown",
+          numStops: "Estimate",
+          vehicleType: "SUBWAY",
+        }
+      },
+      {
+        instruction: `Exit at ${endMRT.name} MRT Station and walk to your destination`,
+        distance: "Approx 200m",
+        travelMode: "WALKING",
+      }
+    ];
+
+    const markers = [
+      { latitude: startCoords.lat, longitude: startCoords.lng, title: "Start" },
+      { latitude: startMRT.latitude, longitude: startMRT.longitude, title: startMRT.name },
+      { latitude: endMRT.latitude, longitude: endMRT.longitude, title: endMRT.name },
+      { latitude: endCoords.lat, longitude: endCoords.lng, title: "Destination" },
+    ];
+
+    return [{
+      summary: "Public Transport (MRT)",
+      distance: "Approximate",
+      duration: "Estimate",
+      steps,
+      polyline: [], // Optional to add route line later
+      markers,
+    }];
   } catch (error) {
     console.error('Error fetching public transport route:', error);
-    alert('Could not fetch public transport routes.');
+    Alert.alert("Error", "Could not compute public transport route.");
     return [];
   }
 };

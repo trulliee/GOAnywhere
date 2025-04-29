@@ -1,5 +1,3 @@
-// P2PNavigation.js
-
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
@@ -11,6 +9,7 @@ import * as Location from 'expo-location';
 import P2PPublicTrans from './P2PPublicTrans';
 import P2PDriver from './P2PDriver';
 import { useNavigation } from '@react-navigation/native';
+
 
 const { height, width } = Dimensions.get('window');
 
@@ -41,8 +40,7 @@ const P2PNavigation = () => {
   const requestLocationPermission = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return;
-    const location = await Location.getCurrentPositionAsync({});
-    const { latitude, longitude } = location.coords;
+    const { latitude, longitude } = (await Location.getCurrentPositionAsync()).coords;
     setCurrentRegion({
       latitude,
       longitude,
@@ -66,11 +64,6 @@ const P2PNavigation = () => {
     }
   };
 
-  const capitalizeWords = (text) => {
-    if (!text) return '';
-    return text.split(' ').map(word => word.length > 2 ? word.charAt(0).toUpperCase() + word.slice(1) : word.toUpperCase()).join(' ');
-  };
-
   const shortenText = (text) => {
     if (!text) return '';
     return text.length > 60 ? text.slice(0, 57) + '...' : text;
@@ -79,8 +72,13 @@ const P2PNavigation = () => {
   const cleanInstruction = (text) => {
     if (!text) return '';
     let cleaned = text.replace(/<[^>]+>/g, '');
-    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2')
+    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2');
     return cleaned;
+  };
+
+  const capitalizeWords = (text) => {
+    if (!text) return '';
+    return text.split(' ').map(word => word.length > 2 ? word.charAt(0).toUpperCase() + word.slice(1) : word.toUpperCase()).join(' ');
   };
 
   const getDriverStepSummary = (steps) => {
@@ -104,17 +102,20 @@ const P2PNavigation = () => {
     if (!steps) return '';
     return steps.map(step => {
       if (step.transitInfo) {
-        return `${step.transitInfo.vehicleType === 'SUBWAY' ? 'MRT' : 'Bus ' + step.transitInfo.lineName}`;
+        if (step.transitInfo.vehicleType === 'SUBWAY') {
+          return `${step.transitInfo.lineName} Line toward ${step.transitInfo.headsign} (${step.transitInfo.numStops} stops)`;
+        } else {
+          const lines = Array.isArray(step.transitInfo.lineNames)
+            ? step.transitInfo.lineNames.join(' / ')
+            : step.transitInfo.lineName;
+          return `Bus ${lines}`;
+        }
       } else {
         return `Walk ${step.distance}`;
       }
-    }).join(' > ');
+    }).join(' \n');
   };
-
-  const shortenName = (name) => {
-    if (!name) return '';
-    return name.length > 18 ? name.slice(0, 16) + '...' : name;
-  };
+  
 
   const countTransfers = (steps) => {
     if (!steps) return 0;
@@ -130,31 +131,69 @@ const P2PNavigation = () => {
   };
 
   const renderRouteOption = (route, index) => (
-    <TouchableOpacity key={index} style={styles.routeCard} onPress={() => {
-      setSelectedRoute(route);
-      setBottomSheetVisible(false);
-    }}>
-      <Text style={styles.routeTitle}>Path {index + 1}: {route?.summary || 'Unnamed'}</Text>
-      <Text style={styles.routeSummary}>{activeTab === 'driver' ? getDriverStepSummary(route.steps) : getPublicStepSummary(route.steps)}</Text>
-      <Text style={styles.routeSubSummary}>{route?.duration} ({route?.distance})</Text>
+    <TouchableOpacity
+      key={index}
+      style={styles.routeCard}
+      onPress={() => {
+        setSelectedRoute(route);
+        setBottomSheetVisible(false);
+      }}
+    >
+      <Text style={styles.routeTitle}>
+        Path {index + 1}: {route?.summary || 'Unnamed'}
+      </Text>
+      <Text style={styles.routeSummary}>
+        {activeTab === 'driver'
+          ? getDriverStepSummary(route.steps)
+          : getPublicStepSummary(route.steps)}
+      </Text>
+      <Text style={styles.routeSubSummary}>
+        {route.duration} ({route.distance})
+        {activeTab === 'public' && ` • ${countStations(route.steps)} station${countStations(route.steps) > 1 ? 's' : ''}, ${countTransfers(route.steps)} transfer${countTransfers(route.steps) !== 1 ? 's' : ''}`}
+      </Text>
+
     </TouchableOpacity>
   );
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
-        <MapView style={styles.map} region={currentRegion || { latitude: 1.3521, longitude: 103.8198, latitudeDelta: 0.05, longitudeDelta: 0.05 }}>
-          {selectedRoute && selectedRoute.polyline && (<Polyline coordinates={selectedRoute.polyline} strokeWidth={4} strokeColor="blue" />)}
-          {selectedRoute && selectedRoute.markers && selectedRoute.markers.map((marker, index) => (
-            <Marker key={index} coordinate={marker} title={marker.title} />
+        <MapView
+          style={styles.map}
+          region={
+            currentRegion || {
+              latitude: 1.3521,
+              longitude: 103.8198,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            }
+          }
+        >
+          {selectedRoute?.polyline && (
+            <Polyline coordinates={selectedRoute.polyline} strokeWidth={4} strokeColor="blue" />
+          )}
+          {selectedRoute?.markers?.map((marker, i) => (
+            <Marker key={i} coordinate={marker} title={marker.title} />
           ))}
         </MapView>
 
         {!selectedRoute && (
           <View style={styles.topSection}>
             <View style={styles.inputContainer}>
-              <TextInput style={styles.input} placeholder="Start Location" placeholderTextColor="#aaa" value={startLocation} onChangeText={setStartLocation} />
-              <TextInput style={styles.input} placeholder="End Location" placeholderTextColor="#aaa" value={endLocation} onChangeText={setEndLocation} />
+              <TextInput
+                style={styles.input}
+                placeholder="Start Location"
+                placeholderTextColor="#aaa"
+                value={startLocation}
+                onChangeText={setStartLocation}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="End Location"
+                placeholderTextColor="#aaa"
+                value={endLocation}
+                onChangeText={setEndLocation}
+              />
             </View>
             <TouchableOpacity style={styles.searchButton} onPress={handleSearchPaths}>
               <Text style={styles.searchButtonText}>Search Path</Text>
@@ -165,15 +204,21 @@ const P2PNavigation = () => {
         {bottomSheetVisible && (
           <View style={styles.bottomSheet}>
             <View style={styles.tabRow}>
-              <TouchableOpacity onPress={() => setActiveTab('driver')} style={[styles.tab, activeTab === 'driver' && styles.activeTab]}>
+              <TouchableOpacity
+                onPress={() => setActiveTab('driver')}
+                style={[styles.tab, activeTab === 'driver' && styles.activeTab]}
+              >
                 <Text style={styles.tabText}>Driver</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveTab('public')} style={[styles.tab, activeTab === 'public' && styles.activeTab]}>
+              <TouchableOpacity
+                onPress={() => setActiveTab('public')}
+                style={[styles.tab, activeTab === 'public' && styles.activeTab]}
+              >
                 <Text style={styles.tabText}>Public Transport</Text>
               </TouchableOpacity>
             </View>
             <ScrollView>
-              {(routes[activeTab] || []).map((route, index) => renderRouteOption(route, index))}
+              {routes[activeTab].map(renderRouteOption)}
             </ScrollView>
           </View>
         )}
@@ -181,42 +226,103 @@ const P2PNavigation = () => {
         {selectedRoute && (
           <View style={styles.selectedTopBar}>
             <View style={styles.topDarkBox}>
-              <TouchableOpacity onPress={() => { setSelectedRoute(null); setExpanded(false); }} style={styles.backButtonWrapper}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedRoute(null);
+                  setExpanded(false);
+                }}
+                style={styles.backButtonWrapper}
+              >
                 <Text style={styles.backButton}>{'<'}</Text>
               </TouchableOpacity>
-
-              <Text style={styles.routeName}>{shortenName(startLocation)} ➔ {shortenName(endLocation)}</Text>
-
+              <Text style={styles.routeName}>
+                {shortenText(startLocation)} ➔ {shortenText(endLocation)}
+              </Text>
               <View style={styles.quickInfoRow}>
-                <View style={styles.infoBox}><Text style={styles.quickInfoText}>🕒 {selectedRoute.duration}</Text></View>
-                <View style={styles.infoBox}><Text style={styles.quickInfoText}>📏 {selectedRoute.distance}</Text></View>
+                <View style={styles.infoBox}>
+                  <Text style={styles.quickInfoText}>🕒 {selectedRoute.duration}</Text>
+                </View>
+                <View style={styles.infoBox}>
+                  <Text style={styles.quickInfoText}>📏 {selectedRoute.distance}</Text>
+                </View>
               </View>
             </View>
 
-            <TouchableOpacity onPress={() => setExpanded(!expanded)} style={{ marginTop: 2 }}>
+            <TouchableOpacity onPress={() => setExpanded(!expanded)}>
               <Text style={styles.arrowButton}>{expanded ? '▲' : '▼'}</Text>
             </TouchableOpacity>
 
             {expanded && (
               <ScrollView style={styles.expandedPanel}>
-                {selectedRoute?.steps?.map((step, index) => (
-                  <View key={index} style={{ flexDirection: 'row', paddingVertical: 6, borderBottomColor: '#555', borderBottomWidth: 1, marginHorizontal: 10 }}>
-                    <Text style={{ flex: 2, color: 'white', fontSize: 12 }}>{shortenText(cleanInstruction(step.instruction))}</Text>
-                    <Text style={{ flex: 1, color: 'white', fontSize: 12, textAlign: 'right' }}>{step.distance}</Text>
+                {selectedRoute.steps.map((step, idx) => {
+                  const ti = step.transitInfo;
+                    return (
+                  <View
+                    key={idx}
+                    style={{
+                      flexDirection: 'row',
+                      paddingVertical: 6,
+                      borderBottomColor: '#555',
+                      borderBottomWidth: 1,
+                      marginHorizontal: 10,
+                    }}
+                  >
+                  <Text style={{ flex: 2, color: 'white', fontSize: 12 }}>
+                    {ti?
+                        `${ti.vehicleType === 'SUBWAY' ? 'MRT' : 'Bus'} ${ti.lineName} Line` +
+                        (ti.headsign ? ` toward ${ti.headsign}` : '') +
+                        ` \u2014 board at ${ti.departureStop}, alight at ${ti.arrivalStop}` +
+                        ` (${ti.numStops} stops)`
+                      : shortenText(cleanInstruction(step.instruction))}
+                  </Text>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: 'white',
+                        fontSize: 12,
+                        textAlign: 'right',
+                      }}
+                    >
+                      {step.distance}
+                    </Text>
                   </View>
-                ))}
+                );
+              })}
 
-                <TouchableOpacity style={{ marginTop: 20, backgroundColor: 'white', padding: 12, borderRadius: 10, alignSelf: 'center', width: '60%' }}
+                <TouchableOpacity
+                 style={{
+                    marginTop: 20,
+                    backgroundColor: 'white',
+                    padding: 12,
+                    borderRadius: 10,
+                    alignSelf: 'center',
+                    width: '60%',
+                  }}
                   onPress={() => {
-                    navigation.navigate('DriverNavigator', {
-                      polyline: selectedRoute.polyline,
-                      steps: selectedRoute.steps,
-                      markers: selectedRoute.markers,
-                    });
-                  }}>
-                  <Text style={{ color: 'black', fontWeight: 'bold', textAlign: 'center' }}>Start Navigation</Text>
-                </TouchableOpacity>
+                    // reset UI
+                    setSelectedRoute(null);
+                    setExpanded(false);
 
+                    // choose navigator
+                    if (activeTab === 'driver') {
+                      navigation.navigate('DriverNavigator', {
+                        polyline: selectedRoute.polyline,
+                        steps: selectedRoute.steps,
+                        markers: selectedRoute.markers,
+                      });
+                    } else {
+                      navigation.navigate('PublicTransNavigator', {
+                        polyline: selectedRoute.polyline,
+                        steps: selectedRoute.steps,
+                        markers: selectedRoute.markers,
+                      });
+                    }
+                  }}
+                >
+                  <Text style={{ color: 'black', fontWeight: 'bold', textAlign: 'center' }}>
+                    Start Navigation
+                  </Text>
+                </TouchableOpacity>
               </ScrollView>
             )}
           </View>
@@ -225,8 +331,6 @@ const P2PNavigation = () => {
     </TouchableWithoutFeedback>
   );
 };
-
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#393939' },

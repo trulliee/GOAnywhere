@@ -10,6 +10,7 @@ const GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 const GOOGLE_DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json";
 const LTA_BUS_STOPS_API = "https://datamall2.mytransport.sg/ltaodataservice/BusStops";
 const LTA_BUS_ROUTES_API = "https://datamall2.mytransport.sg/ltaodataservice/BusRoutes";
+const stationExits = require('./MRTStationExit.json');
 
 const getCoordinates = async (address) => {
   if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?/.test(address)) {
@@ -22,6 +23,7 @@ const getCoordinates = async (address) => {
   if (!coords) throw new Error("Geocoding failed.");
   return { lat: coords.lat, lng: coords.lng };
 };
+
 
 const getAllBusStops = async () => {
   const response = await axios.get(LTA_BUS_STOPS_API, {
@@ -42,6 +44,25 @@ const findNearestBusStop = (lat, lng, stops) => {
   }
   return nearest;
 };
+
+const buildExitLookup = () => {
+  const lookup = {};
+  for (const feature of stationExits.features) {
+    const html = feature.properties.Description;
+    const nmMatch = html.match(/<th>STATION_NA<\/th>\s*<td>([^<]+)<\/td>/);
+    const exMatch = html.match(/<th>EXIT_CODE<\/th>\s*<td>([^<]+)<\/td>/);
+    if (nmMatch && exMatch) {
+     const stationName = nmMatch[1]
+       .replace(/\s*MRT STATION$/i, '')
+       .trim()
+       .toUpperCase();
+     lookup[stationName] = exMatch[1].trim();
+    }
+  }
+  return lookup;
+};
+const stationExitLookup = buildExitLookup();
+
 
 const findDirectBusGroup = async (startCode, endCode) => {
   const response = await axios.get(LTA_BUS_ROUTES_API, {
@@ -80,7 +101,7 @@ const findGoogleTransitRoute = async (origin, destination, filters = {}) => {
 
 const buildInstruction = (transitInfo) => {
   if (transitInfo.vehicleType === "SUBWAY") {
-    return `${transitInfo.lineNames.join(' / ')} Line toward ${transitInfo.headsign} (${transitInfo.numStops} stops)`;
+    return `${transitInfo.lineNames.join(' / ')} Line toward ${transitInfo.headsign}${transitInfo.exitNumber ? ` - ${transitInfo.exitNumber}` : ''} (${transitInfo.numStops} stops)`;
   } else if (transitInfo.vehicleType === "BUS") {
     return `Bus ${transitInfo.lineNames.join(' / ')} (${transitInfo.numStops} stops)`;
   } else {
@@ -88,11 +109,9 @@ const buildInstruction = (transitInfo) => {
   }
 };
 
+
+
 const P2PPublicTrans = async (startLocation, endLocation) => {
-  if (!startLocation || !endLocation) {
-    Alert.alert('Missing Info', 'Please enter both origin and destination.');
-    return [];
-  }
 
   try {
     const [startCoords, endCoords] = await Promise.all([
@@ -179,14 +198,19 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
 
           if (step.travel_mode === "TRANSIT" && step.transit_details) {
             const t = step.transit_details;
+            const arrival = t.arrival_stop.name;
+            const lookupKey = arrival
+            .replace(/\s*MRT STATION$/i, '')
+            .trim()
+            .toUpperCase();
+            const exitNumber = stationExitLookup[lookupKey] || null;            
             const lineNames = [t.line.short_name || t.line.name || 'Unknown'];
             const lineName  = lineNames[0];
             const departure = t.departure_stop.name;
-            const arrival = t.arrival_stop.name;
             let vehicleType = t.line.vehicle.type.toUpperCase();
             const headsign = t.headsign;
             const numStops = t.num_stops;
-          
+
             if (vehicleType === "RAIL" && (lineNames[0].startsWith("BP") || lineNames[0].startsWith("SE") || lineNames[0].startsWith("PE"))) {
               vehicleType = "SUBWAY";
             }
@@ -198,11 +222,16 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
               arrivalStop:   arrival,
               headsign,
               numStops,
+              exitNumber,
               vehicleType,
             };
           
-            instruction = `${departure} – ${buildInstruction(transitInfo)} – ${arrival}`;
-          }
+             instruction = 
+               `Board at ${t.departure_stop.name}` +
+               ` - ${lineNames[0]} Line toward ${t.headsign}` +
+               ` (${t.num_stops} stops)` +
+              ` - ${t.arrival_stop.name}` +
+               (exitNumber ? ` ${exitNumber}` : '');          }
           
 
           return {

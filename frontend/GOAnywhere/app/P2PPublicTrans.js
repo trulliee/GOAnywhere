@@ -1,5 +1,4 @@
 // P2PPublicTrans.js
-
 import axios from 'axios';
 import polyline from '@mapbox/polyline'; 
 import { Alert } from 'react-native';
@@ -162,11 +161,11 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
     }
 
     const routeVariants = [
-      { label: "Fastest", filters: {} },
-      { label: "Least Transfer", filters: {} },
-      { label: "Bus Only", filters: { transitMode: "bus" } },
-      { label: "MRT Only", filters: { transitMode: "subway" } },
+      { label: "Fastest",     filters: {}             },
+      { label: "Bus Only",    filters: { transitMode: "bus" } },
+      { label: "MRT Only",    filters: { transitMode: "subway" } },
     ];
+    
 
     for (const variant of routeVariants) {
       const googleRoutes = await findGoogleTransitRoute(origin, destination, variant.filters);
@@ -259,14 +258,12 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
       }
     }
 
-    const sortOrder = { "Fastest": 0, "Least Transfer": 1, "Bus Only": 2, "MRT Only": 3 };
-    allRoutes.sort((a, b) => sortOrder[a.summary] - sortOrder[b.summary]);
 
     const mergedRoutes = [];
     const groupMap = {};
 
     for (const route of allRoutes) {
-      // catch *any* bus-only route, regardless of its summary label
+      // catch any bus-only route, regardless of its summary label
       if (route.type === 'Bus Only' && route.steps[1]?.transitInfo) {
         const info = route.steps[1].transitInfo;
         const key  = `${info.departureStop}|${info.arrivalStop}`;
@@ -297,7 +294,6 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
           ]));
           existingInfo.lineName = existingInfo.lineNames.join(' / ');
 
-          // rebuild the human-readable instruction
           groupMap[key].steps[1].instruction =
             `${info.departureStop} – ${buildInstruction(existingInfo)} – ${info.arrivalStop}`;
         }
@@ -308,7 +304,27 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
       }
     }
 
-    return mergedRoutes;
+  const toMinutes = txt => {
+    let hours = 0, mins = 0;
+    const hMatch = txt.match(/(\d+)\s*(?:h|hour)/i);
+    const mMatch = txt.match(/(\d+)\s*(?:m|min)/i);
+    if (hMatch) hours = parseInt(hMatch[1], 10);
+    if (mMatch) mins    = parseInt(mMatch[1], 10);
+    // if no hours/minutes found, fall back to parsing a lone number
+    if (!hMatch && !mMatch) {
+      const n = parseFloat(txt);
+      return isNaN(n) ? Infinity : n;
+    }
+    return hours * 60 + mins;
+  };
+
+  // sort by true duration in minutes
+  mergedRoutes.sort((a, b) => {
+    return toMinutes(a.duration) - toMinutes(b.duration);
+  });
+
+  return mergedRoutes;
+
 
 
   } catch (error) {

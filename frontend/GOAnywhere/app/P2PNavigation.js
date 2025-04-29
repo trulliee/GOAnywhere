@@ -23,6 +23,8 @@ const P2PNavigation = () => {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [bottomSheetVisible, setBottomSheetVisible] = useState(false);
+  const [publicFilter, setPublicFilter] = useState('Any');
+
 
   useEffect(() => {
     requestLocationPermission();
@@ -49,16 +51,29 @@ const P2PNavigation = () => {
     });
   };
 
+  const toMinutes = txt => {
+    let h = 0, m = 0;
+    const hh = txt.match(/(\d+)\s*h/i);
+    const mm = txt.match(/(\d+)\s*m/i);
+    if (hh) h = +hh[1];
+    if (mm) m = +mm[1];
+    if (!hh && !mm) return parseFloat(txt) || Infinity;
+    return h * 60 + m;
+  };
+
   const handleSearchPaths = async () => {
     Keyboard.dismiss();
     try {
-      const driverRoutes = await P2PDriver(startLocation, endLocation);
-      const publicRoutes = await P2PPublicTrans(startLocation, endLocation);
-      publicRoutes.sort((a, b) => parseInt(a.duration) - parseInt(b.duration));
-      setRoutes({ driver: driverRoutes || [], public: publicRoutes || [] });
-      setBottomSheetVisible(true);
-      setSelectedRoute(null);
-      setExpanded(false);
+        const driverRoutes = await P2PDriver(startLocation, endLocation);
+        const publicRoutes = await P2PPublicTrans(startLocation, endLocation);
+      
+        driverRoutes.sort((a, b) => parseFloat(a.duration) - parseFloat(b.duration));
+        publicRoutes.sort((a, b) => parseFloat(a.duration) - parseFloat(b.duration));
+      
+        setRoutes({ driver: driverRoutes || [], public: publicRoutes || [] });
+        setBottomSheetVisible(true);
+        setSelectedRoute(null);
+        setExpanded(false);
     } catch (error) {
       console.error('Error fetching paths:', error);
     }
@@ -140,7 +155,7 @@ const P2PNavigation = () => {
       }}
     >
       <Text style={styles.routeTitle}>
-        Path {index + 1}: {route?.summary || 'Unnamed'}
+        Path {index + 1}: 
       </Text>
       <Text style={styles.routeSummary}>
         {activeTab === 'driver'
@@ -155,74 +170,103 @@ const P2PNavigation = () => {
     </TouchableOpacity>
   );
 
-  return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
-        <MapView
-          style={styles.map}
-          region={
-            currentRegion || {
-              latitude: 1.3521,
-              longitude: 103.8198,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            }
-          }
-        >
-          {selectedRoute?.polyline && (
-            <Polyline coordinates={selectedRoute.polyline} strokeWidth={4} strokeColor="blue" />
-          )}
-          {selectedRoute?.markers?.map((marker, i) => (
-            <Marker key={i} coordinate={marker} title={marker.title} />
-          ))}
-        </MapView>
+return (
+  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+  <View style={styles.container}>
+    <MapView
+      style={styles.map}
+      region={
+        currentRegion || {
+          latitude: 1.3521,
+          longitude: 103.8198,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }
+      }
+    >
+      {selectedRoute?.polyline && (
+        <Polyline coordinates={selectedRoute.polyline} strokeWidth={4} strokeColor="blue" />
+      )}
+      {selectedRoute?.markers?.map((marker, i) => (
+        <Marker key={i} coordinate={marker} title={marker.title} />
+      ))}
+    </MapView>
 
-        {!selectedRoute && (
-          <View style={styles.topSection}>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Start Location"
-                placeholderTextColor="#aaa"
-                value={startLocation}
-                onChangeText={setStartLocation}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="End Location"
-                placeholderTextColor="#aaa"
-                value={endLocation}
-                onChangeText={setEndLocation}
-              />
-            </View>
-            <TouchableOpacity style={styles.searchButton} onPress={handleSearchPaths}>
-              <Text style={styles.searchButtonText}>Search Path</Text>
-            </TouchableOpacity>
+    {!selectedRoute && (
+      <View style={styles.topSection}>
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Start Location"
+            placeholderTextColor="#aaa"
+            value={startLocation}
+            onChangeText={setStartLocation}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="End Location"
+            placeholderTextColor="#aaa"
+            value={endLocation}
+            onChangeText={setEndLocation}
+          />
+        </View>
+        <TouchableOpacity style={styles.searchButton} onPress={handleSearchPaths}>
+          <Text style={styles.searchButtonText}>Search Path</Text>
+        </TouchableOpacity>
+      </View>
+    )}
+
+    {bottomSheetVisible && (
+      <View style={styles.bottomSheet}>
+        <View style={styles.tabRow}>
+          <TouchableOpacity
+            onPress={() => setActiveTab('driver')}
+            style={[styles.tab, activeTab === 'driver' && styles.activeTab]}
+          >
+            <Text style={styles.tabText}>Driver</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setActiveTab('public')}
+            style={[styles.tab, activeTab === 'public' && styles.activeTab]}
+          >
+            <Text style={styles.tabText}>Public Transport</Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === 'public' && (
+          <View style={styles.filterRow}>
+            {['Any', 'Bus', 'MRT'].map(f => (
+              <TouchableOpacity
+                key={f}
+                style={[styles.filterButton, publicFilter === f && styles.activeFilter]}
+                onPress={() => setPublicFilter(f)}
+              >
+                <Text style={[styles.filterText, publicFilter === f && styles.activeFilterText]}>{f}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         )}
 
-        {bottomSheetVisible && (
-          <View style={styles.bottomSheet}>
-            <View style={styles.tabRow}>
-              <TouchableOpacity
-                onPress={() => setActiveTab('driver')}
-                style={[styles.tab, activeTab === 'driver' && styles.activeTab]}
-              >
-                <Text style={styles.tabText}>Driver</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setActiveTab('public')}
-                style={[styles.tab, activeTab === 'public' && styles.activeTab]}
-              >
-                <Text style={styles.tabText}>Public Transport</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView>
-              {routes[activeTab].map(renderRouteOption)}
-            </ScrollView>
-          </View>
-        )}
-
+        <ScrollView>
+          {(
+            activeTab === 'driver'
+              // 1) take a shallow copy, 2) sort by duration, 3) render
+              ? routes.driver
+                  .slice()
+                  .sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration))
+              : routes.public
+                  .filter(r => {
+                    if (publicFilter === 'Bus') return r.type === 'Bus Only';
+                    if (publicFilter === 'MRT') return r.type === 'MRT Only';
+                    return true;
+                  })
+                  .slice()
+                  .sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration))
+          ).map(renderRouteOption)}
+        </ScrollView>
+      </View>
+    )}
+        {/* Selected route details */}
         {selectedRoute && (
           <View style={styles.selectedTopBar}>
             <View style={styles.topDarkBox}>
@@ -247,50 +291,50 @@ const P2PNavigation = () => {
                 </View>
               </View>
             </View>
-
+  
             <TouchableOpacity onPress={() => setExpanded(!expanded)}>
               <Text style={styles.arrowButton}>{expanded ? '▲' : '▼'}</Text>
             </TouchableOpacity>
-
+  
             {expanded && (
               <ScrollView style={styles.expandedPanel}>
                 {selectedRoute.steps.map((step, idx) => {
                   const ti = step.transitInfo;
-                    return (
-                  <View
-                    key={idx}
-                    style={{
-                      flexDirection: 'row',
-                      paddingVertical: 6,
-                      borderBottomColor: '#555',
-                      borderBottomWidth: 1,
-                      marginHorizontal: 10,
-                    }}
-                  >
-                  <Text style={{ flex: 2, color: 'white', fontSize: 12 }}>
-                    {ti?
-                        `${ti.vehicleType === 'SUBWAY' ? 'MRT' : 'Bus'} ${ti.lineName} Line` +
-                        (ti.headsign ? ` toward ${ti.headsign}` : '') +
-                        ` \u2014 board at ${ti.departureStop}, alight at ${ti.arrivalStop}` +
-                        ` (${ti.numStops} stops)`
-                      : shortenText(cleanInstruction(step.instruction))}
-                  </Text>
-                    <Text
+                  return (
+                    <View
+                      key={idx}
                       style={{
-                        flex: 1,
-                        color: 'white',
-                        fontSize: 12,
-                        textAlign: 'right',
+                        flexDirection: 'row',
+                        paddingVertical: 6,
+                        borderBottomColor: '#555',
+                        borderBottomWidth: 1,
+                        marginHorizontal: 10,
                       }}
                     >
-                      {step.distance}
-                    </Text>
-                  </View>
-                );
-              })}
-
+                      <Text style={{ flex: 2, color: 'white', fontSize: 12 }}>
+                        {ti
+                          ? `${ti.vehicleType === 'SUBWAY' ? 'MRT' : 'Bus'} ${ti.lineName} Line` +
+                            (ti.headsign ? ` toward ${ti.headsign}` : '') +
+                            ` — board at ${ti.departureStop}, alight at ${ti.arrivalStop}` +
+                            ` (${ti.numStops} stops)`
+                          : shortenText(cleanInstruction(step.instruction))}
+                      </Text>
+                      <Text
+                        style={{
+                          flex: 1,
+                          color: 'white',
+                          fontSize: 12,
+                          textAlign: 'right',
+                        }}
+                      >
+                        {step.distance}
+                      </Text>
+                    </View>
+                  );
+                })}
+  
                 <TouchableOpacity
-                 style={{
+                  style={{
                     marginTop: 20,
                     backgroundColor: 'white',
                     padding: 12,
@@ -299,11 +343,9 @@ const P2PNavigation = () => {
                     width: '60%',
                   }}
                   onPress={() => {
-                    // reset UI
                     setSelectedRoute(null);
                     setExpanded(false);
-
-                    // choose navigator
+  
                     if (activeTab === 'driver') {
                       navigation.navigate('DriverNavigator', {
                         polyline: selectedRoute.polyline,
@@ -357,7 +399,28 @@ const styles = StyleSheet.create({
   infoBox: { backgroundColor: '#4D4D4D', paddingVertical: 8, paddingHorizontal: 15, borderRadius: 10, marginHorizontal: 10 },
   quickInfoText: { color: 'white', fontSize: 12, textAlign: 'center' },
   arrowButton: { fontSize: 22, color: 'white', marginBottom: 2 },
-  expandedPanel: { marginTop: 0, backgroundColor: '#393939', width: '100%', height: height }
+  expandedPanel: { marginTop: 0, backgroundColor: '#393939', width: '100%', height: height },
+  filterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 8,
+  },
+  filterButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#4D4D4D',
+  },
+  activeFilter: {
+    backgroundColor: 'white',
+  },
+  filterText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  activeFilterText: {
+    color: 'black',
+  }
 });
 
 export default P2PNavigation;

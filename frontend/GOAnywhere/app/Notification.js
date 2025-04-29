@@ -1,75 +1,33 @@
-
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { getReportNotifications, markAllReportNotificationsRead } from './NotificationData';
 
 const Notification = () => {
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
-    const exampleNotifications = [
-      {
-        id: 1,
-        icon: 'car',
-        iconColor: '#BC3535',
-        title: 'Heavy Traffic Reported',
-        message: 'Heavy traffic reported on PIE (Tuas bound)',
-        timeCategory: 'today',
-      },
-      {
-        id: 2,
-        icon: 'car',
-        iconColor: '#EEA039',
-        title: 'Moderate Traffic Reported',
-        message: 'Moderate traffic reported on PIE (Tuas bound)',
-        timeCategory: 'today',
-      },
-      {
-        id: 3,
-        icon: 'rainy',
-        iconColor: '#5C96E2',
-        title: 'Bad Weather Reported',
-        message: 'Flash Floods Reported along Upper Bukit Timah Road.',
-        timeCategory: 'yesterday',
-      },
-      {
-        id: 4,
-        icon: 'alert-circle',
-        iconColor: '#000000',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
-      },
-      {
-        id: 5,
-        icon: 'alert-circle',
-        iconColor: '#000000',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
-      },
-      {
-        id: 6,
-        icon: 'alert-circle',
-        iconColor: '#000000',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
-      },
-      {
-        id: 7,
-        icon: 'alert-circle',
-        iconColor: '#000000',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
-      },
-    ];
-    setNotifications(exampleNotifications);
+    const reportNotifications = getReportNotifications(); 
+    setNotifications(reportNotifications); 
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+  
+      return () => {
+        markAllReportNotificationsRead();
+  
+        setNotifications((prevNotifications) =>
+          prevNotifications.map((n) => ({ ...n, read: true }))
+        );
+      };
+    }, [])
+  );
 
   const renderCard = (item, index) => (
     <View key={index} style={styles.notificationCard}>
+      {!item.read && <View style={styles.unreadDot} />}
       <Ionicons name={item.icon} size={28} color={item.iconColor} style={{ marginRight: 12 }} />
       <View style={{ flex: 1 }}>
         <Text style={styles.notificationTitle}>{item.title}</Text>
@@ -78,12 +36,7 @@ const Notification = () => {
     </View>
   );
 
-  const grouped = {
-    today: [],
-    yesterday: [],
-    '2days': [],
-  };
-
+  const grouped = { today: [], yesterday: [], '2days': [] };
   notifications.forEach((notif) => {
     if (grouped[notif.timeCategory]) {
       grouped[notif.timeCategory].push(notif);
@@ -117,7 +70,7 @@ const Notification = () => {
   );
 };
 
-export default Notification;
+
 
 const styles = StyleSheet.create({
   container: {
@@ -158,4 +111,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
     color: '#555',
   },
+  unreadDot: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 8,
+    backgroundColor: 'red',
+    zIndex: 10,
+  },
 });
+
+
+export default Notification;

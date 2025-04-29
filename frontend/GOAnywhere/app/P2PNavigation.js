@@ -382,7 +382,11 @@ return (
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#393939' },
   map: { position: 'absolute', width: '100%', height: '100%' },
+<<<<<<< HEAD
   topSection: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#393939', padding: 8, zIndex: 10},
+=======
+  topSection: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#393939', padding: 8, zIndex: 10 },
+>>>>>>> justin
   inputContainer: { backgroundColor: 'white', borderRadius: 15, padding: 8, overflow: 'hidden' },
   input: { backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#ccc', color: 'black', marginBottom: 5, paddingHorizontal: 8, paddingVertical: 6, fontSize: 14 },
   searchButton: { backgroundColor: 'white', padding: 12, borderRadius: 10, marginTop: 8 },

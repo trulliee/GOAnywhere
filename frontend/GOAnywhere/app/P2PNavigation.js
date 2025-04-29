@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, Dimensions, TouchableWithoutFeedback,
-  Keyboard, ScrollView, BackHandler
+  Keyboard, ScrollView, BackHandler, Alert
 } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -63,6 +63,10 @@ const P2PNavigation = () => {
 
   const handleSearchPaths = async () => {
     Keyboard.dismiss();
+      if (!startLocation || !endLocation) {
+          Alert.alert('Missing Info', 'Please enter both origin and destination.');
+          return;
+        }
     try {
         const driverRoutes = await P2PDriver(startLocation, endLocation);
         const publicRoutes = await P2PPublicTrans(startLocation, endLocation);
@@ -87,7 +91,7 @@ const P2PNavigation = () => {
   const cleanInstruction = (text) => {
     if (!text) return '';
     let cleaned = text.replace(/<[^>]+>/g, '');
-    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2');
+    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1, $2');
     return cleaned;
   };
 
@@ -312,12 +316,13 @@ return (
                       }}
                     >
                       <Text style={{ flex: 2, color: 'white', fontSize: 12 }}>
-                        {ti
-                          ? `${ti.vehicleType === 'SUBWAY' ? 'MRT' : 'Bus'} ${ti.lineName} Line` +
-                            (ti.headsign ? ` toward ${ti.headsign}` : '') +
-                            ` — board at ${ti.departureStop}, alight at ${ti.arrivalStop}` +
-                            ` (${ti.numStops} stops)`
-                          : shortenText(cleanInstruction(step.instruction))}
+                      {ti
+                        ? `${ti.vehicleType === 'SUBWAY' ? 'MRT' : 'Bus'} ${ti.lineName} Line` +
+                          (ti.headsign ? ` toward ${ti.headsign}` : '') +
+                          ` — board at ${ti.departureStop}, alight at ${ti.arrivalStop}` +
+                          (ti.exitNumber ? `, ${ti.exitNumber}` : '') +
+                          ` (${ti.numStops} stops)`
+                        : shortenText(cleanInstruction(step.instruction))}
                       </Text>
                       <Text
                         style={{

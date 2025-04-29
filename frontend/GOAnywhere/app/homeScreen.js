@@ -22,11 +22,14 @@ import Collapsible from 'react-native-collapsible';
 import { MaterialIcons } from 'react-native-vector-icons';
 import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
+import { getReportNotifications, getUserAccountNotifications } from './NotificationData';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
 //import {db} from './firebaseConfig' (add in the firebase stuff here)
 //import { collection, addDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+
 
 import ENV from './env';
 
@@ -57,6 +60,7 @@ export default function HomeScreen() {
   const [trafficExpanded, setTrafficExpanded] = useState(false);
   const [navigationExpanded, setNavigationExpanded] = useState(false);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
 
   // Crowdsourced Menu
   const [isCrowdModalVisible, setIsCrowdModalVisible] = useState(false);
@@ -314,6 +318,15 @@ export default function HomeScreen() {
     
     loadUser();
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const reportNotifications = getReportNotifications();
+      const unreadExists = reportNotifications.some(n => !n.read);
+      setHasUnread(unreadExists);
+    }, [])
+  );
+  
 
   const toggleTraffic = () => {
     setTrafficExpanded(!trafficExpanded);
@@ -584,7 +597,12 @@ export default function HomeScreen() {
             onPress={() => navigateTo('Notification')}
           >
             <View style={styles.menuItemRow}>
-              <MaterialIcons name="notifications" size={24} color="#fff" style={styles.menuIcon} />
+              <View style={{ position: 'relative' }}>
+                <MaterialIcons name="notifications" size={24} color="#fff" style={styles.menuIcon} />
+                {hasUnread && (
+                  <View style={styles.sidebarRedDot} />
+                )}
+              </View>
               <Text style={styles.menuText}>Notification</Text>
             </View>
           </TouchableOpacity>
@@ -933,5 +951,15 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sidebarRedDot: {
+    position: 'absolute',
+    top: -2,
+    right: 15,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'red',
+    zIndex: 20,
   }
 });

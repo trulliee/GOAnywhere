@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from google.cloud import aiplatform
 from google.cloud import storage
+import sklearn
 
 # === Configuration ===
 PROJECT_ID = "goanywhere-c55c8"
@@ -13,8 +14,21 @@ MODEL_ARTIFACT_GCS_PREFIX = "trained_models"
 DISPLAY_NAME_PREFIX = "goanywhere"
 SERVING_IMAGE = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest"
 
+# Expected sklearn version from serving image
+EXPECTED_SKLEARN_VERSION = "1.0.1"
+
 # === Vertex AI Initialization ===
 aiplatform.init(project=PROJECT_ID, location=REGION, staging_bucket=BUCKET_NAME)
+
+def check_sklearn_version():
+    current_version = sklearn.__version__
+    if current_version != EXPECTED_SKLEARN_VERSION:
+        print(f"⚠️ WARNING: Local scikit-learn version is {current_version}, but Vertex AI container expects {EXPECTED_SKLEARN_VERSION}.")
+        print(f"⚠️ Please consider retraining with scikit-learn {EXPECTED_SKLEARN_VERSION} to avoid deployment errors.")
+        # Optionally, exit here if you want to **prevent** accidental upload
+        # sys.exit(1)
+    else:
+        print(f"✅ scikit-learn version {current_version} matches Vertex AI container version.")
 
 def upload_model(model_type: str):
     """
@@ -42,11 +56,15 @@ def upload_model(model_type: str):
         display_name=display_name,
         artifact_uri=artifact_uri,
         serving_container_image_uri=SERVING_IMAGE,
+        sync=True,
     )
     model.wait()
     print(f"✅ Model registered: {display_name}")
 
 def main():
+    print("🚀 Checking scikit-learn version before upload...")
+    check_sklearn_version()  
+
     print("🚀 Uploading only latest confirmed models to Vertex AI...")
     upload_model("travel_time")
     upload_model("traffic_congestion")

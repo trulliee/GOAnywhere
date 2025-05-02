@@ -5,6 +5,11 @@ from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
+import os
+import requests
+import google.auth
+from google.auth.transport.requests import Request as GoogleAuthRequest
+
 from app.models.traffic_congestion_model import TrafficCongestionModel
 from app.models.travel_time_prediction import TravelTimePredictionModel
 from app.models.route_recommendation import RouteRecommendationModel
@@ -21,108 +26,140 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# Initialize models - you may need to adjust paths based on your setup
-traffic_model = TrafficCongestionModel()
-travel_time_model = TravelTimePredictionModel()
-route_model = RouteRecommendationModel()
-feedback_analyzer = FeedbackAnalyzer()
+# Environment config
+VERTEX_ENDPOINT_TRAFFIC = os.getenv("VERTEX_ENDPOINT_TRAFFIC")
+VERTEX_ENDPOINT_TRAVEL_TIME = os.getenv("VERTEX_ENDPOINT_TRAVEL_TIME")
+PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+REGION = os.getenv("GCP_REGION", "asia-southeast1")
 
-# Model status check
-@router.get("/status")
-async def check_models_status():
-    """Check if all models are loaded and available."""
-    status = {
-        "traffic_model": traffic_model.speed_model is not None,
-        "travel_time_model": travel_time_model.travel_time_model is not None or bool(travel_time_model.expressway_models),
-        "route_model": route_model.road_graph is not None,
-        "feedback_analyzer": True  # Always available as it doesn't need pre-loaded models
-    }
-    
-    return {
-        "status": "ok" if all(status.values()) else "partial",
-        "models_status": status
-    }
+# Helper function to get access token
+def get_google_auth_token():
+    credentials, _ = google.auth.default()
+    credentials.refresh(GoogleAuthRequest())
+    return credentials.token
 
-# Define input models for API
+# Prediction request structure
 class TrafficPredictionInput(BaseModel):
-    road_name: str
-    hour: int = Field(..., ge=0, lt=24)
-    day_of_week: int = Field(..., ge=0, lt=7)
-    is_weekend: int = Field(..., ge=0, le=1)
-    is_holiday: int = Field(..., ge=0, le=1)
-    RoadCategory_Numeric: int = Field(..., ge=0, le=4)
-    weather_temp_high: float = 30.0
-    weather_rain_forecast: int = Field(0, ge=0, le=1)
-    nearby_incidents: int = Field(0, ge=0)
+    RoadName: str
+    RoadCategory: str
+    hour: int
+    day_of_week: int
+    month: int
+    is_holiday: int
+    event_count: int = 0
+    incident_count: int = 0
+    temperature: float = 27.0
+    humidity: float = 75.0
+    peak_hour_flag: int = 0
+    day_type: str = "weekday"
+    road_type: str = "normal"
+    recent_incident_flag: int = 0
+    speed_band_previous_hour: int = 2
+    rain_flag: int = 0
+    max_event_severity: int = 0
+    sum_event_severity: int = 0
 
 @router.post("/traffic")
 async def predict_traffic(input_data: TrafficPredictionInput):
-    """Predict traffic conditions for a given road and time."""
+    """
+    Send traffic prediction request to deployed Vertex AI model server.
+    """
     try:
-        # Convert input data to dict for model
-        features = input_data.dict()
+        # Format the payload
+        payload = {"instances": [input_data.dict()]}
+
+        # Build full Vertex AI endpoint URL
+        url = f"https://{REGION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/{VERTEX_ENDPOINT_TRAFFIC}:predict"
         
-        # Check if models are loaded
-        if traffic_model.speed_model is None or traffic_model.condition_model is None:
-            traffic_model.load_models()
-            if traffic_model.speed_model is None:
-                raise HTTPException(status_code=500, detail="Traffic prediction models not loaded")
-        
-        # Make predictions
-        speed_prediction = traffic_model.predict_speed(features)
-        condition_prediction = traffic_model.predict_traffic_condition(features)
-        
-        if speed_prediction is None or condition_prediction is None:
-            raise HTTPException(status_code=500, detail="Prediction failed")
-        
-        # Determine confidence based on weather and incidents
-        confidence = "high"
-        if features["weather_rain_forecast"] == 1:
-            confidence = "medium"
-        if features["nearby_incidents"] > 0:
-            confidence = "low"
-        
+        # Get access token
+        token = get_google_auth_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        # Send request
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code != 200:
+            logger.error(f"Vertex AI traffic model error: {response.text}")
+            raise HTTPException(status_code=500, detail="Vertex AI model failed to respond.")
+
+        result = response.json()
+        predictions = result.get("predictions", [])
+        probabilities = result.get("probabilities", [])
+
         return {
             "status": "success",
-            "predictions": {
-                "speed_band": round(speed_prediction, 1),
-                "traffic_condition": condition_prediction,
-                "confidence": confidence
-            }
+            "predictions": predictions,
+            "probabilities": probabilities
         }
+
     except Exception as e:
-        logger.error(f"Error in traffic prediction: {e}")
+        logger.error(f"Traffic prediction error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 class TravelTimeInput(BaseModel):
-    expressway: str
-    direction: str
-    timestamp: Optional[datetime] = None
+    Expressway: str
+    Direction: str
+    Startpoint: str
+    Endpoint: str
+    hour: int
+    day_of_week: int
+    month: int
+    is_holiday: int
+    event_count: int = 0
+    incident_count: int = 0
+    temperature: float = 27.0
+    humidity: float = 75.0
+    peak_hour_flag: int = 0
+    day_type: str = "weekday"
+    road_type: str = "minor"
+    recent_incident_flag: int = 0
+    speed_band_previous_hour: float = 2
+    rain_flag: int = 0
+    max_event_severity: int = 0
+    sum_event_severity: int = 0
+    mean_incident_severity: float = 0.0
+    max_incident_severity: int = 0
+    sum_incident_severity: int = 0
+    distance_km: float = 5.0
 
+    
 @router.post("/travel_time")
 async def predict_travel_time(input_data: TravelTimeInput):
-    """Predict travel time for a specific expressway and direction."""
+    """
+    Send travel time prediction request to deployed Vertex AI model server.
+    """
     try:
-        # Check if model is loaded
-        if not travel_time_model.travel_time_model and not travel_time_model.expressway_models:
-            travel_time_model.load_models()
-            if not travel_time_model.travel_time_model and not travel_time_model.expressway_models:
-                raise HTTPException(status_code=500, detail="Travel time model not loaded")
-        
-        # Make prediction
-        result = travel_time_model.predict_travel_time(
-            input_data.expressway,
-            input_data.direction,
-            input_data.timestamp
-        )
-        
-        if result.get("status") == "error":
-            raise HTTPException(status_code=500, detail=result.get("error", "Prediction failed"))
-        
-        return result
+        payload = {"instances": [input_data.dict()]}
+
+        url = f"https://{REGION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/{VERTEX_ENDPOINT_TRAVEL_TIME}:predict"
+        token = get_google_auth_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code != 200:
+            logger.error(f"Vertex AI travel time model error: {response.text}")
+            raise HTTPException(status_code=500, detail="Vertex AI model failed to respond.")
+
+        result = response.json()
+        predictions = result.get("predictions", [])
+        probabilities = result.get("probabilities", [])
+
+        return {
+            "status": "success",
+            "predictions": predictions,
+            "probabilities": probabilities
+        }
+
     except Exception as e:
-        logger.error(f"Error in travel time prediction: {e}")
+        logger.error(f"Travel time prediction error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# (Leave route, feedback, and analysis logic unchanged...)
 
 class IncidentImpactInput(BaseModel):
     road_name: str

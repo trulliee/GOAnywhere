@@ -9,7 +9,7 @@ export default function Index() {
   useEffect(() => {
     // Simple redirection to the signup page
     const timer = setTimeout(() => {
-      router.replace('./SignUp');
+      router.replace('./loginUser');
     }, 300);
     
     return () => clearTimeout(timer);

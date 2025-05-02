@@ -22,4 +22,5 @@ ENV GMAPS_API_KEY=AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g
 ENV GCP_PROJECT_ID=goanywhere-c55c8
 
 # Command to run your FastAPI app using Python's -m option
-CMD ["python", "-m", "app.main"]
+# CMD ["python", "-m", "app.main"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

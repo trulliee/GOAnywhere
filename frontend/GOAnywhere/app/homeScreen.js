@@ -29,6 +29,7 @@ import * as Location from 'expo-location';
 // import { db } from './firebaseConfig';
 // import { collection, addDoc } from 'firebase/firestore';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
+import { fetchAPI } from './utils/apiConfig';
 
 import ENV from './env';
 
@@ -171,13 +172,13 @@ export default function HomeScreen() {
       console.log('Sending report to backend:', reportData);
       
       // When you connect to backend, you'll send the data something like this:
-      // await fetch('your-api-endpoint', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(reportData),
-      // });
+       await fetchAPI('/submit-crowd-data', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify(reportData),
+       });
       
       // For now, just show a success message
       Alert.alert("Report Submitted", `You reported: ${reportType} at coordinates (${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})`);

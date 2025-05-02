@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+if os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS") == "1":
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("FIREBASE_CREDENTIALS_PATH")
+
 def get_firebase_credentials():
     """
     Gets Firebase credentials based on environment settings.
@@ -2808,42 +2811,31 @@ def store_events_data(events):
     except Exception as e:
         print(f"Error storing events data: {e}")
 
-async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered"):
-    """
-    Stores user data in Firestore
+async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered", created_at=None, last_login=None, settings=None):
     
-    Args:
-        user_id (str): The Firebase UID of the user
-        name (str, optional): The user's display name
-        email (str, optional): The user's email
-        phone_number (str, optional): The user's phone number
-        user_type (str): Either "registered" or "anonymous"
-    
-    Returns:
-        bool: True if successful
-    """
     try:
         # Create a reference to the users collection
-        users_ref = db.collection('users')
+        users_ref = db.collection('users').document(user_id)
         
         # Prepare user data
         user_data = {
             'user_id': user_id,
+            'name': name,
+            'email': email,
+            'phone_number': phone_number,
             'user_type': user_type,
-            'created_at': firestore.SERVER_TIMESTAMP,
-            'last_login': firestore.SERVER_TIMESTAMP
+            'created_at': created_at if created_at else firestore.SERVER_TIMESTAMP,
+            'last_login': last_login if last_login else firestore.SERVER_TIMESTAMP,
+            'settings': settings if settings else {
+                "locationSharing": False,
+                "notifications": True
+            }
         }
+
+        print("Saving user_data to Firestore:", user_data)
         
-        # Add optional fields if provided
-        if name:
-            user_data['name'] = name
-        if email:
-            user_data['email'] = email
-        if phone_number:
-            user_data['phone_number'] = phone_number
-            
         # Store in Firestore using the UID as document ID
-        users_ref.document(user_id).set(user_data)
+        await users_ref.set(user_data)
         
         return True
     except Exception as e:

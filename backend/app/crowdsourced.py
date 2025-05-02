@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Union
 from app.database.firestore_utils import db
 from datetime import datetime
 from google.cloud import firestore  # Needed for Query
@@ -14,7 +14,7 @@ class CrowdData(BaseModel):
     longitude: float = Field(..., ge=-180, le=180)
     reportType: str  # e.g., "accident", "traffic jam"
     username: str
-    timestamp: Optional[str] = None
+    timestamp: Optional[Union[str, int]] = None
 
 # Function to check if user is a registered user
 def is_registered_user(user_id: str) -> bool:
@@ -23,10 +23,17 @@ def is_registered_user(user_id: str) -> bool:
         user_doc = user_ref.get()
 
         if not user_doc.exists:
+            print(f"User {user_id} does not exist.")
             return False
         
         user_data = user_doc.to_dict()
-        return user_data.get('settings', {}).get('userType') == "registered"
+        print(f"Fetched user data for {user_id}:", user_data)
+
+        user_type = user_data.get("user_type")
+        print(f"user_type =", user_type)
+
+        return user_type == "registered"
+
     except Exception as e:
         print(f"Error checking user: {e}")
         return False
@@ -41,13 +48,20 @@ def submit_crowdsourced_data(data: CrowdData):
         if not is_registered_user(data.userId):
             raise HTTPException(status_code=403, detail="Unauthorized: Only registered users can submit reports.")
 
+        timestamp_value = (
+            datetime.utcfromtimestamp(data.timestamp / 1000).isoformat()
+            if isinstance(data.timestamp, (int, float))
+            else data.timestamp or datetime.utcnow().isoformat()
+        )
+
         # Use backend timestamp if none provided
         data_to_store = {
             "user_id": data.userId,
+            "username": data.username,
             "latitude": data.latitude,
             "longitude": data.longitude,
             "type": data.reportType,
-            "timestamp": data.timestamp or datetime.utcnow().isoformat()
+            "timestamp": timestamp_value
         }
 
         # Store in Firestore

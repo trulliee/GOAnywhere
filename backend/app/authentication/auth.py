@@ -37,7 +37,6 @@ class UserResponse(BaseModel):
     email: Optional[str] = None
     name: Optional[str] = None
     token: str
-    is_anonymous: bool = False
 
 # Dependency to get current user
 async def get_current_user(authorization: str = Header(None)):
@@ -69,7 +68,7 @@ async def sign_up(user_data: SignUpRequest):
             display_name=user_data.name
         )
         
-        now = datetime.utcnow().isoformat()
+        now = datetime.now()
         
         await store_user_data(
             user_id=created_user["uid"],
@@ -92,11 +91,10 @@ async def sign_up(user_data: SignUpRequest):
             "email": created_user["email"],
             "name": created_user["display_name"],
             "token": token,
-            "is_anonymous": False
         }
     except Exception as e:
         print("Signup error:", str(e))
-        raise HTTPException(status_code=400, detail="Signup faied. Please check your input.")
+        raise HTTPException(status_code=400, detail="Signup failed. Please check your input.")
     
 FIREBASE_API_KEY = "AIzaSyDJRcgdtLm_bIvr0oXmEvH7clRTGoPiW2Y"
 
@@ -125,12 +123,14 @@ async def login(login_data: LoginRequest):
         user = auth.get_user(uid)
         await update_user_last_login(uid)
 
+        user_doc = db.collection("users").document(uid).get()
+        user_type = user_doc.to_dict().get("user_type", "registered") if user_doc.exists else "registered"
         return {
             "uid": uid,
             "email": user.email,
             "name": user.display_name,
             "token": id_token,
-            "is_anonymous": False
+            "user_type": user_type,
         }
 
     except Exception as e:

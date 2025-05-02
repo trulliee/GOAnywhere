@@ -2,6 +2,8 @@ import os
 import pandas as pd
 import logging
 from datetime import datetime, timedelta
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
 
 # Import model classes with correct file names
 from app.models.travel_time_prediction import TravelTimePredictionModel
@@ -101,7 +103,11 @@ def train_travel_time_model(data_loader):
     results = model.train(X, y)
 
     # Save the model locally
-    local_path = model.save_model()
+    local_path, serving_path = model.save_model(
+        trained_local_path="models/trained/travel_time",
+        serving_local_path="model_serving/travel_time"
+    )
+
     logger.info(f"Travel Time Model saved at {local_path}")
     logger.info(f"Model metrics: RMSE: {results['rmse']:.2f}, MAE: {results['mae']:.2f}, R²: {results['r2']:.2f}")
 
@@ -171,7 +177,11 @@ def train_congestion_model(data_loader):
     results = model.train(X, y)
 
     # Save the model locally
-    local_path = model.save_model()
+    local_path, serving_path = model.save_model(
+        trained_local_path="models/trained/traffic_congestion",
+        serving_local_path="model_serving/traffic_congestion"
+    )
+
     logger.info(f"Traffic Congestion Model saved at {local_path}")
     logger.info(f"Model metrics: Accuracy: {results['accuracy']:.4f}, F1 Score: {results['f1_score']:.4f}")
 

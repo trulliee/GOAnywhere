@@ -9,9 +9,8 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/backend/storage/service-account-key.json
-    GCP_PROJECT_ID: goanywhere-c55c8
-    PYTHONPATH: /opt/airflow:/opt/airflow/backend:/opt/airflow/app
+    GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/backend/service-account-key.json
+    PYTHONPATH: /opt/airflow:/opt/airflow/backend
     ONEMAP_EMAIL: 'trulli.uow@gmail.com'
     ONEMAP_PASSWORD: 'Deeznuts101!'
   volumes:
@@ -46,7 +45,7 @@ services:
   airflow-webserver:
     <<: *airflow-common
     command: >
-      bash -c "pip install firebase-admin google-cloud-secret-manager joblib scikit-learn pandas numpy geopy requests beautifulsoup4 networkz xgboost &&
+      bash -c "pip install firebase-admin google-cloud-secret-manager joblib scikit-learn pandas numpy geopy requests beautifulsoup4 &&
       airflow webserver"
     ports:
       - 8080:8080
@@ -64,7 +63,7 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     command: >
-      bash -c "pip install firebase-admin google-cloud-secret-manager joblib scikit-learn pandas numpy geopy requests beautifulsoup4 networkz &&
+      bash -c "pip install firebase-admin google-cloud-secret-manager joblib scikit-learn pandas numpy geopy requests beautifulsoup4 &&
       airflow scheduler"
     restart: always
     depends_on:

@@ -8,11 +8,10 @@ import {
   ActivityIndicator,
   SafeAreaView,
   KeyboardAvoidingView,
-  Platform,
-  Image
+  Platform
 } from 'react-native';
 import AuthService from './authService';
-import { useNavigation } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 //update with actual logo stuff
@@ -32,7 +31,7 @@ export default function LoginUser() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const navigation = useNavigation();
+  const router = useRouter();
 
   const handleLogin = async () => {
     if (!emailOrPhone || !password) {
@@ -44,7 +43,7 @@ export default function LoginUser() {
     if (emailOrPhone === 'ben@gmail.com' && password === '1234') {
       console.log('Logged in with test account');
       // Navigate to your main/home screen
-      navigation.navigate('homeScreen');
+      router.replace('./homeScreen');
       return;
     }
     
@@ -52,8 +51,14 @@ export default function LoginUser() {
     try {
       const userData = await AuthService.login(emailOrPhone, password);
       console.log('Logged in:', userData);
-      // Navigate to your main/home screen here
-      navigation.navigate('homeScreen');
+      
+      if (userData.user_type === 'admin') {
+        router.replace('./homeScreen');
+      }
+      else {
+        router.replace('./homeScreen');
+      }
+
     } catch (error) {
       console.error('Login failed:', error.message);
       alert('Login failed. Please check your credentials and try again.');
@@ -105,7 +110,7 @@ export default function LoginUser() {
           {/* Sign Up Link */}
           <TouchableOpacity 
             style={styles.signupLink}
-            onPress={() => navigation.navigate('SignUp')}
+            onPress={() => router.push('./SignUp')}
           >
             <Text style={styles.signupText}>Don't have an account? Sign up</Text>
           </TouchableOpacity>

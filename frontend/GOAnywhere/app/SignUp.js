@@ -8,11 +8,10 @@ import {
   ActivityIndicator,
   SafeAreaView,
   KeyboardAvoidingView,
-  Platform,
-  ScrollView
+  Platform
 } from 'react-native';
-import AuthService from './authService';
 import { useRouter } from 'expo-router';
+import AuthService from './authService';
 import { Ionicons } from '@expo/vector-icons';
 
 //update with actual logo stuff
@@ -28,43 +27,36 @@ const TrafficLightIcon = () => (
 );
 
 export default function SignUp() {
-  const [username, setUsername] = useState('');
+  const router = useRouter();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const router = useRouter();
-
   const handleSignUp = async () => {
-    // Basic validation
-    if (!username || !email || !phoneNumber || !password || !confirmPassword) {
+    if (!name || !email || !phoneNumber || !password || !confirmPassword) {
       alert('Please fill in all fields');
       return;
     }
-    
     if (password !== confirmPassword) {
       alert('Passwords do not match');
       return;
     }
     
     setLoading(true);
-    
     try {
-      // When your backend is connected, you would call your signup service
-      // const userData = await AuthService.signUp(username, email, phoneNumber, password);
-      
-      // For testing, we'll just show a success message and navigate
-      setTimeout(() => {
-        console.log('Signed up with:', { username, email, phoneNumber });
-        alert('Account created successfully!');
-        router.replace('./loginUser');
-        setLoading(false);
-      }, 1000);
+      // You may need to adjust your AuthService to handle separate email and phone
+      // For now, we'll pass both values
+      const userData = await AuthService.signUp(email, password, name, phoneNumber);
+      console.log('Signup successful:', userData);
+      alert('Account created successfully!');
+      router.replace('./loginUser');  // Navigate to login page after successful signup
     } catch (error) {
-      console.error('Signup failed:', error.message);
+      console.error('Signup error:', error.message);
       alert('Signup failed. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -75,99 +67,97 @@ export default function SignUp() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidView}
       >
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
-          {/* Top curved shape */}
-          <View style={styles.topCurve} />
+        {/* Top curved shape */}
+        <View style={styles.topCurve} />
+        
+        <View style={styles.contentContainer}>
+          {/* Logo */}
+          <View style={styles.logoContainer}>
+            <TrafficLightIcon />
+            <Text style={styles.logoText}>GOANYWHERE</Text>
+            <Text style={styles.tagline}>The only traffic forecasting website.</Text>
+          </View>
           
-          <View style={styles.contentContainer}>
-            {/* Logo section */}
-            <View style={styles.logoContainer}>
-              <TrafficLightIcon />
-              <Text style={styles.logoText}>GOANYWHERE</Text>
-              <Text style={styles.tagline}>The only traffic forecasting website.</Text>
-            </View>
+          {/* Signup Form */}
+          <View style={styles.formContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Name"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
             
-            {/* Signup Form */}
-            <View style={styles.formContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Username"
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-                editable={!loading}
-                placeholderTextColor="#555"
-              />
-              
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                editable={!loading}
-                placeholderTextColor="#555"
-              />
-              
-              <TextInput
-                style={styles.input}
-                placeholder="Phone Number"
-                value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                keyboardType="phone-pad"
-                editable={!loading}
-                placeholderTextColor="#555"
-              />
-              
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                editable={!loading}
-                placeholderTextColor="#555"
-              />
-              
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm Password"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                editable={!loading}
-                placeholderTextColor="#555"
-              />
-            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
             
-            {/* Login Link */}
-            <TouchableOpacity 
-              style={styles.loginLink}
-              onPress={() => router.push('./loginUser')}
+            <TextInput
+              style={styles.input}
+              placeholder="Phone Number"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              keyboardType="phone-pad"
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+          </View>
+          
+          {/* Login Link */}
+          <TouchableOpacity 
+            style={styles.loginLink}
+            onPress={() => router.replace('./loginUser')}
+          >
+            <Text style={styles.loginText}>Already have an account? Login</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Sign up button */}
+        <View style={styles.bottomSection}>
+          <View style={styles.signUpContainer}>
+            <Text style={styles.signUpText}>Create Account</Text>
+            <TouchableOpacity
+              style={[styles.arrowButton, loading && styles.buttonDisabled]}
+              onPress={handleSignUp}
+              disabled={loading}
             >
-              <Text style={styles.loginText}>Already have an account? Login</Text>
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="arrow-forward" size={24} color="#fff" />
+              )}
             </TouchableOpacity>
           </View>
-          
-          {/* Sign up button section */}
-          <View style={styles.bottomSection}>
-            <View style={styles.signUpContainer}>
-              <Text style={styles.signUpText}>Sign Up</Text>
-              <TouchableOpacity
-                style={[styles.arrowButton, loading && styles.buttonDisabled]}
-                onPress={handleSignUp}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Ionicons name="arrow-forward" size={24} color="#fff" />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -181,28 +171,23 @@ const styles = StyleSheet.create({
   keyboardAvoidView: {
     flex: 1,
   },
-  scrollContainer: {
-    flexGrow: 1,
-  },
   topCurve: {
     height: 150,
-    backgroundColor: '#9de3d2', // Mint green
+    backgroundColor: '#9de3d2', 
     borderBottomRightRadius: 150,
     position: 'absolute',
     top: 0,
     left: 0,
     width: '50%',
-    zIndex: 1,
   },
   contentContainer: {
     flex: 1,
     padding: 20,
     justifyContent: 'center',
-    paddingTop: 100, // Add more padding to account for the scrollview
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 30,
   },
   trafficLightContainer: {
     alignItems: 'center',
@@ -252,7 +237,6 @@ const styles = StyleSheet.create({
   },
   loginLink: {
     alignSelf: 'center',
-    marginBottom: 20,
   },
   loginText: {
     color: '#3498db',
@@ -262,6 +246,7 @@ const styles = StyleSheet.create({
     height: 180,
     backgroundColor: '#9de3d2',
     borderTopLeftRadius: 150,
+    position: 'relative',
     justifyContent: 'center',
     paddingLeft: 50,
   },

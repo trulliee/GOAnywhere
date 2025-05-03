@@ -1,72 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { getReportNotifications, markAllReportNotificationsRead } from './NotificationData';
 
 const Notification = () => {
-  const router = useRouter();
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
-    const accountNotifications = [
-      {
-        id: 1,
-        icon: 'person-circle',
-        iconColor: '#4CD964', // Green
-        title: 'Username Updated',
-        message: 'Your username has been successfully updated.',
-        timeCategory: 'today',
-      },
-      {
-        id: 2,
-        icon: 'mail',
-        iconColor: '#4CD964', // Green
-        title: 'Email Updated',
-        message: 'Your email address has been successfully changed.',
-        timeCategory: 'today',
-      },
-      {
-        id: 3,
-        icon: 'lock-closed',
-        iconColor: '#4CD964', // Green
-        title: 'Password Changed',
-        message: 'Your password has been successfully updated.',
-        timeCategory: 'yesterday',
-      },
-      {
-        id: 4,
-        icon: 'call',
-        iconColor: '#4CD964', // Green
-        title: 'Mobile Number Updated',
-        message: 'Your mobile number has been successfully updated.',
-        timeCategory: 'yesterday',
-      },
-      {
-        id: 5,
-        icon: 'warning',
-        iconColor: '#FF3B30', // Red
-        title: 'Account Warning',
-        message: 'Your account has received a warning for violating our terms of service.',
-        timeCategory: '2days',
-      },
-      {
-        id: 6,
-        icon: 'notifications',
-        iconColor: '#FF9500', // Orange
-        title: 'Notification Settings Updated',
-        message: 'Your notification preferences have been updated.',
-        timeCategory: '2days',
-      },
-    ];
-    setNotifications(accountNotifications);
+    const reportNotifications = getReportNotifications(); 
+    setNotifications(reportNotifications); 
   }, []);
 
-  const handleGoBack = () => {
-    router.back();
-  };
+  useFocusEffect(
+    React.useCallback(() => {
+  
+      return () => {
+        markAllReportNotificationsRead();
+  
+        setNotifications((prevNotifications) =>
+          prevNotifications.map((n) => ({ ...n, read: true }))
+        );
+      };
+    }, [])
+  );
 
   const renderCard = (item, index) => (
     <View key={index} style={styles.notificationCard}>
+      {!item.read && <View style={styles.unreadDot} />}
       <Ionicons name={item.icon} size={28} color={item.iconColor} style={{ marginRight: 12 }} />
       <View style={{ flex: 1 }}>
         <Text style={styles.notificationTitle}>{item.title}</Text>
@@ -75,12 +36,7 @@ const Notification = () => {
     </View>
   );
 
-  const grouped = {
-    today: [],
-    yesterday: [],
-    '2days': [],
-  };
-
+  const grouped = { today: [], yesterday: [], '2days': [] };
   notifications.forEach((notif) => {
     if (grouped[notif.timeCategory]) {
       grouped[notif.timeCategory].push(notif);
@@ -88,20 +44,9 @@ const Notification = () => {
   });
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Account Notifications</Text>
-        <View style={styles.headerRight} />
-      </View>
-
-      <ScrollView 
-        style={styles.scrollContainer}
-        contentContainerStyle={styles.notificationContainer}
-      >
+    <View style={styles.container}>
+      <Text style={styles.title}>Notifications</Text>
+      <ScrollView contentContainerStyle={styles.notificationContainer}>
         {grouped.today.length > 0 && (
           <>
             <Text style={styles.sectionHeader}>Today</Text>
@@ -121,48 +66,30 @@ const Notification = () => {
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
-export default Notification;
+
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#333',
+    backgroundColor: '#fff',
+    padding: 20,
+    paddingTop: 50,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 10,
-    paddingBottom: 15,
-    paddingHorizontal: 20,
-    backgroundColor: '#333',
-  },
-  backButton: {
-    padding: 5,
-  },
-  headerTitle: {
-    fontSize: 20,
+  title: {
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#fff',
-  },
-  headerRight: {
-    width: 30,
-  },
-  scrollContainer: {
-    flex: 1,
-    backgroundColor: '#333',
+    marginBottom: 20,
   },
   notificationContainer: {
-    padding: 15,
-    paddingBottom: 30,
+    paddingBottom: 20,
   },
   notificationCard: {
     flexDirection: 'row',
-    backgroundColor: '#444',
+    backgroundColor: '#f6f6f6',
     padding: 15,
     borderRadius: 10,
     marginBottom: 15,
@@ -172,17 +99,29 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     marginBottom: 3,
-    color: '#fff',
   },
   notificationMessage: {
     fontSize: 14,
-    color: '#ccc',
+    color: '#333',
   },
   sectionHeader: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 10,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
     marginTop: 20,
-    color: '#888',
+    color: '#555',
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 8,
+    backgroundColor: 'red',
+    zIndex: 10,
   },
 });
+
+
+export default Notification;

@@ -1,317 +1,348 @@
-// app/EditProfile.js
 import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
+  TextInput, 
   TouchableOpacity, 
-  TextInput,
-  SafeAreaView,
-  ScrollView,
+  SafeAreaView, 
   Alert,
-  KeyboardAvoidingView,
+  Image,
+  ScrollView,
   Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialIcons } from 'react-native-vector-icons';
 import AuthService from './authService';
 
-export default function EditProfile() {
+const EditProfileScreen = () => {
   const router = useRouter();
-  const [username, setUsername] = useState('Bentley');
-  const [email, setEmail] = useState('heheheha@gmail.com');
-  const [phone, setPhone] = useState('91234567');
-  const [password, setPassword] = useState('hehesecretduntellu'); // This would normally be loaded from user data
-  const [maskedPassword, setMaskedPassword] = useState('••••••••••••••••');
-  const [showPassword, setShowPassword] = useState(false);
-  
+  const [user, setUser] = useState(null);
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+
   useEffect(() => {
-    // Load user data
-    async function loadUserData() {
+    // Load user data when the screen loads
+    const loadUserData = async () => {
       try {
         const userData = await AuthService.getCurrentUser();
         if (userData) {
-          setUsername(userData.name || 'Bentley');
-          setEmail(userData.email || 'heheheha@gmail.com');
-          setPhone(userData.phone || '91234567');
-          // In a real app, you would not store or set the actual password here
-          // This is just for demonstration purposes
-          if (userData.password) {
-            setPassword(userData.password);
-          }
+          setUser(userData);
+          setUsername(userData.username || '');
+          setEmail(userData.email || '');
+          setPhoneNumber(userData.phone_number || '');
         }
       } catch (error) {
         console.error('Error loading user data:', error);
+        Alert.alert('Error', 'Could not load user data');
       }
-    }
-    
+    };
+
     loadUserData();
   }, []);
 
-  const handleGoBack = () => {
-    router.back();
-  };
+  const handleUpdateProfile = async () => {
+    // Validate inputs
+    if (!username.trim()) {
+      Alert.alert('Validation Error', 'Username cannot be empty');
+      return;
+    }
 
-  const handleSave = async () => {
+    if (!email.trim() || !email.includes('@')) {
+      Alert.alert('Validation Error', 'Please enter a valid email');
+      return;
+    }
+
     try {
-      // Here you would update user profile info
-      // await AuthService.updateProfile({ name: username, email, phone });
-      
-      Alert.alert("Success", "Profile updated successfully.");
-      router.back();
+      // Prepare update payload
+      const updatePayload = {
+        username,
+        email,
+        phone_number: phoneNumber
+      };
+
+      // Only include password if it's been changed
+      if (password.trim()) {
+        updatePayload.password = password;
+      }
+
+      // Call AuthService to update profile
+      const response = await AuthService.updateUserProfile(updatePayload);
+
+      if (response && !response.error) {
+        Alert.alert('Success', 'Profile updated successfully');
+        // Optionally navigate back or refresh user data
+        router.back();
+      } else {
+        Alert.alert('Update Failed', response.message || 'Could not update profile');
+      }
     } catch (error) {
-      console.error('Error updating profile:', error);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
+      console.error('Profile update error:', error);
+      Alert.alert('Error', 'An error occurred while updating profile');
     }
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      "Logout",
-      "Are you sure you want to logout?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        { 
-          text: "Logout", 
-          onPress: async () => {
-            try {
-              await AuthService.logout();
-              // Navigate to the login screen
-              router.replace("./loginUser");
-            } catch (error) {
-              console.error('Error logging out:', error);
-              Alert.alert("Error", "Failed to logout. Please try again.");
-            }
-          } 
-        }
-      ]
-    );
+    try {
+      await AuthService.logout();
+      // Navigate to login screen
+      router.replace('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      Alert.alert('Logout Error', 'Could not log out');
+    }
   };
 
   const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
-    // For better user experience, automatically hide the password again after a few seconds
-    if (!showPassword) {
-      setTimeout(() => {
-        setShowPassword(false);
-      }, 3000); // Hide after 3 seconds
-    }
+    setIsPasswordVisible(!isPasswordVisible);
+  };
+
+  const handleChangeProfilePicture = () => {
+    // TODO: Implement profile picture change
+    Alert.alert('Coming Soon', 'Profile picture upload feature will be available in future updates');
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidView}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Profile</Text>
-          <View style={styles.headerRight} />
-        </View>
-        
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        {/* Back Button */}
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => router.back()}
         >
-          {/* Profile Picture */}
-          <View style={styles.profilePictureContainer}>
-            <View style={styles.profilePicture}>
-              <Text style={styles.profileInitial}>{username.charAt(0).toUpperCase()}</Text>
+          <MaterialIcons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
+
+        {/* Profile Picture */}
+        <View style={styles.profileImageContainer}>
+          <TouchableOpacity onPress={handleChangeProfilePicture}>
+            <View style={styles.profileImage}>
+              {user?.profile_picture ? (
+                <Image 
+                  source={{ uri: user.profile_picture }} 
+                  style={styles.profileImageActual} 
+                />
+              ) : (
+                <Text style={styles.profileInitial}>
+                  {username.charAt(0).toUpperCase()}
+                </Text>
+              )}
+              <View style={styles.cameraIconOverlay}>
+                <MaterialIcons name="camera-alt" size={20} color="#fff" />
+              </View>
             </View>
-            <TouchableOpacity>
-              <Text style={styles.changePhotoText}>Change Picture</Text>
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
+          <Text style={styles.changeProfileText}>Change Picture</Text>
+        </View>
+
+        {/* Edit Profile Form */}
+        <View style={styles.formContainer}>
+          <Text style={styles.formTitle}>Edit Profile</Text>
           
-          <View style={styles.divider} />
-          
-          {/* Form Fields */}
-          <View style={styles.formSection}>
-            <Text style={styles.fieldLabel}>Username</Text>
+          {/* Username Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Username</Text>
             <TextInput
               style={styles.input}
               value={username}
               onChangeText={setUsername}
               placeholder="Enter username"
-              placeholderTextColor="#888"
+              autoCapitalize="none"
             />
-            
-            <Text style={styles.fieldLabel}>Email</Text>
+          </View>
+
+          {/* Email Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Email</Text>
             <TextInput
               style={styles.input}
               value={email}
               onChangeText={setEmail}
               placeholder="Enter email"
-              placeholderTextColor="#888"
               keyboardType="email-address"
               autoCapitalize="none"
             />
-            
-            <Text style={styles.fieldLabel}>Phone Number</Text>
+          </View>
+
+          {/* Phone Number Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Phone Number</Text>
             <TextInput
               style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
               placeholder="Enter phone number"
-              placeholderTextColor="#888"
               keyboardType="phone-pad"
             />
-            
-            <Text style={styles.fieldLabel}>Password</Text>
-            <View style={styles.passwordInputContainer}>
+          </View>
+
+          {/* Password Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Password</Text>
+            <View style={styles.passwordContainer}>
               <TextInput
                 style={styles.passwordInput}
-                value={showPassword ? password : maskedPassword}
-                secureTextEntry={false}
-                editable={false}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Leave blank if no change"
+                secureTextEntry={!isPasswordVisible}
+                autoCapitalize="none"
               />
-              <TouchableOpacity onPress={togglePasswordVisibility} style={styles.eyeIcon}>
-                <Ionicons 
-                  name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                  size={24} 
-                  color="#555" 
+              <TouchableOpacity 
+                style={styles.eyeIconContainer}
+                onPress={togglePasswordVisibility}
+              >
+                <MaterialIcons 
+                  name={isPasswordVisible ? "visibility-off" : "visibility"} 
+                  size={20} 
+                  color="#666" 
                 />
               </TouchableOpacity>
             </View>
-            
-            {/* Logout Button */}
-            <TouchableOpacity 
-              style={styles.logoutButton}
-              onPress={handleLogout}
-            >
-              <Ionicons name="exit-outline" size={20} color="#333" style={styles.logoutIcon} />
-              <Text style={styles.logoutButtonText}>Logout</Text>
-            </TouchableOpacity>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+
+          {/* Update Profile Button */}
+          <TouchableOpacity 
+            style={styles.updateButton} 
+            onPress={handleUpdateProfile}
+          >
+            <Text style={styles.updateButtonText}>Update Profile</Text>
+          </TouchableOpacity>
+
+          {/* Logout Button */}
+          <TouchableOpacity 
+            style={styles.logoutButton} 
+            onPress={handleLogout}
+          >
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#333',
+    backgroundColor: '#f5f5f5',
   },
-  keyboardAvoidView: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 10,
-    paddingBottom: 15,
+  scrollContainer: {
+    flexGrow: 1,
     paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 40 : 20,
   },
   backButton: {
-    padding: 5,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#ccc',
-  },
-  headerRight: {
-    width: 30, // For balanced header
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 30,
-    alignItems: 'center',
-  },
-  profilePictureContainer: {
-    alignItems: 'center',
-    marginTop: 20,
     marginBottom: 20,
   },
-  profilePicture: {
+  profileImageContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  profileImage: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#ffcdb2', // Salmon color as in the image
+    backgroundColor: '#e0e0e0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    position: 'relative',
+  },
+  profileImageActual: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 60,
   },
   profileInitial: {
-    fontSize: 50,
-    color: '#333',
+    fontSize: 48,
+    color: '#666',
+  },
+  cameraIconOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 15,
+    padding: 5,
+  },
+  changeProfileText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 14,
+  },
+  formContainer: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  formTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-  },
-  changePhotoText: {
-    color: '#ccc',
-    fontSize: 14,
-    marginTop: 5,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#555',
-    width: '90%',
     marginBottom: 20,
+    textAlign: 'center',
   },
-  formSection: {
-    width: '85%',
+  inputContainer: {
+    marginBottom: 15,
   },
-  fieldLabel: {
-    color: '#aaa',
+  inputLabel: {
+    marginBottom: 5,
+    color: '#666',
     fontSize: 14,
-    marginBottom: 8,
   },
   input: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 15,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 5,
+    padding: 10,
     fontSize: 16,
-    color: '#333',
-    marginBottom: 20,
-    width: '100%',
   },
-  passwordInputContainer: {
+  passwordContainer: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginBottom: 30,
     alignItems: 'center',
-    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 5,
   },
   passwordInput: {
     flex: 1,
-    padding: 15,
+    padding: 10,
     fontSize: 16,
-    color: '#333',
   },
-  eyeIcon: {
+  eyeIconContainer: {
     padding: 10,
   },
-  logoutButton: {
-    backgroundColor: '#aaa',
-    borderRadius: 50,
-    flexDirection: 'row',
+  updateButton: {
+    backgroundColor: '#007bff',
+    borderRadius: 5,
+    padding: 15,
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    width: '60%',
-    alignSelf: 'center',
-    marginTop: 10,
+    marginTop: 20,
   },
-  logoutIcon: {
-    marginRight: 8,
+  updateButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  logoutButton: {
+    backgroundColor: '#dc3545',
+    borderRadius: 5,
+    padding: 15,
+    alignItems: 'center',
+    marginTop: 15,
   },
   logoutButtonText: {
-    color: '#333',
+    color: 'white',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
 });
+
+export default EditProfileScreen;

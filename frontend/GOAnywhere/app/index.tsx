@@ -12,43 +12,21 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    navigation.setOptions({ headerShown: false });
+    // Simple redirection to the signup page
+    const timer = setTimeout(() => {
+      router.replace('./loginUser');
+    }, 300);
     
-    // Check if user is already authenticated
-    async function checkAuth() {
-      try {
-        const userData = await AuthService.getCurrentUser();
-        setUser(userData);
-        setLoading(false);
-      } catch (error) {
-        console.error('Auth check error:', error);
-        setLoading(false);
-      }
-    }
-    
-    checkAuth();
-  }, [navigation]);
+    return () => clearTimeout(timer);
+  }, [router]);
 
-  const handleLogout = async () => {
-    await AuthService.logout();
-    setUser(null);
-  };
-
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color="#3498db" />
-      </View>
-    );
-  }
-
+  // Only show loading screen while preparing to redirect
   return (
     <View style={styles.container}>
       <Text style={styles.text}>Welcome to GoAnywhere</Text>
       <Button title="Login" onPress={() => router.push("./loginUser")} />
       <Button title="Go to New Home Screen" onPress={() => router.push("./home")} /> 
       <Button title="Go to P2P Navigation" onPress={()=> router.push("./P2PNavigation")} />
-      <Button title="Go to Dashboard" onPress={() => router.push("./dashboard")} />
       <Button title="Go to Traffic Incidents" onPress={() => router.push("./TrafficIncidentsNav")} />
       <Button title="Go to Traffic Prediction" onPress={() => router.push("./trafficPrediction")} />
       <Button title="Go to Notification" onPress={() => router.push("./Notification")} />

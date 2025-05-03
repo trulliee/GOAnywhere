@@ -1,5 +1,7 @@
 # app/prediction.py
 
+# app/prediction.py
+
 from fastapi import APIRouter
 from app.routes.prediction import router as prediction_router
 import logging
@@ -12,4 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Include the prediction router from routes/prediction.py
+<<<<<<< HEAD
+router.include_router(prediction_router, prefix="/api", tags=["Prediction"])
+=======
 router.include_router(prediction_router, prefix="/api", tags=["Prediction"])

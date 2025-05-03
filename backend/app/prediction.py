@@ -1,3 +1,5 @@
+# app/prediction.py
+
 from fastapi import APIRouter
 from app.routes.prediction import router as prediction_router
 import logging
@@ -10,6 +12,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Include the prediction router from routes/prediction.py
+<<<<<<< HEAD
+router.include_router(prediction_router, prefix="/api", tags=["Prediction"])
+=======
 router.include_router(prediction_router, prefix="/api", tags=["Prediction"])
 
 # You can add additional functions here for frontend-specific functionality
@@ -30,7 +35,7 @@ def get_frontend_prediction_data(start_location=None, end_location=None, transpo
     """
     try:
         # Import prediction functionality
-        from backend.app.models.traffic_congestion_model import get_traffic_weather_prediction
+        from backend.app.models.traffic_prediction_model import get_traffic_weather_prediction
         
         # Determine user type based on available parameters
         user_type = "registered" if start_location and end_location else "unregistered"
@@ -63,3 +68,4 @@ def get_frontend_prediction_data(start_location=None, end_location=None, transpo
             "possible_delay": "No significant delays",
             "weather_condition": "Partly Cloudy"
         }
+>>>>>>> d12bfdaca4ce5ab90a4001023a6f97f946707008

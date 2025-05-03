@@ -21,14 +21,15 @@ const { width, height } = Dimensions.get('window');
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 const REPORT_CATEGORIES = [
   'Accident',
-  'Road Works',
-  'Traffic Police',
+  'Transit Works',
+  'High Crowd',
   'Weather',
   'Hazard',
+  'Delays',
   'Map Issue'
 ];
 
-export default function DriverNavigator() {
+export default function PublicTransNavigator() {
   const route = useRoute();
   const { polyline, steps, markers } = route.params || {};
 
@@ -69,19 +70,51 @@ export default function DriverNavigator() {
     }
   }, [location, currentStepIndex]);
 
+
   const submitReport = async category => {
     setModalVisible(false);
     if (!location) return;
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.latitude},${location.longitude}&key=${GOOGLE_MAPS_API_KEY}`;
+  
     try {
-      const res = await axios.get(url);
-      const comps = res.data.results[0]?.address_components || [];
-      const street = comps.find(c => c.types.includes('route'))?.long_name || 'Unknown Road';
-      console.log(`${category} in ${street}`); //CHANGE THIS FOR THE REPORT
+      // 1) Fetch live bus positions from LTA
+      const { data } = await axios.get(
+        'https://datamall2.mytransport.sg/ltaodataservice/BusPositions',
+        { headers: { AccountKey: LTA_ACCOUNT_KEY } }
+      );
+      const buses = data.value || [];
+  
+      // 2) Find the closest bus to the user
+      let nearest = null;
+      let minDist = Infinity;
+      buses.forEach(b => {
+        const busLoc = { latitude: b.Latitude, longitude: b.Longitude };
+        const d = haversine(location, busLoc);
+        if (d < minDist) {
+          minDist = d;
+          nearest = b;
+        }
+      });
+  
+      if (nearest && minDist < 100) {
+        // 3a) Report on that specific bus
+        console.log(
+          `${category} on Bus ${nearest.ServiceNo} (${nearest.RegistrationNumber})`
+        );
+      } else {
+        // 3b) Fallback: reverse-geocode to street name
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.latitude},${location.longitude}&key=${GOOGLE_MAPS_API_KEY}`;
+        const res = await axios.get(url);
+        const comps = res.data.results[0]?.address_components || [];
+        const street = comps.find(c => c.types.includes('route'))?.long_name || 'Unknown Road';
+        console.log(`${category} on ${street}`);
+      }
     } catch (e) {
-      console.warn('Reverse geocode failed', e);
+      console.warn('Report submission failed', e);
     }
   };
+  
+  
+  
 
   const openInstructionSheet = () => {
     setInstructionSheetVisible(true);
@@ -126,11 +159,39 @@ export default function DriverNavigator() {
         {markers?.map((m, i) => (
           <Marker key={i} coordinate={m} title={m.title} />
         ))}
+        {// single marker at the end-point of the current step
+        (() => {
+          const step = steps[currentStepIndex];
+          const info = step?.transitInfo;
+          // derive final coords: if transitInfo has arrival lat/lng, else fall back to next polyline point
+          let coord = null;
+          if (info?.arrivalStopLat && info?.arrivalStopLng) {
+            coord = {
+              latitude: info.arrivalStopLat,
+              longitude: info.arrivalStopLng
+            };
+          } else if (polyline?.[currentStepIndex + 1]) {
+            coord = polyline[currentStepIndex + 1];
+          }
+          if (!coord) return null;
+          const mode = info?.vehicleType === 'SUBWAY' ? 'MRT' : 'Bus';
+          const title = info
+            ? `Alight ${mode} ${info.lineName}`
+            : `Step ${currentStepIndex + 1}`;
+          return (
+            <Marker
+              key="current-marker"
+              coordinate={coord}
+              title={title}
+            />
+          );
+        })()
+      }
       </MapView>
 
       {/* Instruction Box */}
       <TouchableOpacity style={styles.instructionBox} onPress={openInstructionSheet} activeOpacity={0.8}>
-        <Text style={styles.currentInstruction}>{instructionText || 'Loading Driver Navigation...'}</Text>
+        <Text style={styles.currentInstruction}>{instructionText || 'Loading Transit Navigation...'}</Text>
         {steps[currentStepIndex + 1] && (
           <Text style={styles.nextInstruction}>
             {steps[currentStepIndex + 1].instruction.replace(/([a-z])([A-Z])/g, '$1, $2')}

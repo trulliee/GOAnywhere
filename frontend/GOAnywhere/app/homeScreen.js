@@ -1,4 +1,3 @@
-
 // app/homeScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -20,23 +19,29 @@ import {
 import { useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import Collapsible from 'react-native-collapsible';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons } from 'react-native-vector-icons';
 import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
+import { getReportNotifications, getUserAccountNotifications } from './NotificationData';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
 // Commented out Firebase imports until configured
 // import { db } from './firebaseConfig';
 // import { collection, addDoc } from 'firebase/firestore';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
+import { fetchAPI } from './utils/apiConfig';
 
 import ENV from './env';
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 
+
 // Get screen dimensions
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.8; // 80% of screen width
+
+
+
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -55,6 +60,7 @@ export default function HomeScreen() {
   const [trafficExpanded, setTrafficExpanded] = useState(false);
   const [navigationExpanded, setNavigationExpanded] = useState(false);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
 
   // Crowdsourced Menu
   const [isCrowdModalVisible, setIsCrowdModalVisible] = useState(false);
@@ -68,17 +74,6 @@ export default function HomeScreen() {
     "Weather", "Hazard", "Traffic Police",
     "Delays", "Map Issue"
   ];
-  const categoryIcons = {
-    "Accident": { name: "skull-outline", library: "Ionicons" },              
-    "Road Works": { name: "construct", library: "Ionicons" },               
-    "Transit Works": { name: "train", library: "FontAwesome" },             
-    "High Crowd": { name: "people", library: "Ionicons" },                  
-    "Weather": { name: "rainy", library: "Ionicons" },                      
-    "Hazard": { name: "exclamation-triangle", library: "FontAwesome" },     
-    "Traffic Police": { name: "shield-checkmark", library: "Ionicons" },    
-    "Delays": { name: "time", library: "Ionicons" },                        
-    "Map Issue": { name: "map", library: "FontAwesome" }                    
-  };
   const savedLocations = [
     { name: 'Home', icon: 'home' },
     { name: 'Work', icon: 'briefcase' },
@@ -113,7 +108,7 @@ export default function HomeScreen() {
     Animated.timing(slideAnim, {
       toValue: 0,
       duration: 300,
-      useNativeDriver: true,
+      useNativeDriver:true,
     }).start();
   }
 
@@ -171,13 +166,13 @@ export default function HomeScreen() {
       console.log('Sending report to backend:', reportData);
       
       // When you connect to backend, you'll send the data something like this:
-      // await fetch('your-api-endpoint', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(reportData),
-      // });
+       await fetchAPI('/submit-crowd-data', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify(reportData),
+       });
       
       // For now, just show a success message
       Alert.alert("Report Submitted", `You reported: ${reportType} at coordinates (${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})`);
@@ -193,21 +188,6 @@ export default function HomeScreen() {
   // Animated value for sidebar position
   const sidebarPosition = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-  
-  // Add missing handler functions
-  const handleSavedPress = (location) => {
-    // Implement functionality for saved location press
-    console.log("Saved location pressed:", location);
-    setIsModalVisible(false);
-  };
-  
-  const handleHistoryPress = (entry) => {
-    // Implement functionality for history press
-    console.log("History entry pressed:", entry);
-    setSearchInput(entry.address);
-    setIsModalVisible(false);
-  };
-  
   const handleSearch = async () => {
     if (!searchInput.trim()) {
       alert('Please enter a location.');
@@ -282,8 +262,10 @@ export default function HomeScreen() {
           setIsDraggingSidebar(true);
           sidebarPosition.setValue(Math.min(0, gestureState.dx));
           newPosition = Math.max(-SIDEBAR_WIDTH, gestureState.dx);
+
         }
         sidebarPosition.setValue(newPosition);
+
       },
 
       onPanResponderRelease: (event, gestureState) => {
@@ -294,8 +276,8 @@ export default function HomeScreen() {
           finalPosition = 0;
           showSidebar();
         } else if (isSidebarVisible && gestureState.dx < -50) {
-          // Hide sidebar if swiped left more than 50px
           finalPosition = -SIDEBAR_WIDTH;
+          // Hide sidebar if swiped left more than 50px
           hideSidebar();
         } else {
           // Reset position if swipe wasn't enough
@@ -304,11 +286,10 @@ export default function HomeScreen() {
             useNativeDriver: false,
           }).start();
         }
-        
         Animated.spring(sidebarPosition, {
           toValue: finalPosition,
-          bounciness: 0, 
-          speed: 15, 
+          bounciness: 0, // Remove extra bounce effect
+          speed: 15, // Faster return speed to prevent detachment
           useNativeDriver: false,
         }).start();
         setIsDraggingSidebar(false);
@@ -327,10 +308,12 @@ export default function HomeScreen() {
   };
 
   const hideSidebar = () => {
+    setIsSidebarVisible(false);
+    
     // Ensure animation updates properly
     Animated.timing(sidebarPosition, {
       toValue: -SIDEBAR_WIDTH,
-      duration: 200, 
+      duration: 200, // Smooth transition
       useNativeDriver: false,
     }).start(() => {
       setIsSidebarVisible(false);
@@ -376,6 +359,15 @@ export default function HomeScreen() {
     loadUser();
   }, []);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      const reportNotifications = getReportNotifications();
+      const unreadExists = reportNotifications.some(n => !n.read);
+      setHasUnread(unreadExists);
+    }, [])
+  );
+  
+
   const toggleTraffic = () => {
     setTrafficExpanded(!trafficExpanded);
   };
@@ -406,6 +398,7 @@ export default function HomeScreen() {
       >
         {marker && <Marker coordinate={marker} title="Searched Location" />}
       </MapView>
+
 
       {/* Searchbar stuff */}
       <TouchableOpacity 
@@ -484,15 +477,6 @@ export default function HomeScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {!isSidebarVisible && (
-        <TouchableOpacity 
-          style={styles.hamburgerButton}
-          onPress={showSidebar}
-        >
-          <Ionicons name="menu" size={28} color="#000" />
-        </TouchableOpacity>
-      )}
-
       {/* Dark overlay when sidebar is visible */}
       {isSidebarVisible ? (
         <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
@@ -503,13 +487,7 @@ export default function HomeScreen() {
       {/* Crowdsourced Button */}
       {isCrowdModalVisible && (
         <TouchableOpacity style={styles.modalOverlay} onPress={hideCrowdModal} activeOpacity={1}>
-          <Animated.View style={[
-            styles.bottomSheet,
-            { 
-              transform: [{ translateY: slideAnim }],
-              alignSelf: 'stretch'
-            }
-          ]}>
+          <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
             <Text style={styles.sheetTitle}>Report As</Text>
             <TouchableOpacity style={styles.sheetButton} onPress={() => {
               handleReportModeSelect('driver');
@@ -526,69 +504,46 @@ export default function HomeScreen() {
           </Animated.View>
         </TouchableOpacity>
       )}
-      
       {reportMode && (
-        <TouchableWithoutFeedback onPress={() => setReportMode(null)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
-                <Text style={styles.sheetTitle}>
-                  {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
-                </Text>
+        <View style={styles.modalOverlay}>
+          <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
+            <Text style={styles.sheetTitle}>
+              {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
+            </Text>
 
-                {reportMode === 'driver' && (
-                  <View style={styles.reportCategoryContainer}>
-                    {driverCategories.map((category, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.reportButton}
-                      onPress={() => submitCrowdsourcedReport(category)}
-                    >
-                      {(() => {
-                        const iconInfo = categoryIcons[category] || {};
-                        const IconComponent = iconInfo.library === "FontAwesome" ? FontAwesome : Ionicons;
-                        return (
-                          <IconComponent
-                            name={iconInfo.name || "help-circle"}
-                            size={28}
-                            style={{ marginBottom: 5 }}
-                          />
-                        );
-                      })()}
-                      <Text style={styles.buttonText}>{category}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  </View>
-                )}
+            {reportMode === 'driver' && (
+              <View style={styles.reportCategoryContainer}>
+                {driverCategories.map((category, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.reportButton}
+                    onPress={() => submitCrowdsourcedReport(category)}
+                  >
+                    <Text style={styles.buttonText}>{category}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
-                {reportMode === 'public' && (
-                  <View style={styles.reportCategoryContainer}>
-                    {publicCategories.map((category, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.reportButton}
-                      onPress={() => submitCrowdsourcedReport(category)}
-                    >
-                      {(() => {
-                        const iconInfo = categoryIcons[category] || {};
-                        const IconComponent = iconInfo.library === "FontAwesome" ? FontAwesome : Ionicons;
-                        return (
-                          <IconComponent
-                            name={iconInfo.name || "help-circle"}
-                            size={28}
-                            style={{ marginBottom: 5 }}
-                          />
-                        );
-                      })()}
-                      <Text style={styles.buttonText}>{category}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  </View>
-                )}
-              </Animated.View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
+            {reportMode === 'public' && (
+              <View style={styles.reportCategoryContainer}>
+                {publicCategories.map((category, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.reportButton}
+                    onPress={() => submitCrowdsourcedReport(category)}
+                  >
+                    <Text style={styles.buttonText}>{category}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <TouchableOpacity onPress={() => setReportMode(null)} style={styles.sheetButton}>
+              <Text style={styles.sheetButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
       )}
 
       {/* Sidebar */}
@@ -683,7 +638,12 @@ export default function HomeScreen() {
             onPress={() => navigateTo('Notification')}
           >
             <View style={styles.menuItemRow}>
-              <MaterialIcons name="notifications" size={24} color="#fff" style={styles.menuIcon} />
+              <View style={{ position: 'relative' }}>
+                <MaterialIcons name="notifications" size={24} color="#fff" style={styles.menuIcon} />
+                {hasUnread && (
+                  <View style={styles.sidebarRedDot} />
+                )}
+              </View>
               <Text style={styles.menuText}>Notification</Text>
             </View>
           </TouchableOpacity>
@@ -691,56 +651,22 @@ export default function HomeScreen() {
           {/* Settings Section */}
           <TouchableOpacity 
             style={styles.menuItem} 
-            onPress={() => navigateTo('Settings')}
+            onPress={() => navigateTo('settings')}
           >
             <View style={styles.menuItemRow}>
               <MaterialIcons name="settings" size={24} color="#fff" style={styles.menuIcon} />
               <Text style={styles.menuText}>Settings</Text>
             </View>
           </TouchableOpacity>
-
-          {/* User Management Section (Admin only) */}
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => navigateTo('UserManagement')}
-          >
-            <View style={styles.menuItemRow}>
-              <MaterialIcons name="people" size={24} color="#fff" style={styles.menuIcon} />
-              <Text style={styles.menuText}>User Management</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Weather Section */}
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => navigateTo('weatherPull')}
-          >
-            <View style={styles.menuItemRow}>
-              <Ionicons name="rainy" size={24} color="#fff" style={styles.menuIcon} />
-              <Text style={styles.menuText}>Weather</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Logout Button */}
-          <TouchableOpacity 
-            style={styles.logoutMenuItem} 
-            onPress={handleLogout}
-          >
-            <View style={styles.menuItemRow}>
-              <Ionicons name="exit-outline" size={24} color="#fff" style={styles.menuIcon} />
-              <Text style={styles.menuText}>Logout</Text>
-            </View>
-          </TouchableOpacity>
         </ScrollView>
       </Animated.View>
-      
-      {!isCrowdModalVisible && !reportMode && (
+      {!isCrowdModalVisible && !reportMode &&(
         <TouchableOpacity 
-          style={styles.crowdsourceButton}
-          onPress={showCrowdModal}
-        >
-          <WarningIcon width={36} height={36} />
-        </TouchableOpacity>
+        style={styles.crowdsourceButton}
+        onPress={showCrowdModal}
+      >
+        <WarningIcon width={36} height={36} />
+      </TouchableOpacity>
       )}
     </SafeAreaView>
   );
@@ -930,7 +856,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 2 },
     position: 'absolute',
-    bottom: 50, 
+    bottom: 50, // adjust based on your layout
     left: 0,
     right: 0,
     zIndex: 10,
@@ -1008,8 +934,8 @@ const styles = StyleSheet.create({
     right: 20,
     width: 60,
     height: 60,
-    backgroundColor: '#4A4A4A', 
-    borderRadius: 15, 
+    backgroundColor: '#4A4A4A', // dark grey
+    borderRadius: 15, // rounded edges
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 5,
@@ -1058,27 +984,21 @@ const styles = StyleSheet.create({
   },
   reportButton: {
     width: '30%',
-    marginVertical: 10,
+    marginVertical: 8,
     backgroundColor: '#eee',
-    paddingVertical: 20,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
   },
-  buttonText: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 5,
-  },
-  hamburgerButton: {
+  sidebarRedDot: {
     position: 'absolute',
-    top: 50,
-    left: 20,
-    zIndex: 100,
-    backgroundColor: '#fff',
-    padding: 10,
-    borderRadius: 10,
-    elevation: 3,
+    top: -2,
+    right: 15,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'red',
+    zIndex: 20,
   }
 });

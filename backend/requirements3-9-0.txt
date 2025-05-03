@@ -33,7 +33,6 @@ psycopg2-binary>=2.9.0
 # Geo services
 geopy>=2.2.0
 googlemaps>=4.10.0
-
 networkx
 google-cloud-aiplatform
 beautifulsoup4

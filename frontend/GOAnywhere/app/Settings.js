@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   modalOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',.
+    alignItems: 'center',
     paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#555',

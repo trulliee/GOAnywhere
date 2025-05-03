@@ -9,10 +9,9 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  Image
+  ScrollView
 } from 'react-native';
 import AuthService from './authService';
-import { useNavigation } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -28,42 +27,44 @@ const TrafficLightIcon = () => (
   </View>
 );
 
-export default function LoginUser() {
-  const [emailOrPhone, setEmailOrPhone] = useState('');
+export default function SignUp() {
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const navigation = useNavigation();
   const router = useRouter();
 
-  const handleLogin = async () => {
-    if (!emailOrPhone || !password) {
+  const handleSignUp = async () => {
+    // Basic validation
+    if (!username || !email || !phoneNumber || !password || !confirmPassword) {
       alert('Please fill in all fields');
+      return;
+    }
+    
+    if (password !== confirmPassword) {
+      alert('Passwords do not match');
       return;
     }
     
     setLoading(true);
     
     try {
-      // Hard-coded credential check for testing
-      if (emailOrPhone === 'ben@gmail.com' && password === 'hehehaha') {
-        // Simulate a delay to show loading state
-        setTimeout(() => {
-          console.log('Logged in with test credentials');
-          router.replace('./homeScreen');
-          setLoading(false);
-        }, 1000);
-        return;
-      }
+      // When your backend is connected, you would call your signup service
+      // const userData = await AuthService.signUp(username, email, phoneNumber, password);
       
-      // Regular login flow (when backend is connected)
-      const userData = await AuthService.login(emailOrPhone, password);
-      console.log('Logged in:', userData);
-      router.replace('./homeScreen');
+      // For testing, we'll just show a success message and navigate
+      setTimeout(() => {
+        console.log('Signed up with:', { username, email, phoneNumber });
+        alert('Account created successfully!');
+        router.replace('./loginUser');
+        setLoading(false);
+      }, 1000);
     } catch (error) {
-      console.error('Login failed:', error.message);
-      alert('Login failed. Please check your credentials and try again.');
-    } finally {
+      console.error('Signup failed:', error.message);
+      alert('Signup failed. Please try again.');
       setLoading(false);
     }
   };
@@ -74,66 +75,99 @@ export default function LoginUser() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidView}
       >
-        {/* Top curved shape */}
-        <View style={styles.topCurve} />
-        
-        <View style={styles.contentContainer}>
-          {/* udpate this with the logo */}
-          <View style={styles.logoContainer}>
-            <TrafficLightIcon />
-            <Text style={styles.logoText}>GOANYWHERE</Text>
-            <Text style={styles.tagline}>The only traffic forecasting website.</Text>
-          </View>
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+          {/* Top curved shape */}
+          <View style={styles.topCurve} />
           
-          {/* Login Form */}
-          <View style={styles.formContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Email / Phone Number"
-              value={emailOrPhone}
-              onChangeText={setEmailOrPhone}
-              autoCapitalize="none"
-              editable={!loading}
-              placeholderTextColor="#555"
-            />
+          <View style={styles.contentContainer}>
+            {/* Logo section */}
+            <View style={styles.logoContainer}>
+              <TrafficLightIcon />
+              <Text style={styles.logoText}>GOANYWHERE</Text>
+              <Text style={styles.tagline}>The only traffic forecasting website.</Text>
+            </View>
             
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              editable={!loading}
-              placeholderTextColor="#555"
-            />
-          </View>
-          
-          {/* Sign Up Link */}
-          <TouchableOpacity 
-            style={styles.signupLink}
-            onPress={() => router.push('./SignUp')}
-          >
-            <Text style={styles.signupText}>Don't have an account? Sign up</Text>
-          </TouchableOpacity>
-        </View>
-        
-        {/* Sign in button */}
-        <View style={styles.bottomSection}>
-          <View style={styles.signInContainer}>
-            <Text style={styles.signInText}>Sign In</Text>
-            <TouchableOpacity
-              style={[styles.arrowButton, loading && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={loading}
+            {/* Signup Form */}
+            <View style={styles.formContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Username"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                editable={!loading}
+                placeholderTextColor="#555"
+              />
+              
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                editable={!loading}
+                placeholderTextColor="#555"
+              />
+              
+              <TextInput
+                style={styles.input}
+                placeholder="Phone Number"
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                keyboardType="phone-pad"
+                editable={!loading}
+                placeholderTextColor="#555"
+              />
+              
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                editable={!loading}
+                placeholderTextColor="#555"
+              />
+              
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                editable={!loading}
+                placeholderTextColor="#555"
+              />
+            </View>
+            
+            {/* Login Link */}
+            <TouchableOpacity 
+              style={styles.loginLink}
+              onPress={() => router.push('./loginUser')}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Ionicons name="arrow-forward" size={24} color="#fff" />
-              )}
+              <Text style={styles.loginText}>Already have an account? Login</Text>
             </TouchableOpacity>
           </View>
-        </View>
+          
+          {/* Sign up button section */}
+          <View style={styles.bottomSection}>
+            <View style={styles.signUpContainer}>
+              <Text style={styles.signUpText}>Sign Up</Text>
+              <TouchableOpacity
+                style={[styles.arrowButton, loading && styles.buttonDisabled]}
+                onPress={handleSignUp}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons name="arrow-forward" size={24} color="#fff" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -147,6 +181,9 @@ const styles = StyleSheet.create({
   keyboardAvoidView: {
     flex: 1,
   },
+  scrollContainer: {
+    flexGrow: 1,
+  },
   topCurve: {
     height: 150,
     backgroundColor: '#9de3d2', // Mint green
@@ -155,15 +192,17 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     width: '50%',
+    zIndex: 1,
   },
   contentContainer: {
     flex: 1,
     padding: 20,
     justifyContent: 'center',
+    paddingTop: 100, // Add more padding to account for the scrollview
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 50,
+    marginBottom: 40,
   },
   trafficLightContainer: {
     alignItems: 'center',
@@ -211,10 +250,11 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontSize: 16,
   },
-  signupLink: {
+  loginLink: {
     alignSelf: 'center',
+    marginBottom: 20,
   },
-  signupText: {
+  loginText: {
     color: '#3498db',
     fontSize: 14,
   },
@@ -222,15 +262,14 @@ const styles = StyleSheet.create({
     height: 180,
     backgroundColor: '#9de3d2',
     borderTopLeftRadius: 150,
-    position: 'relative',
     justifyContent: 'center',
     paddingLeft: 50,
   },
-  signInContainer: {
+  signUpContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  signInText: {
+  signUpText: {
     fontSize: 24,
     fontWeight: 'bold',
     marginRight: 15,

@@ -40,6 +40,14 @@ export default function LoginUser() {
       return;
     }
     
+    // Test account for quick login
+    if (emailOrPhone === 'ben@gmail.com' && password === '1234') {
+      console.log('Logged in with test account');
+      // Navigate to your main/home screen
+      navigation.navigate('homeScreen');
+      return;
+    }
+    
     setLoading(true);
     try {
       const userData = await AuthService.login(emailOrPhone, password);

@@ -1,5 +1,7 @@
 # app/training/upload_to_vertex.py
 
+# app/training/upload_to_vertex.py
+
 import os
 from datetime import datetime
 from google.cloud import aiplatform
@@ -8,6 +10,7 @@ import sklearn
 
 # === Configuration ===
 PROJECT_ID = "goanywhere-c55c8"
+REGION = "asia-southeast1"
 REGION = "asia-southeast1"
 BUCKET_NAME = "goanywhere-traffic-data-history"
 MODEL_ARTIFACT_GCS_PREFIX = "trained_models"
@@ -18,6 +21,7 @@ SERVING_IMAGE = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest"
 EXPECTED_SKLEARN_VERSION = "1.0.1"
 
 # === Vertex AI Initialization ===
+aiplatform.init(project=PROJECT_ID, location=REGION, staging_bucket=BUCKET_NAME)
 aiplatform.init(project=PROJECT_ID, location=REGION, staging_bucket=BUCKET_NAME)
 
 def check_sklearn_version():
@@ -46,7 +50,15 @@ def upload_model(model_type: str):
     blob = bucket.blob(gcs_path)
     blob.upload_from_filename(local_path)
     print(f"✅ Uploaded {model_type} model to gs://{BUCKET_NAME}/{gcs_path}")
+    blob = bucket.blob(gcs_path)
+    blob.upload_from_filename(local_path)
+    print(f"✅ Uploaded {model_type} model to gs://{BUCKET_NAME}/{gcs_path}")
 
+    # Upload to Vertex AI
+    display_name = f"{DISPLAY_NAME_PREFIX}-{model_type}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    artifact_uri = f"gs://{BUCKET_NAME}/{MODEL_ARTIFACT_GCS_PREFIX}/{model_type}/"
+    
+    print(f"📤 Registering model to Vertex AI: {display_name}")
     # Upload to Vertex AI
     display_name = f"{DISPLAY_NAME_PREFIX}-{model_type}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     artifact_uri = f"gs://{BUCKET_NAME}/{MODEL_ARTIFACT_GCS_PREFIX}/{model_type}/"
@@ -59,6 +71,7 @@ def upload_model(model_type: str):
         sync=True,
     )
     model.wait()
+    print(f"✅ Model registered: {display_name}")
     print(f"✅ Model registered: {display_name}")
 
 def main():

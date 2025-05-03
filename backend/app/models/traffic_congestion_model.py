@@ -131,9 +131,31 @@ class TrafficCongestionModel:
             else:
                 speed_bands_df = pd.merge(speed_bands_df, event_counts, left_on='date', right_on='event_date', how='left')
 
+
+            if 'participants' in events_df.columns:
+                events_df['event_severity'] = events_df['participants'].apply(
+                    lambda x: 2 if x > 1000 else (1 if x > 100 else 0)
+                ).fillna(0)
+
+                event_severity = events_df.groupby('event_date').agg({
+                    'event_severity': ['max', 'sum']
+                }).reset_index()
+                event_severity.columns = ['event_date', 'max_event_severity', 'sum_event_severity']
+
+                event_features = pd.merge(event_counts, event_severity, on='event_date', how='left')
+
+                speed_bands_df = pd.merge(speed_bands_df, event_features, left_on='date', right_on='event_date', how='left')
+
+                speed_bands_df['max_event_severity'] = speed_bands_df['max_event_severity'].fillna(0)
+                speed_bands_df['sum_event_severity'] = speed_bands_df['sum_event_severity'].fillna(0)
+            else:
+                speed_bands_df = pd.merge(speed_bands_df, event_counts, left_on='date', right_on='event_date', how='left')
+
             speed_bands_df['event_count'] = speed_bands_df['event_count'].fillna(0)
         else:
             speed_bands_df['event_count'] = 0
+            speed_bands_df['max_event_severity'] = 0
+            speed_bands_df['sum_event_severity'] = 0
             speed_bands_df['max_event_severity'] = 0
             speed_bands_df['sum_event_severity'] = 0
 
@@ -201,6 +223,7 @@ class TrafficCongestionModel:
             weather_df['date'] = weather_df['stored_at'].dt.date
             weather_df['hour'] = weather_df['stored_at'].dt.hour
 
+
             weather_features = weather_df.groupby(['date', 'hour']).agg({
                 'temperature': 'mean',
                 'humidity': 'mean'
@@ -222,6 +245,7 @@ class TrafficCongestionModel:
 
         speed_bands_df['temperature'] = speed_bands_df['temperature'].fillna(speed_bands_df['temperature'].mean())
         speed_bands_df['humidity'] = speed_bands_df['humidity'].fillna(speed_bands_df['humidity'].mean())
+        speed_bands_df['rain_flag'] = speed_bands_df['rain_flag'].fillna(0).astype(int)
         speed_bands_df['rain_flag'] = speed_bands_df['rain_flag'].fillna(0).astype(int)
 
         speed_bands_df['congestion'] = (speed_bands_df['SpeedBand'] >= 3).astype(int)
@@ -257,7 +281,26 @@ class TrafficCongestionModel:
         X = X.dropna()
         y = y.loc[X.index]
 
+        X = X.fillna({
+            'temperature': 27.0,
+            'humidity': 75.0,
+            'event_count': 0,
+            'incident_count': 0,
+            'peak_hour_flag': 0,
+            'day_type': 'weekday',
+            'road_type': 'normal',
+            'recent_incident_flag': 0,
+            'speed_band_previous_hour': mean_speed_band,
+            'rain_flag': 0,
+            'max_event_severity': 0,
+            'sum_event_severity': 0
+        })
+
+        X = X.dropna()
+        y = y.loc[X.index]
+
         return X, y
+
 
     def build_model(self):
         categorical_features = ['RoadName', 'RoadCategory', 'day_type', 'road_type']

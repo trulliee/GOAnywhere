@@ -22,11 +22,14 @@ import Collapsible from 'react-native-collapsible';
 import { MaterialIcons } from 'react-native-vector-icons';
 import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
+import { getReportNotifications, getUserAccountNotifications } from './NotificationData';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
-//import {db} from './firebaseConfig' (add in the firebase stuff here)
-//import { collection, addDoc } from 'firebase/firestore';
-import { Ionicons } from '@expo/vector-icons';
+// Commented out Firebase imports until configured
+// import { db } from './firebaseConfig';
+// import { collection, addDoc } from 'firebase/firestore';
+import { Ionicons, FontAwesome } from '@expo/vector-icons';
+import { fetchAPI } from './utils/apiConfig';
 
 import ENV from './env';
 
@@ -57,6 +60,7 @@ export default function HomeScreen() {
   const [trafficExpanded, setTrafficExpanded] = useState(false);
   const [navigationExpanded, setNavigationExpanded] = useState(false);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
 
   // Crowdsourced Menu
   const [isCrowdModalVisible, setIsCrowdModalVisible] = useState(false);
@@ -149,14 +153,29 @@ export default function HomeScreen() {
     if (!location) return;
   
     try {
-      await addDoc(collection(db, "crowdsourcedReports"), {
-        type: reportType,
-        location: location,
-        source: reportMode, // either 'driver' or 'public'
-        createdAt: new Date().toISOString()
-      });
-  
-      Alert.alert("Report Submitted", `You reported: ${reportType}`);
+      // Prepare the data to send to the backend
+      const reportData = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        reportType: reportType,
+        username: userName,
+        userId: user?.id || 'anonymous', // Use user ID if available, otherwise default to anonymous
+        timestamp: Date.now()
+      };
+      
+      console.log('Sending report to backend:', reportData);
+      
+      // When you connect to backend, you'll send the data something like this:
+       await fetchAPI('/submit-crowd-data', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify(reportData),
+       });
+      
+      // For now, just show a success message
+      Alert.alert("Report Submitted", `You reported: ${reportType} at coordinates (${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})`);
     } catch (error) {
       console.error("Error submitting report: ", error);
       Alert.alert("Submission Failed", "Please try again.");
@@ -314,6 +333,15 @@ export default function HomeScreen() {
     
     loadUser();
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const reportNotifications = getReportNotifications();
+      const unreadExists = reportNotifications.some(n => !n.read);
+      setHasUnread(unreadExists);
+    }, [])
+  );
+  
 
   const toggleTraffic = () => {
     setTrafficExpanded(!trafficExpanded);
@@ -584,7 +612,12 @@ export default function HomeScreen() {
             onPress={() => navigateTo('Notification')}
           >
             <View style={styles.menuItemRow}>
-              <MaterialIcons name="notifications" size={24} color="#fff" style={styles.menuIcon} />
+              <View style={{ position: 'relative' }}>
+                <MaterialIcons name="notifications" size={24} color="#fff" style={styles.menuIcon} />
+                {hasUnread && (
+                  <View style={styles.sidebarRedDot} />
+                )}
+              </View>
               <Text style={styles.menuText}>Notification</Text>
             </View>
           </TouchableOpacity>
@@ -933,5 +966,15 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sidebarRedDot: {
+    position: 'absolute',
+    top: -2,
+    right: 15,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'red',
+    zIndex: 20,
   }
 });

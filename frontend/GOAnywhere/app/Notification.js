@@ -8,65 +8,57 @@ const Notification = () => {
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
-    const exampleNotifications = [
+    const accountNotifications = [
       {
         id: 1,
-        icon: 'car',
-        iconColor: '#BC3535',
-        title: 'Heavy Traffic Reported',
-        message: 'Heavy traffic reported on PIE (Tuas bound)',
+        icon: 'person-circle',
+        iconColor: '#4CD964', // Green
+        title: 'Username Updated',
+        message: 'Your username has been successfully updated.',
         timeCategory: 'today',
       },
       {
         id: 2,
-        icon: 'car',
-        iconColor: '#EEA039',
-        title: 'Moderate Traffic Reported',
-        message: 'Moderate traffic reported on PIE (Tuas bound)',
+        icon: 'mail',
+        iconColor: '#4CD964', // Green
+        title: 'Email Updated',
+        message: 'Your email address has been successfully changed.',
         timeCategory: 'today',
       },
       {
         id: 3,
-        icon: 'rainy',
-        iconColor: '#5C96E2',
-        title: 'Bad Weather Reported',
-        message: 'Flash Floods Reported along Upper Bukit Timah Road.',
+        icon: 'lock-closed',
+        iconColor: '#4CD964', // Green
+        title: 'Password Changed',
+        message: 'Your password has been successfully updated.',
         timeCategory: 'yesterday',
       },
       {
         id: 4,
-        icon: 'alert-circle',
-        iconColor: '#9de3d2',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
+        icon: 'call',
+        iconColor: '#4CD964', // Green
+        title: 'Mobile Number Updated',
+        message: 'Your mobile number has been successfully updated.',
+        timeCategory: 'yesterday',
       },
       {
         id: 5,
-        icon: 'alert-circle',
-        iconColor: '#9de3d2',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
+        icon: 'warning',
+        iconColor: '#FF3B30', // Red
+        title: 'Account Warning',
+        message: 'Your account has received a warning for violating our terms of service.',
         timeCategory: '2days',
       },
       {
         id: 6,
-        icon: 'alert-circle',
-        iconColor: '#9de3d2',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
-      },
-      {
-        id: 7,
-        icon: 'alert-circle',
-        iconColor: '#9de3d2',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
+        icon: 'notifications',
+        iconColor: '#FF9500', // Orange
+        title: 'Notification Settings Updated',
+        message: 'Your notification preferences have been updated.',
         timeCategory: '2days',
       },
     ];
-    setNotifications(exampleNotifications);
+    setNotifications(accountNotifications);
   }, []);
 
   const handleGoBack = () => {
@@ -102,7 +94,7 @@ const Notification = () => {
         <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
+        <Text style={styles.headerTitle}>Account Notifications</Text>
         <View style={styles.headerRight} />
       </View>
 

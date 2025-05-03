@@ -233,6 +233,32 @@ export default function HomeScreen() {
     }
   };
 
+  // Handle logout
+  const handleLogout = async () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        { 
+          text: "Logout", 
+          onPress: async () => {
+            try {
+              await AuthService.logout();
+              // Navigate to the login screen
+              router.replace("./loginUser");
+            } catch (error) {
+              console.error('Error logging out:', error);
+              Alert.alert("Error", "Failed to logout. Please try again.");
+            }
+          } 
+        }
+      ]
+    );
+  };
 
   // Create pan responder for swipe gesture
   const panResponder = useRef(
@@ -307,7 +333,6 @@ export default function HomeScreen() {
       duration: 200, 
       useNativeDriver: false,
     }).start(() => {
-      // This forces re-render to remove the overlay
       setIsSidebarVisible(false);
     });
   };
@@ -361,10 +386,9 @@ export default function HomeScreen() {
 
   const navigateTo = (screen) => {
     router.push(`./${screen}`);
-    hideSidebar(); // Hide the sidebar after navigation
+    hideSidebar(); 
   };
 
-  // Create a semi-transparent overlay when sidebar is open
   const overlayOpacity = sidebarPosition.interpolate({
     inputRange: [-SIDEBAR_WIDTH, 0],
     outputRange: [0, 0.5],
@@ -503,7 +527,6 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
       
-      {/* Fixed syntax error here - removed erroneous '8' */}
       {reportMode && (
         <TouchableWithoutFeedback onPress={() => setReportMode(null)}>
           <View style={styles.modalOverlay}>
@@ -578,7 +601,9 @@ export default function HomeScreen() {
             </View>
           </View>
           <Text style={styles.welcomeText}>WELCOME {userName}!</Text>
-          <TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigateTo('EditProfile')}
+          >
             <Text style={styles.editProfileText}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
@@ -685,13 +710,25 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
 
+          {/* Weather Section */}
           <TouchableOpacity 
             style={styles.menuItem} 
             onPress={() => navigateTo('weatherPull')}
           >
             <View style={styles.menuItemRow}>
-              <MaterialIcons name="people" size={24} color="#fff" style={styles.menuIcon} />
-              <Text style={styles.menuText}>pull weather</Text>
+              <Ionicons name="rainy" size={24} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Weather</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Logout Button */}
+          <TouchableOpacity 
+            style={styles.logoutMenuItem} 
+            onPress={handleLogout}
+          >
+            <View style={styles.menuItemRow}>
+              <Ionicons name="exit-outline" size={24} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Logout</Text>
             </View>
           </TouchableOpacity>
         </ScrollView>
@@ -803,6 +840,13 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     fontSize: 14,
   },
+  logoutMenuItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#555',
+  },
   mapPlaceholder: {
     flex: 1,
     backgroundColor: '#e0e0e0',
@@ -855,7 +899,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'red',
     marginTop: -10,
     marginLeft: -10,
-    
   },
   mapWrapper: {
     flex: 1,
@@ -864,11 +907,11 @@ const styles = StyleSheet.create({
   },
   mapContainer: {
     width: "90%",
-    height: 250, // Adjust height as needed
+    height: 250, 
     borderRadius: 10,
     overflow: "hidden",
     backgroundColor: "#e0e0e0",
-    elevation: 5, // Adds shadow for a floating effect
+    elevation: 5,
   },
   smallMap: {
     height: "100%", 
@@ -959,10 +1002,9 @@ const styles = StyleSheet.create({
     width: "100%", 
     height: "100%"
   },
-
   crowdsourceButton: {
     position: 'absolute',
-    bottom: 130, // 
+    bottom: 130, 
     right: 20,
     width: 60,
     height: 60,
@@ -970,14 +1012,13 @@ const styles = StyleSheet.create({
     borderRadius: 15, 
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 5, // for Android shadow
+    elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
-    zIndex: 99, // stays on top
+    zIndex: 99,
   },
-  
   modalOverlay: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
@@ -985,21 +1026,18 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     zIndex: 30,
   },
-  
   bottomSheet: {
     backgroundColor: '#fff',
     padding: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
-  
   sheetTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 15,
     textAlign: 'center',
   },
-  
   sheetButton: {
     backgroundColor: '#f2f2f2',
     paddingVertical: 12,
@@ -1007,12 +1045,10 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     alignItems: 'center',
   },
-  
   sheetButtonText: {
     fontSize: 16,
     fontWeight: '600',
   },
-
   reportCategoryContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1020,7 +1056,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 10,
   },
-  
   reportButton: {
     width: '30%',
     marginVertical: 10,
@@ -1031,10 +1066,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     elevation: 2,
   },
-  
+  buttonText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 5,
+  },
   hamburgerButton: {
     position: 'absolute',
-    top: 50,  // adjust depending on status bar
+    top: 50,
     left: 20,
     zIndex: 100,
     backgroundColor: '#fff',

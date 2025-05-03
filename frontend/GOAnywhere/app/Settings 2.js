@@ -10,8 +10,7 @@ import {
   StatusBar,
   ScrollView,
   Linking,
-  Alert,
-  Modal
+  Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,9 +19,6 @@ import AuthService from './authService';
 export default function Settings() {
   const router = useRouter();
   const [pushNotifications, setPushNotifications] = useState(true);
-  const [locationSharing, setLocationSharing] = useState(true);
-  const [forecastFrequency, setForecastFrequency] = useState('Daily');
-  const [showFrequencyModal, setShowFrequencyModal] = useState(false);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -63,18 +59,7 @@ export default function Settings() {
     // need to change for backend stuff!!
   };
 
-  const toggleLocationSharing = () => {
-    setLocationSharing(previousState => !previousState);
-    // need to change for backend stuff!!
-  };
-  
-  const handleFrequencySelect = (frequency) => {
-    setForecastFrequency(frequency);
-    setShowFrequencyModal(false);
-    // Add backend logic here
-  };
-
-  const SettingsItem = ({ title, onPress, hasToggle, toggleValue, onToggleChange, rightContent }) => {
+  const SettingsItem = ({ title, onPress, hasToggle, toggleValue, onToggleChange }) => {
     return (
       <TouchableOpacity 
         style={styles.settingsItem} 
@@ -90,8 +75,6 @@ export default function Settings() {
             onValueChange={onToggleChange}
             value={toggleValue}
           />
-        ) : rightContent ? (
-          rightContent
         ) : (
           <Ionicons name="chevron-forward" size={20} color="#888" />
         )}
@@ -106,38 +89,6 @@ export default function Settings() {
   );
 
   const Divider = () => <View style={styles.divider} />;
-  
-  const FrequencyModal = () => (
-    <Modal
-      visible={showFrequencyModal}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={() => setShowFrequencyModal(false)}
-    >
-      <TouchableOpacity 
-        style={styles.modalOverlay} 
-        activeOpacity={1} 
-        onPress={() => setShowFrequencyModal(false)}
-      >
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Update Frequency</Text>
-          
-          {['Daily', 'Hourly', 'All Weather Changes'].map((option) => (
-            <TouchableOpacity
-              key={option}
-              style={styles.modalOption}
-              onPress={() => handleFrequencySelect(option)}
-            >
-              <Text style={styles.modalOptionText}>{option}</Text>
-              {forecastFrequency === option && (
-                <Ionicons name="checkmark" size={20} color="#4CD964" />
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -178,20 +129,12 @@ export default function Settings() {
         
         <SettingsItem 
           title="Forecast Updates" 
-          onPress={() => setShowFrequencyModal(true)}
-          rightContent={
-            <View style={styles.valueContainer}>
-              <Text style={styles.valueText}>{forecastFrequency}</Text>
-              <Ionicons name="chevron-forward" size={20} color="#888" />
-            </View>
-          } 
+          onPress={() => navigateTo('ForecastUpdates')} 
         />
         
         <SettingsItem 
           title="Location Sharing" 
-          hasToggle={true}
-          toggleValue={locationSharing}
-          onToggleChange={toggleLocationSharing}
+          onPress={() => navigateTo('LocationSharing')} 
         />
         
         <Divider />
@@ -214,8 +157,6 @@ export default function Settings() {
           onPress={() => openWebLink('https://www.youtube.com/watch?v=f_WuRfuMXQw')}
         />
       </ScrollView>
-      
-      <FrequencyModal />
     </SafeAreaView>
   );
 }
@@ -278,45 +219,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#444',
     marginHorizontal: 20,
     marginVertical: 10,
-  },
-  valueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  valueText: {
-    fontSize: 16,
-    color: '#888',
-    marginRight: 5,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: '80%',
-    backgroundColor: '#444',
-    borderRadius: 10,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  modalOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',.
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#555',
-  },
-  modalOptionText: {
-    fontSize: 16,
-    color: '#fff',
   }
 });

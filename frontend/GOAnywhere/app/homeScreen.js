@@ -706,7 +706,18 @@ export default function HomeScreen() {
           >
             <View style={styles.menuItemRow}>
               <MaterialIcons name="people" size={24} color="#fff" style={styles.menuIcon} />
-              <Text style={styles.menuText}>User Management</Text>
+              <Text style={styles.menuText}>User Management (admin)</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Admin Notifications Section (Admin only)*/}
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => navigateTo('AdminNotification')}
+          >
+            <View style={styles.menuItemRow}>
+              <MaterialIcons name="admin-panel-settings" size={24} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Admin Notifications (admin)</Text>
             </View>
           </TouchableOpacity>
 

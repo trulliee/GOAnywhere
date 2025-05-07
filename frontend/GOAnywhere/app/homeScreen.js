@@ -53,7 +53,6 @@ export default function HomeScreen() {
   const [marker, setMarker] = useState(null);
   // State for collapsible menu sections
   const [trafficExpanded, setTrafficExpanded] = useState(false);
-  const [navigationExpanded, setNavigationExpanded] = useState(false);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
 
   // Crowdsourced Menu
@@ -380,10 +379,6 @@ export default function HomeScreen() {
     setTrafficExpanded(!trafficExpanded);
   };
 
-  const toggleNavigation = () => {
-    setNavigationExpanded(!navigationExpanded);
-  };
-
   const navigateTo = (screen) => {
     router.push(`./${screen}`);
     hideSidebar(); 
@@ -648,34 +643,17 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </Collapsible>
 
+
           {/* Navigation Section */}
-          <TouchableOpacity style={styles.menuItem} onPress={toggleNavigation}>
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => navigateTo('P2PNavigation')}
+          >
             <View style={styles.menuItemRow}>
               <MaterialIcons name="navigation" size={24} color="#fff" style={styles.menuIcon} />
               <Text style={styles.menuText}>Navigation</Text>
-              <MaterialIcons 
-                name={navigationExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"} 
-                size={24} 
-                color="#fff" 
-                style={styles.expandIcon} 
-              />
             </View>
           </TouchableOpacity>
-          
-          <Collapsible collapsed={!navigationExpanded}>
-            <TouchableOpacity 
-              style={styles.submenuItem} 
-              onPress={() => navigateTo('P2PDriver')}
-            >
-              <Text style={styles.submenuText}>Driver</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.submenuItem} 
-              onPress={() => navigateTo('P2PPublicTrans')}
-            >
-              <Text style={styles.submenuText}>Public Transport</Text>
-            </TouchableOpacity>
-          </Collapsible>
 
           {/* Notification Section */}
           <TouchableOpacity 

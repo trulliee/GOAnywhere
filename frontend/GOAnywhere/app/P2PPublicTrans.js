@@ -1,7 +1,6 @@
 // P2PPublicTrans.js
 import axios from 'axios';
 import polyline from '@mapbox/polyline'; 
-import { Alert } from 'react-native';
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 const LTA_ACCOUNT_KEY = "CetOCVT4SmqDrAHkHLrf5g==";
@@ -17,11 +16,25 @@ const getCoordinates = async (address) => {
     const [lat, lng] = address.split(',').map(Number);
     return { lat, lng };
   }
-  const formatted = address.toLowerCase().includes("singapore") ? address : `${address}, Singapore`;
-  const response = await axios.get(`${GOOGLE_GEOCODE_URL}?address=${encodeURIComponent(formatted)}&key=${GOOGLE_MAPS_API_KEY}`);
-  const coords = response.data.results[0]?.geometry?.location;
-  if (!coords) throw new Error("Geocoding failed.");
-  return { lat: coords.lat, lng: coords.lng };
+  const formatted = address.toLowerCase().includes("singapore")
+    ? address
+    : `${address}, Singapore`;
+
+  const response = await axios.get(
+    `${GOOGLE_GEOCODE_URL}?address=${encodeURIComponent(formatted)}&key=${GOOGLE_MAPS_API_KEY}`
+  );
+
+  if (response.data.status !== "OK" || !response.data.results?.length) {
+    throw new Error(`Invalid location: "${address}"`);
+  }
+
+  // Reject any partial/guessed matches
+  if (response.data.results[0].partial_match) {
+    throw new Error(`Uncertain match for: "${address}"`);
+  }
+
+  const { lat, lng } = response.data.results[0].geometry.location;
+  return { lat, lng };
 };
 
 
@@ -96,6 +109,11 @@ const findGoogleTransitRoute = async (origin, destination, filters = {}) => {
   const { transitMode = "" } = filters;
   const url = `${GOOGLE_DIRECTIONS_URL}?origin=${origin}&destination=${destination}&mode=transit&alternatives=true${transitMode ? `&transit_mode=${transitMode}` : ""}&key=${GOOGLE_MAPS_API_KEY}`;
   const response = await axios.get(url);
+
+  if (response.data.status !== "OK") {
+    console.warn(`Transit Directions API returned: ${response.data.status}`);
+    return [];
+  }
   return response.data.routes || [];
 };
 
@@ -118,6 +136,13 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
       getCoordinates(startLocation),
       getCoordinates(endLocation),
     ]);
+
+    if (
+      startCoords.lat === endCoords.lat &&
+      startCoords.lng === endCoords.lng
+    ) {
+      throw new Error('Origin and destination cannot be the same.');
+    }
 
     const busStops = await getAllBusStops();
     const nearestStart = findNearestBusStop(startCoords.lat, startCoords.lng, busStops);
@@ -357,9 +382,8 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
 
 
   } catch (error) {
-    console.error("Error fetching route:", error.response?.data || error.message);
-    Alert.alert("Error", "Could not compute public transport route.");
-    return [];
+    console.error("Error fetching public-transit route:", error.response?.data || error.message);
+    throw new Error('Public-transport routes failed: ' + (error.message || 'unknown'));
   }
 };
 

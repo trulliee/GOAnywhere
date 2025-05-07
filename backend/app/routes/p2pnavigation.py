@@ -1,37 +1,40 @@
+# app/routes/p2pnavigation.py
+
 from fastapi import APIRouter, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 import googlemaps
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from the .env file
+# Load environment variables
 load_dotenv()
 
-router = APIRouter()
+# ✅ Define prefix and tags here
+router = APIRouter(
+    prefix="/p2pnavigation",
+    tags=["P2P Navigation"]
+)
 
-# Retrieve Google Maps API Key from environment variable
+# Get API key
 GMAPS_API_KEY = os.getenv("GMAPS_API_KEY")
 if not GMAPS_API_KEY:
     raise ValueError("Google Maps API key not found in environment variables")
 
-gmaps = googlemaps.Client(key=GMAPS_API_KEY)  # Keep only one instance globally
+# Google Maps client
+gmaps = googlemaps.Client(key=GMAPS_API_KEY)
 
-# Route for getting directions
+# === GET /p2pnavigation/get_route ===
 @router.get("/get_route")
 async def get_route(start: str, end: str):
     try:
-        # Fetch route details from Google Maps Directions API
         directions = gmaps.directions(start, end, mode="driving")
-
         if not directions:
             raise HTTPException(status_code=404, detail="No route found")
 
-        route_leg = directions[0]["legs"][0]  # Extract first leg of the route
+        route_leg = directions[0]["legs"][0]
         distance = route_leg["distance"]["text"]
         duration = route_leg["duration"]["text"]
         polyline = directions[0]["overview_polyline"]["points"]
 
-        # Correct extraction of start and end coordinates
         start_coords = {
             "lat": route_leg["start_location"]["lat"],
             "lng": route_leg["start_location"]["lng"]

@@ -181,6 +181,13 @@ class AuthService {
   // Sign up a new user
   static async signUp(email, password, name = '', phoneNumber = '') {
     try {
+      console.log('📦 Sending payload:', {
+        email,
+        password,
+        name,
+        phone_number: phoneNumber,
+      });
+      
       const response = await fetch(`${API_URL}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -188,15 +195,18 @@ class AuthService {
           email,
           password,
           name,
-          phone_number: phoneNumber, // Optional field, send empty string if not used
+          phone_number: phoneNumber,
         }),
       });
-
+      
       const data = await response.json();
+      console.log('📩 Signup response data:', data);
+      console.log('📡 Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error(data.detail || 'Signup failed.');
+        throw new Error(data.detail || 'Signup failed. Please check your input.');
       }
-
+      
       const userData = {
         uid: data.uid,
         email: data.email,

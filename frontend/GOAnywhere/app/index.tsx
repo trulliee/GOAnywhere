@@ -12,36 +12,15 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    navigation.setOptions({ headerShown: false });
+    // Simple redirection to the signup page
+    const timer = setTimeout(() => {
+      router.replace('./loginUser');
+    }, 300);
     
-    // Check if user is already authenticated
-    async function checkAuth() {
-      try {
-        const userData = await AuthService.getCurrentUser();
-        setUser(userData);
-        setLoading(false);
-      } catch (error) {
-        console.error('Auth check error:', error);
-        setLoading(false);
-      }
-    }
-    
-    checkAuth();
-  }, [navigation]);
+    return () => clearTimeout(timer);
+  }, [router]);
 
-  const handleLogout = async () => {
-    await AuthService.logout();
-    setUser(null);
-  };
-
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color="#3498db" />
-      </View>
-    );
-  }
-
+  // Only show loading screen while preparing to redirect
   return (
     <View style={styles.container}>
       <Text style={styles.text}>Welcome to GoAnywhere</Text>

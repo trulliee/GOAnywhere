@@ -9,9 +9,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform
 } from 'react-native';
 import AuthService from './authService';
 import { useRouter } from 'expo-router';
@@ -92,8 +89,8 @@ export default function LoginUser() {
           <TextInput
               style={styles.input}
               placeholder="Email / Phone Number"
-              value={email}
-              onChangeText={setEmail}
+              value={emailOrPhone}
+              onChangeText={setEmailOrPhone}
               autoCapitalize="none"
               editable={!loading}
               placeholderTextColor="#555"

@@ -159,7 +159,7 @@ export default function HomeScreen() {
         longitude: location.longitude,
         reportType: reportType,
         username: userName,
-        userId: user?.id || 'anonymous', // Use user ID if available, otherwise default to anonymous
+        userId: user?.id,
         timestamp: Date.now()
       };
       
@@ -173,8 +173,6 @@ export default function HomeScreen() {
          },
          body: JSON.stringify(reportData),
        });
-      
-      // For now, just show a success message
       Alert.alert("Report Submitted", `You reported: ${reportType} at coordinates (${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})`);
     } catch (error) {
       console.error("Error submitting report: ", error);

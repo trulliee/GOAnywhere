@@ -12,9 +12,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Include the prediction router from routes/prediction.py
-<<<<<<< HEAD
-router.include_router(prediction_router, prefix="/api", tags=["Prediction"])
-=======
 router.include_router(prediction_router, prefix="/api", tags=["Prediction"])
 
 # You can add additional functions here for frontend-specific functionality
@@ -68,4 +65,3 @@ def get_frontend_prediction_data(start_location=None, end_location=None, transpo
             "possible_delay": "No significant delays",
             "weather_condition": "Partly Cloudy"
         }
->>>>>>> d12bfdaca4ce5ab90a4001023a6f97f946707008

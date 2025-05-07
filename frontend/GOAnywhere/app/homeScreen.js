@@ -25,11 +25,11 @@ import AuthService from './authService';
 import { getReportNotifications, getUserAccountNotifications } from './NotificationData';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
-//import {db} from './firebaseConfig' (add in the firebase stuff here)
-//import { collection, addDoc } from 'firebase/firestore';
-import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-
+// Commented out Firebase imports until configured
+// import { db } from './firebaseConfig';
+// import { collection, addDoc } from 'firebase/firestore';
+import { Ionicons, FontAwesome } from '@expo/vector-icons';
+import { fetchAPI } from './utils/apiConfig';
 
 import ENV from './env';
 
@@ -153,14 +153,29 @@ export default function HomeScreen() {
     if (!location) return;
   
     try {
-      await addDoc(collection(db, "crowdsourcedReports"), {
-        type: reportType,
-        location: location,
-        source: reportMode, // either 'driver' or 'public'
-        createdAt: new Date().toISOString()
-      });
-  
-      Alert.alert("Report Submitted", `You reported: ${reportType}`);
+      // Prepare the data to send to the backend
+      const reportData = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        reportType: reportType,
+        username: userName,
+        userId: user?.id || 'anonymous', // Use user ID if available, otherwise default to anonymous
+        timestamp: Date.now()
+      };
+      
+      console.log('Sending report to backend:', reportData);
+      
+      // When you connect to backend, you'll send the data something like this:
+       await fetchAPI('/submit-crowd-data', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify(reportData),
+       });
+      
+      // For now, just show a success message
+      Alert.alert("Report Submitted", `You reported: ${reportType} at coordinates (${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})`);
     } catch (error) {
       console.error("Error submitting report: ", error);
       Alert.alert("Submission Failed", "Please try again.");

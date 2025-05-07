@@ -1,31 +1,71 @@
-from google.cloud import secretmanager
-import firebase_admin
-from firebase_admin import credentials, firestore
-from datetime import datetime
-import json
 import os
+import json
+import firebase_admin
+from firebase_admin import credentials, firestore, initialize_app
+from google.cloud import secretmanager
+from google.protobuf.timestamp_pb2 import Timestamp
+from datetime import datetime
 
-# Create the Secret Manager client
-client = secretmanager.SecretManagerServiceClient()
+def get_firebase_credentials():
+    use_local = os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS")
+    
+    if use_local == "1":
+        creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+        if not creds_path:
+            raise ValueError("FIREBASE_CREDENTIALS_PATH environment variable is not set")
+        if not os.path.exists(creds_path):
+            raise FileNotFoundError(f"Firebase credentials file not found: {creds_path}")
+        return credentials.Certificate(creds_path)
+    else:
+        # Production: Load secret from Secret Manager
+        client = secretmanager.SecretManagerServiceClient()
+        project_id = os.getenv("GCP_PROJECT_ID")
+        secret_name = os.getenv("FIREBASE_SECRET_NAME")  # <-- Must not be hardcoded
+        if not secret_name:
+            raise ValueError("FIREBASE_SECRET_NAME is not set in the environment.")
+        
+        name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        service_account_info = json.loads(response.payload.data.decode("UTF-8"))
+        return credentials.Certificate(service_account_info)
 
-# Replace with your Secret Manager secret name
-secret_name = "projects/541900038032/secrets/firebase-service-account-key/versions/latest"
+def initialize_firestore():
+    if not firebase_admin._apps:
+        cred = get_firebase_credentials()
+        initialize_app(cred)
+    return firestore.client()
 
-# Access the secret version
-response = client.access_secret_version(name=secret_name)
+# Create a global Firestore client
+db = initialize_firestore()
 
-# The secret payload is in 'response.payload.data'
-service_account_key = response.payload.data.decode("UTF-8")
+def convert_to_timestamp(date_string, format_string=None):
+    """
+    Convert a string date to a Firestore-compatible protobuf Timestamp.
+    
+    Args:
+        date_string (str): The date string to convert
+        format_string (str, optional): Format string for datetime.strptime
+        
+    Returns:
+        Timestamp or None: Firestore-compatible Timestamp or None if conversion fails
+    """
+    if not date_string:
+        return None
 
-# Load the service account key as a JSON object
-service_account_key_json = json.loads(service_account_key)
+    try:
+        from datetime import datetime
 
-# Initialize Firebase with the service account key
-cred = credentials.Certificate(service_account_key_json)
-firebase_admin.initialize_app(cred)
+        if format_string:
+            dt = datetime.strptime(date_string, format_string)
+        else:
+            dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
 
-# Firestore database client
-db = firestore.client()
+        ts = Timestamp()
+        ts.FromDatetime(dt)
+        return ts
+    except Exception as e:
+        print(f"Error converting timestamp {date_string}: {e}")
+        return None
 
 def store_bus_arrival_data(bus_stop_code, services, store_history=True):
     """
@@ -80,7 +120,7 @@ def store_bus_arrival_data(bus_stop_code, services, store_history=True):
                         from datetime import datetime
                         dt = datetime.fromisoformat(estimated_arrival.replace('Z', '+00:00'))
                         # Convert to Firestore timestamp
-                        firestore_timestamp = firestore.Timestamp.from_datetime(dt)
+                        firestore_timestamp = convert_to_timestamp(estimated_arrival)
                     except Exception as e:
                         print(f"Error parsing timestamp {estimated_arrival}: {e}")
                 
@@ -1187,22 +1227,23 @@ def store_estimated_travel_times(travel_times):
 
         for entry in travel_times:
             if isinstance(entry, dict):  # Ensure entry is a dictionary
-                doc_id = f"{entry.get('Expressway', 'Unknown')}_{entry.get('Startpoint', 'Unknown')}_{entry.get('Endpoint', 'Unknown')}_{entry.get('Direction', 'Unknown')}"
-                
+                doc_id = f"{entry.get('Name', 'Unknown')}_{entry.get('StartPoint', 'Unknown')}_{entry.get('EndPoint', 'Unknown')}_{entry.get('Direction', 'Unknown')}"
+                doc_id = doc_id.replace("/", "-")  # Important: Sanitize slashes!
+
                 travel_time_data = {
-                    "Expressway": entry.get("Expressway", ""),
+                    "Expressway": entry.get("Name", ""),
                     "Direction": entry.get("Direction", ""),
-                    "Startpoint": entry.get("Startpoint", ""),
-                    "Endpoint": entry.get("Endpoint", ""),
-                    "Farendpoint": entry.get("Farendpoint", ""),
-                    "Esttime": entry.get("Esttime", 0),  # Keeping original API field name
+                    "Startpoint": entry.get("StartPoint", ""),
+                    "Endpoint": entry.get("EndPoint", ""),
+                    "Farendpoint": entry.get("FarEndPoint", ""),
+                    "Esttime": entry.get("EstTime", 0),
                     "Timestamp": firestore.SERVER_TIMESTAMP
                 }
 
+                travel_time_data["date"] = datetime.now().strftime("%Y-%m-%d")
                 doc_ref = travel_time_ref.document(doc_id)
                 existing_doc = doc_ref.get()
 
-                # Update only if new data differs to reduce Firestore writes
                 if not existing_doc.exists or existing_doc.to_dict().get("Esttime") != travel_time_data["Esttime"]:
                     doc_ref.set(travel_time_data)
 
@@ -1261,25 +1302,25 @@ def store_faulty_traffic_lights(faulty_lights):
             # Convert to Firestore timestamp if possible
             start_timestamp = None
             end_timestamp = None
-            
+
             if start_date:
                 try:
                     from datetime import datetime
-                    # Parse the datetime string
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S.%f")
-                    start_timestamp = firestore.Timestamp.from_datetime(start_dt)
+                    start_timestamp = Timestamp()
+                    start_timestamp.FromDatetime(start_dt)
                 except Exception as e:
                     print(f"Error parsing start date {start_date}: {e}")
-            
+
             if end_date:
                 try:
                     from datetime import datetime
-                    # Parse the datetime string
                     end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S.%f")
-                    end_timestamp = firestore.Timestamp.from_datetime(end_dt)
+                    end_timestamp = Timestamp()
+                    end_timestamp.FromDatetime(end_dt)
                 except Exception as e:
                     print(f"Error parsing end date {end_date}: {e}")
-            
+
             # Determine if this is a scheduled maintenance
             is_scheduled = bool(end_date)
             
@@ -1692,29 +1733,28 @@ def store_approved_road_works(road_works):
             # Convert dates to proper format if they exist
             start_date = work.get("StartDate", "")
             end_date = work.get("EndDate", "")
-            
-            # Convert to Firestore timestamp if possible
+    
             start_timestamp = None
             end_timestamp = None
-            
+            start_dt = None
+            end_dt = None
+
             if start_date:
                 try:
-                    from datetime import datetime
-                    # Parse the date string
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                    start_timestamp = firestore.Timestamp.from_datetime(start_dt)
+                    start_timestamp = Timestamp()
+                    start_timestamp.FromDatetime(start_dt)
                 except Exception as e:
                     print(f"Error parsing start date {start_date}: {e}")
-            
+
             if end_date:
                 try:
-                    from datetime import datetime
-                    # Parse the date string
                     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-                    end_timestamp = firestore.Timestamp.from_datetime(end_dt)
+                    end_timestamp = Timestamp()
+                    end_timestamp.FromDatetime(end_dt)
                 except Exception as e:
                     print(f"Error parsing end date {end_date}: {e}")
-            
+
             # Calculate status based on current date and start/end dates
             from datetime import datetime
             current_date = datetime.now().date()
@@ -1722,14 +1762,11 @@ def store_approved_road_works(road_works):
             status = "scheduled"  # Default status
             
             if start_timestamp and end_timestamp:
-                start_date_obj = start_timestamp.datetime.date()
-                end_date_obj = end_timestamp.datetime.date()
-                
-                if current_date > end_date_obj:
+                if current_date > end_dt.date():
                     status = "completed"
-                elif current_date >= start_date_obj:
+                elif current_date >= start_dt.date():
                     status = "in_progress"
-            
+
             # Prepare the data to store
             work_data = {
                 "event_id": event_id,
@@ -1851,15 +1888,24 @@ def store_traffic_data(incidents):
         # Store incidents
         for incident in incidents:
             if isinstance(incident, dict):  # Check if incident is a dictionary
-                doc_id = str(incident.get("IncidentID", "unknown"))
+                incident_id = incident.get("IncidentID")
+                if incident_id is None:
+                    # Fallback doc id if missing IncidentID
+                    incident_id = f"incident_{datetime.now().timestamp()}"
+
                 filtered_incident = {
                     "Type": incident.get("Type", ""),
                     "Latitude": incident.get("Latitude", 0),
                     "Longitude": incident.get("Longitude", 0),
                     "Message": incident.get("Message", ""),
-                    "Timestamp": firestore.SERVER_TIMESTAMP
+                    "Timestamp": firestore.SERVER_TIMESTAMP,  # Firestore server time
+                    # NEW: Add a static "date" field based on now
+                    "date": datetime.now().strftime("%Y-%m-%d"),
                 }
-                traffic_ref.document(doc_id).set(filtered_incident)
+
+                traffic_ref.document(str(incident_id)).set(filtered_incident)
+
+        print("Traffic incidents successfully stored!")
 
     except Exception as e:
         print(f"Error storing traffic incidents data: {e}")
@@ -1978,27 +2024,23 @@ def store_station_crowd_density(crowd_data, train_line):
             # Convert timestamps if available
             start_time = station_data.get("StartTime", "")
             end_time = station_data.get("EndTime", "")
-            
+
             start_timestamp = None
             end_timestamp = None
-            
+
             if start_time:
                 try:
-                    from datetime import datetime
-                    # Parse the ISO 8601 datetime string
                     start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                    # Convert to Firestore timestamp
-                    start_timestamp = firestore.Timestamp.from_datetime(start_dt)
+                    start_timestamp = Timestamp()
+                    start_timestamp.FromDatetime(start_dt)
                 except Exception as e:
                     print(f"Error parsing start time {start_time}: {e}")
-            
+
             if end_time:
                 try:
-                    from datetime import datetime
-                    # Parse the ISO 8601 datetime string
                     end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-                    # Convert to Firestore timestamp
-                    end_timestamp = firestore.Timestamp.from_datetime(end_dt)
+                    end_timestamp = Timestamp()
+                    end_timestamp.FromDatetime(end_dt)
                 except Exception as e:
                     print(f"Error parsing end time {end_time}: {e}")
             
@@ -2630,9 +2672,20 @@ def store_weather_data(weather_info):
     """Stores weather data in Firestore."""
     try:
         weather_ref = db.collection("weather_data")
-        weather_ref.document(weather_info["city"]).set(weather_info)
+        
+        # Add timestamp when data was fetched
+        fetched_time = datetime.utcnow()
+        weather_info["fetched_at"] = fetched_time.isoformat()
+
+        # Use timestamp as the document ID to avoid overwrite
+        doc_id = fetched_time.strftime("%Y-%m-%dT%H:%M:%S")
+        weather_ref.document(doc_id).set(weather_info)
+
+        print(f"Weather data stored under document {doc_id}")
+
     except Exception as e:
         print(f"Error storing weather data: {e}")
+
 
 def upload_csv_to_firestore(csv_file_path, collection_name):
     """Uploads a CSV file to Firestore."""

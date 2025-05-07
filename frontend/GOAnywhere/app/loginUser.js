@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import {
+import { 
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
   View,
   Text,
   TextInput,
@@ -8,22 +11,41 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import AuthService from './authService';
-import { useNavigation } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+
+//update with actual logo stuff
+const TrafficLightIcon = () => (
+  <View style={styles.trafficLightContainer}>
+    <View style={styles.trafficLightBody}>
+      <View style={styles.trafficLightLight} />
+      <View style={styles.trafficLightLight} />
+      <View style={styles.trafficLightLight} />
+    </View>
+    <View style={styles.trafficLightBase} />
+  </View>
+);
 
 export default function LoginUser() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  //sign up page
-  const navigation = useNavigation();
+  const router = useRouter();
 
   const handleLogin = async () => {
     setLoading(true);
     try {
       const userData = await AuthService.login(email, password);
       console.log('Logged in:', userData);
-      // Navigate to your main/home screen here
+      
+      if (userData.user_type == 'admin') {
+        router.replace('./homeScreen');
+      }
+      else {
+        router.replace('./homeScreen');
+      }
+
     } catch (error) {
       console.error('Login failed:', error.message);
       // Show toast or alert here
@@ -33,48 +55,74 @@ export default function LoginUser() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
-
-      {/* Email input */}
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        editable={!loading}
-        placeholderTextColor="#999"
-      />
-
-      {/* Password input */}
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        editable={!loading}
-        placeholderTextColor="#999"
-      />
-
-      {/* Login button */}
-      <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleLogin}
-        disabled={loading}
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidView}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <Text style={styles.buttonText}>Login</Text>
-        )}
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-        <Text style={styles.signupText}>Don’t have an account? Sign up</Text>
-      </TouchableOpacity>
-    </View>
+        {/* Top curved shape */}
+        <View style={styles.topCurve} />
+        
+        <View style={styles.contentContainer}>
+          {/* udpate this with the logo */}
+          <View style={styles.logoContainer}>
+            <TrafficLightIcon />
+            <Text style={styles.logoText}>GOANYWHERE</Text>
+            <Text style={styles.tagline}>The only traffic forecasting website.</Text>
+          </View>
+          
+          {/* Login Form */}
+          <View style={styles.formContainer}>
+          <TextInput
+              style={styles.input}
+              placeholder="Email / Phone Number"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+          </View>
+          
+          {/* Sign Up Link */}
+          <TouchableOpacity 
+            style={styles.signupLink}
+            onPress={() => router.push('./SignUp')}
+          >
+            <Text style={styles.signupText}>Don't have an account? Sign up</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Sign in button */}
+        <View style={styles.bottomSection}>
+          <View style={styles.signInContainer}>
+            <Text style={styles.signInText}>Sign In</Text>
+            <TouchableOpacity
+              style={[styles.arrowButton, loading && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="arrow-forward" size={24} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

@@ -21,9 +21,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize router
 router = APIRouter(
-    prefix="/api/prediction",
-    tags=["prediction"],
-    responses={404: {"description": "Not found"}},
+    prefix="/prediction",
+    tags=["Prediction"]
 )
 
 # Environment config

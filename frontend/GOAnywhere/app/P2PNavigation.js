@@ -322,7 +322,7 @@ return (
                           ` — board at ${ti.departureStop}, alight at ${ti.arrivalStop}` +
                           (ti.exitNumber ? `, ${ti.exitNumber}` : '') +
                           ` (${ti.numStops} stops)`
-                        : shortenText(cleanInstruction(step.instruction))}
+                        : cleanInstruction(step.instruction)}
                       </Text>
                       <Text
                         style={{

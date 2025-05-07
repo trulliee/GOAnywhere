@@ -1,4 +1,3 @@
-# app/routes/auth.py
 from fastapi import APIRouter, HTTPException, Depends, Header, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional, Dict, Any

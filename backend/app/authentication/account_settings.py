@@ -1,4 +1,3 @@
-# app/routes/account_settings.py
 from fastapi import APIRouter, HTTPException, Depends, Header, status
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any

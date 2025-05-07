@@ -1,124 +1,145 @@
+// app/loginUser.js
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
-import AuthService from './authService';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-
-//update with actual logo stuff
-const TrafficLightIcon = () => (
-  <View style={styles.trafficLightContainer}>
-    <View style={styles.trafficLightBody}>
-      <View style={styles.trafficLightLight} />
-      <View style={styles.trafficLightLight} />
-      <View style={styles.trafficLightLight} />
-    </View>
-    <View style={styles.trafficLightBase} />
-  </View>
-);
+import AuthService from './authService';
 
 export default function LoginUser() {
+  const router = useRouter();
+  const [isLogin, setIsLogin] = useState(true);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const router = useRouter();
+  // Handle form submission (login or signup)
+  const handleSubmit = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Email and password are required');
+      return;
+    }
 
-  const handleLogin = async () => {
     setLoading(true);
     try {
-      const userData = await AuthService.login(email, password);
-      console.log('Logged in:', userData);
+      let userData;
       
-      if (userData.user_type == 'admin') {
-        router.replace('./homeScreen');
+      if (isLogin) {
+        // Handle login
+        userData = await AuthService.login(email, password);
+      } else {
+        // Handle signup
+        userData = await AuthService.signUp(email, password, name, phoneNumber);
       }
-      else {
-        router.replace('./homeScreen');
+      
+      // Fetch additional user info after successful authentication
+      try {
+        await AuthService.getUserInfo();
+      } catch (infoError) {
+        console.log('Non-critical error fetching user info:', infoError);
+        // Continue with navigation even if this fails
       }
-
+      
+      router.replace('/home');
     } catch (error) {
-      console.error('Login failed:', error.message);
-      // Show toast or alert here
+      console.error(isLogin ? 'Login error:' : 'Signup error:', error);
+      // AuthService already shows an alert on error
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle anonymous login
+  const handleAnonymousLogin = async () => {
+    setLoading(true);
+    try {
+      await AuthService.loginAnonymously();
+      router.replace('/home');
+    } catch (error) {
+      console.error('Anonymous login error:', error);
+      // AuthService already shows an alert on error
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidView}
+    <View style={styles.container}>
+      <Text style={styles.title}>{isLogin ? 'Login' : 'Sign Up'}</Text>
+      
+      {/* Name input (signup only) */}
+      {!isLogin && (
+        <TextInput
+          style={styles.input}
+          placeholder="Name (optional)"
+          value={name}
+          onChangeText={setName}
+          editable={!loading}
+        />
+      )}
+      
+      {/* Email input */}
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        editable={!loading}
+      />
+      
+      {/* Phone number input (signup only) */}
+      {!isLogin && (
+        <TextInput
+          style={styles.input}
+          placeholder="Phone Number (optional)"
+          value={phoneNumber}
+          onChangeText={setPhoneNumber}
+          keyboardType="phone-pad"
+          editable={!loading}
+        />
+      )}
+      
+      {/* Password input */}
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        editable={!loading}
+      />
+      
+      {/* Login/Signup button */}
+      <TouchableOpacity 
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={handleSubmit}
+        disabled={loading}
       >
-        {/* Top curved shape */}
-        <View style={styles.topCurve} />
-        
-        <View style={styles.contentContainer}>
-          {/* udpate this with the logo */}
-          <View style={styles.logoContainer}>
-            <TrafficLightIcon />
-            <Text style={styles.logoText}>GOANYWHERE</Text>
-            <Text style={styles.tagline}>The only traffic forecasting website.</Text>
-          </View>
-          
-          {/* Login Form */}
-          <View style={styles.formContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Email / Phone Number"
-              value={emailOrPhone}
-              onChangeText={setEmailOrPhone}
-              autoCapitalize="none"
-              editable={!loading}
-              placeholderTextColor="#555"
-            />
-            
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              editable={!loading}
-              placeholderTextColor="#555"
-            />
-          </View>
-          
-          {/* Sign Up Link */}
-          <TouchableOpacity 
-            style={styles.signupLink}
-            onPress={() => router.push('./SignUp')}
-          >
-            <Text style={styles.signupText}>Don't have an account? Sign up</Text>
-          </TouchableOpacity>
-        </View>
-        
-        {/* Sign in button */}
-        <View style={styles.bottomSection}>
-          <View style={styles.signInContainer}>
-            <Text style={styles.signInText}>Sign In</Text>
-            <TouchableOpacity
-              style={[styles.arrowButton, loading && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Ionicons name="arrow-forward" size={24} color="#fff" />
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        {loading ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Text style={styles.buttonText}>{isLogin ? 'Login' : 'Sign Up'}</Text>
+        )}
+      </TouchableOpacity>
+      
+      {/* Toggle login/signup */}
+      <TouchableOpacity onPress={() => setIsLogin(!isLogin)} disabled={loading}>
+        <Text style={styles.toggleText}>
+          {isLogin ? 'New user? Sign up' : 'Already have an account? Login'}
+        </Text>
+      </TouchableOpacity>
+      
+      {/* Anonymous login */}
+      <TouchableOpacity 
+        style={[styles.anonymousButton, loading && styles.buttonDisabled]}
+        onPress={handleAnonymousLogin}
+        disabled={loading}
+      >
+        <Text style={styles.anonymousButtonText}>Continue without an account</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -155,9 +176,19 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-  signupText: {
+  toggleText: {
     textAlign: 'center',
     color: '#3498db',
-    textDecorationLine: 'underline',
-  }
+    marginBottom: 20,
+  },
+  anonymousButton: {
+    padding: 15,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  anonymousButtonText: {
+    color: '#777',
+  },
 });

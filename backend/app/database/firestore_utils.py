@@ -2,40 +2,59 @@ from google.cloud import secretmanager
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
+from dotenv import load_dotenv
 import json
 import os
 
 # Create the Secret Manager client
-client = secretmanager.SecretManagerServiceClient()
+# client = secretmanager.SecretManagerServiceClient()
 
-<<<<<<< HEAD
-if os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS") == "1":
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("FIREBASE_CREDENTIALS_PATH")
+#if os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS") == "1":
+#    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("FIREBASE_CREDENTIALS_PATH")
 
 def get_firebase_credentials():
     """
     Gets Firebase credentials based on environment settings.
     Supports both local (.env) and production (Secret Manager) setups.
-=======
-# Replace with your Secret Manager secret name
-secret_name = "projects/541900038032/secrets/firebase-service-account-key/versions/latest"
->>>>>>> d12bfdaca4ce5ab90a4001023a6f97f946707008
-
+    """
 # Access the secret version
-response = client.access_secret_version(name=secret_name)
+# response = client.access_secret_version(name=secret_name)
 
 # The secret payload is in 'response.payload.data'
-service_account_key = response.payload.data.decode("UTF-8")
+# service_account_key = response.payload.data.decode("UTF-8")
 
 # Load the service account key as a JSON object
-service_account_key_json = json.loads(service_account_key)
+# service_account_key_json = json.loads(service_account_key)
 
 # Initialize Firebase with the service account key
-cred = credentials.Certificate(service_account_key_json)
-firebase_admin.initialize_app(cred)
+# cred = credentials.Certificate(service_account_key_json)
+# firebase_admin.initialize_app(cred)
 
 # Firestore database client
+# db = firestore.client()
+    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    load_dotenv(dotenv_path=env_path)
+
+    if os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS") == "1":
+        creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+        print(f"Using local Firebase credentials: {creds_path}")
+        return credentials.Certificate(creds_path)   
+    else:
+        print("Using GCP Secret Manager credentials")
+        client = secretmanager.SecretManagerServiceClient()
+        secret_name = os.getenv("SECRET_NAME")  # e.g., "projects/.../secrets/.../versions/latest"
+        response = client.access_secret_version(name=secret_name)
+        service_account_key = response.payload.data.decode("UTF-8")
+        service_account_key_json = json.loads(service_account_key)
+        return credentials.Certificate(service_account_key_json)
+
+cred = get_firebase_credentials()
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
 db = firestore.client()
+
+
+
 
 def store_bus_arrival_data(bus_stop_code, services, store_history=True):
     """

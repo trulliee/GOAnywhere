@@ -45,8 +45,8 @@ def submit_crowdsourced_data(data: CrowdData):
         if not data.userId:
             raise HTTPException(status_code=400, detail="Missing user_id.")
 
-        if not is_registered_user(data.userId):
-            raise HTTPException(status_code=403, detail="Unauthorized: Only registered users can submit reports.")
+        #if not is_registered_user(data.userId):
+        #    raise HTTPException(status_code=403, detail="Unauthorized: Only registered users can submit reports.")
 
         timestamp_value = (
             datetime.utcfromtimestamp(data.timestamp / 1000).isoformat()

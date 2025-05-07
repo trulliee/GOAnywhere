@@ -1,25 +1,19 @@
-# Use a slim Python base image
 FROM python:3.9-slim
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy only the requirements first to leverage Docker caching
 COPY backend/requirements3-9-0.txt ./requirements.txt
 
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Now copy the full app source code
 COPY backend/app /app/app
 
-# Expose port 8080 for Cloud Run
 EXPOSE 8080
 
-# Set environment variables needed by your app
 ENV PORT=8080
-ENV GMAPS_API_KEY=AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g
+# ENV GOOGLE_APPLICATION_CREDENTIALS="/app/service-account-key.json"
+# ENV USE_LOCAL_FIREBASE_CREDENTIALS=1
+# ENV FIREBASE_CREDENTIALS_PATH="/app/service-account-key.json"
 ENV GCP_PROJECT_ID=goanywhere-c55c8
 
-# Command to run your FastAPI app using Python's -m option
-CMD ["python", "-m", "app.main"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

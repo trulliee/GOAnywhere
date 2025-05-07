@@ -1,65 +1,38 @@
 import os
 import json
 import firebase_admin
+from firebase_admin import credentials, firestore, initialize_app
 from google.cloud import secretmanager
 from google.protobuf.timestamp_pb2 import Timestamp
-from firebase_admin import firestore, credentials, initialize_app
 from datetime import datetime
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
 
 def get_firebase_credentials():
-    """
-    Gets Firebase credentials based on environment settings.
-    Supports both local (.env) and production (Secret Manager) setups.
-
-    Returns:
-        firebase_admin.credentials.Certificate: Firebase credentials
-    """
     use_local = os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS")
-    creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-
-    print("USE_LOCAL_FIREBASE_CREDENTIALS =", use_local)
-    print("FIREBASE_CREDENTIALS_PATH =", creds_path)
-
+    
     if use_local == "1":
+        creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
         if not creds_path:
             raise ValueError("FIREBASE_CREDENTIALS_PATH environment variable is not set")
         if not os.path.exists(creds_path):
             raise FileNotFoundError(f"Firebase credentials file not found: {creds_path}")
         return credentials.Certificate(creds_path)
     else:
-        # Production - load from Google Secret Manager
+        # Production: Load secret from Secret Manager
         client = secretmanager.SecretManagerServiceClient()
         project_id = os.getenv("GCP_PROJECT_ID")
-        secret_name = os.getenv("FIREBASE_SECRET_NAME", "firebase-service-account-key")
-
-        if not project_id:
-            raise ValueError("GCP_PROJECT_ID environment variable is not set")
-
-        secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-        print(f"Fetching Firebase credentials from Secret Manager: {secret_path}")
-
-        response = client.access_secret_version(request={"name": secret_path})
+        secret_name = os.getenv("FIREBASE_SECRET_NAME")  # <-- Must not be hardcoded
+        if not secret_name:
+            raise ValueError("FIREBASE_SECRET_NAME is not set in the environment.")
+        
+        name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
         service_account_info = json.loads(response.payload.data.decode("UTF-8"))
-
         return credentials.Certificate(service_account_info)
 
 def initialize_firestore():
-    """
-    Initializes and returns a Firestore client.
-    
-    Returns:
-        firestore.Client: A Firestore client instance
-    """
-    # Initialize Firebase if not already initialized
-    if not firebase_admin._apps:  # Using _apps instead of apps
+    if not firebase_admin._apps:
         cred = get_firebase_credentials()
         initialize_app(cred)
-    
-    # Return Firestore database client
     return firestore.client()
 
 # Create a global Firestore client

@@ -5,7 +5,10 @@ from app.database.firestore_utils import db
 from datetime import datetime
 from google.cloud import firestore  # Needed for Query
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/crowd",
+    tags=["Crowdsourced"]
+)
 
 # Pydantic model for incoming crowd data
 class CrowdData(BaseModel):

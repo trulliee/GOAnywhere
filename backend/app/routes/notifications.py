@@ -1,17 +1,19 @@
+# app/routes/notifications.py
+
 from fastapi import APIRouter, HTTPException
-from app.database.firestore_utils import fetch_firestore_data,db
+from app.database.firestore_utils import fetch_firestore_data, db
 
-# Create a FastAPI router
-router = APIRouter()
+# ✅ Consistent router declaration with prefix + tags
+router = APIRouter(
+    prefix="/notifications",
+    tags=["Notifications"]
+)
 
-# Endpoint to get all extreme weather notifications for a specific user 
-@router.get("/notifications/extreme_weather/{user_id}")
+# === EXTREME WEATHER ===
+@router.get("/extreme_weather/{user_id}")
 async def get_extreme_weather_notifications(user_id: str):
     try:
-        # Fetch extreme weather data from Firestore using firestore_utils
         data = fetch_firestore_data("extreme_weather")
-        
-        # Filter the data based on user_id
         notifications = [entry['message'] for entry in data if entry.get("user_id") == user_id]
 
         if not notifications:
@@ -21,14 +23,12 @@ async def get_extreme_weather_notifications(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching notifications: {str(e)}")
 
-# Endpoint to get all extreme road conditions notifications for a specific user 
-@router.get("/notifications/extreme_road_conditions/{user_id}")
+
+# === EXTREME ROAD CONDITIONS ===
+@router.get("/extreme_road_conditions/{user_id}")
 async def get_extreme_road_conditions_notifications(user_id: str):
     try:
-        # Fetch extreme road conditions data from Firestore using firestore_utils
         data = fetch_firestore_data("extreme_road_conditions")
-        
-        # Filter the data based on user_id
         notifications = [entry['message'] for entry in data if entry.get("user_id") == user_id]
 
         if not notifications:
@@ -38,20 +38,14 @@ async def get_extreme_road_conditions_notifications(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching notifications: {str(e)}")
 
-# Endpoint to get all user report notifications for a specific user
-@router.get("/notifications/user_reports/{user_id}")
+
+# === USER REPORTS ===
+@router.get("/user_reports/{user_id}")
 async def get_user_reports_notifications(user_id: str):
     try:
-        # Query Firestore collection "user_reports"
-        collection_ref = db.collection("user_reports")
-        docs = collection_ref.where("user_id", "==", user_id).stream()
+        docs = db.collection("user_reports").where("user_id", "==", user_id).stream()
+        notifications = [doc.to_dict()["message"] for doc in docs]
 
-        # Extract notifications (messages)
-        notifications = []
-        for doc in docs:
-            notifications.append(doc.to_dict()["message"])
-
-        # If no notifications found, return a 404
         if not notifications:
             raise HTTPException(status_code=404, detail="No user report notifications found")
 
@@ -59,20 +53,14 @@ async def get_user_reports_notifications(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching notifications: {str(e)}")
 
-# Endpoint to get all user setting change notifications for a specific user
-@router.get("/notifications/user_settings/{user_id}")
+
+# === USER SETTINGS ===
+@router.get("/user_settings/{user_id}")
 async def get_user_settings_notifications(user_id: str):
     try:
-        # Query Firestore collection "user_settings"
-        collection_ref = db.collection("user_settings")
-        docs = collection_ref.where("user_id", "==", user_id).stream()
+        docs = db.collection("user_settings").where("user_id", "==", user_id).stream()
+        notifications = [doc.to_dict()["message"] for doc in docs]
 
-        # Extract notifications (messages)
-        notifications = []
-        for doc in docs:
-            notifications.append(doc.to_dict()["message"])
-
-        # If no notifications found, return a 404
         if not notifications:
             raise HTTPException(status_code=404, detail="No user setting change notifications found")
 

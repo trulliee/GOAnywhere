@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import {
+import { 
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
   View,
   Text,
   TextInput,
@@ -70,15 +73,16 @@ export default function LoginUser() {
           
           {/* Login Form */}
           <View style={styles.formContainer}>
-            <TextInput
+          <TextInput
               style={styles.input}
               placeholder="Email / Phone Number"
-              value={emailOrPhone}
-              onChangeText={setEmailOrPhone}
+              value={email}
+              onChangeText={setEmail}
               autoCapitalize="none"
               editable={!loading}
               placeholderTextColor="#555"
             />
+
             
             <TextInput
               style={styles.input}

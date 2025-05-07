@@ -63,25 +63,44 @@ const P2PNavigation = () => {
 
   const handleSearchPaths = async () => {
     Keyboard.dismiss();
-      if (!startLocation || !endLocation) {
-          Alert.alert('Missing Info', 'Please enter both origin and destination.');
-          return;
-        }
+  
+    if (!startLocation || !endLocation) {
+      return Alert.alert(
+        'Missing Info',
+        'Please enter both origin and destination.'
+      );
+    }
+  
+    if (startLocation.trim().toLowerCase() === endLocation.trim().toLowerCase()) {
+      return Alert.alert(
+        'Invalid Route',
+        'Origin and destination cannot be the same.'
+      );
+    }
+  
     try {
-        const driverRoutes = await P2PDriver(startLocation, endLocation);
-        const publicRoutes = await P2PPublicTrans(startLocation, endLocation);
-      
-        driverRoutes.sort((a, b) => parseFloat(a.duration) - parseFloat(b.duration));
-        publicRoutes.sort((a, b) => parseFloat(a.duration) - parseFloat(b.duration));
-      
-        setRoutes({ driver: driverRoutes || [], public: publicRoutes || [] });
-        setBottomSheetVisible(true);
-        setSelectedRoute(null);
-        setExpanded(false);
+      const driverRoutes = await P2PDriver(startLocation, endLocation);
+      const publicRoutes = await P2PPublicTrans(startLocation, endLocation);
+  
+      driverRoutes.sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration));
+      publicRoutes.sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration));
+  
+      setRoutes({
+        driver: driverRoutes,
+        public: publicRoutes
+      });
+      setBottomSheetVisible(true);
+      setSelectedRoute(null);
+      setExpanded(false);
     } catch (error) {
       console.error('Error fetching paths:', error);
+      Alert.alert(
+        'Routing Error',
+        error.message || 'Could not fetch routes. Please check your locations.'
+      );
     }
   };
+  
 
   const shortenText = (text) => {
     if (!text) return '';

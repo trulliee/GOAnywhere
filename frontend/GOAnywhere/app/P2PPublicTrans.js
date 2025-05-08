@@ -1,14 +1,18 @@
-// P2PPublicTrans.js
 import axios from 'axios';
-import polyline from '@mapbox/polyline'; 
+import polyline from '@mapbox/polyline';
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
-const LTA_ACCOUNT_KEY = "CetOCVT4SmqDrAHkHLrf5g==";
+const LTA_ACCOUNT_KEY       = "CetOCVT4SmqDrAHkHLrf5g==";
 
-const GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
-const GOOGLE_DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json";
-const LTA_BUS_STOPS_API = "https://datamall2.mytransport.sg/ltaodataservice/BusStops";
-const LTA_BUS_ROUTES_API = "https://datamall2.mytransport.sg/ltaodataservice/BusRoutes";
+const GOOGLE_GEOCODE_URL       = "https://maps.googleapis.com/maps/api/geocode/json";
+const GOOGLE_DIRECTIONS_URL    = "https://maps.googleapis.com/maps/api/directions/json";
+const LTA_BUS_STOPS_API        = "https://datamall2.mytransport.sg/ltaodataservice/BusStops";
+const LTA_BUS_ROUTES_API       = "https://datamall2.mytransport.sg/ltaodataservice/BusRoutes";
+const TRAIN_SERVICE_ALERTS_URL = "https://datamall2.mytransport.sg/ltaodataservice/TrainServiceAlerts";
+const BUS_ARRIVAL_URL               = "https://datamall2.mytransport.sg/ltaodataservice/v3/BusArrival";
+const TRAFFIC_INCIDENTS_URL         = "https://datamall2.mytransport.sg/ltaodataservice/TrafficIncidents";
+const ROAD_WORKS_URL                = "https://datamall2.mytransport.sg/ltaodataservice/RoadWorks";
+
 const stationExits = require('./MRTStationExit.json');
 
 const getCoordinates = async (address) => {
@@ -27,17 +31,74 @@ const getCoordinates = async (address) => {
   if (response.data.status !== "OK" || !response.data.results?.length) {
     throw new Error(`Invalid location: "${address}"`);
   }
-
-  // Reject any partial/guessed matches
   if (response.data.results[0].partial_match) {
-    throw new Error(`Uncertain match for: "${address}"`);
+    const types = response.data.results[0].types || [];
+    // allow if Google still recognized it as a station, route, or establishment
+    if (
+      !types.includes('transit_station') &&
+      !types.includes('route') &&
+      !types.includes('establishment')
+    ) {
+      throw new Error(`Uncertain match for: "${address}"`);
+    }
   }
-
   const { lat, lng } = response.data.results[0].geometry.location;
   return { lat, lng };
 };
 
+async function fetchTrainAlerts() {
+  try {
+    const { data } = await axios.get(`${TRAIN_SERVICE_ALERTS_URL}?$top=50`, {
+      headers: { AccountKey: LTA_ACCOUNT_KEY }
+    });
+    return Array.isArray(data.value) ? data.value.map(x => x.Line) : [];
+  } catch (e) {
+    console.warn("⚠️ Could not fetch train alerts:", e.message);
+    return [];
+  }
+}
 
+async function fetchBusLoad(stopCode, serviceNo) {
+  // guard against undefined
+  if (!stopCode || !serviceNo) return null;
+
+  try {
+    const { data } = await axios.get(
+      `${BUS_ARRIVAL_URL}?BusStopCode=${stopCode}&ServiceNo=${serviceNo}`,
+      { headers: { AccountKey: LTA_ACCOUNT_KEY } }
+    );
+    // data.value is an array of up to 3 predictions; take the first
+    const first = Array.isArray(data.value) ? data.value[0] : null;
+    return first?.Load || null;   // "SEA" / "SDA" / "LSD"
+  } catch (e) {
+    console.warn(`BusArrival failed for ${stopCode}/${serviceNo}:`, e.message);
+    return null;
+  }
+}
+
+async function fetchTrafficIncidents() {
+  try {
+    const { data } = await axios.get(`${TRAFFIC_INCIDENTS_URL}?$top=100`, {
+      headers: { AccountKey: LTA_ACCOUNT_KEY }
+    });
+    return Array.isArray(data.value) ? data.value : [];
+  } catch (e) {
+    console.warn("⚠️ Could not fetch traffic incidents:", e.message);
+    return [];
+  }
+}
+
+async function fetchRoadWorks() {
+  try {
+    const { data } = await axios.get(`${ROAD_WORKS_URL}?$top=100`, {
+      headers: { AccountKey: LTA_ACCOUNT_KEY }
+    });
+    return Array.isArray(data.value) ? data.value : [];
+  } catch (e) {
+    console.warn("⚠️ Could not fetch road works:", e.message);
+    return [];
+  }
+}
 const getAllBusStops = async () => {
   const response = await axios.get(LTA_BUS_STOPS_API, {
     headers: { AccountKey: LTA_ACCOUNT_KEY },
@@ -372,19 +433,80 @@ const P2PPublicTrans = async (startLocation, endLocation) => {
     return hours * 60 + mins;
   };
 
-  // sort by true duration in minutes
-  mergedRoutes.sort((a, b) => {
-    return toMinutes(a.duration) - toMinutes(b.duration);
-  });
+  const isNear = (pt, inc, threshold = 0.00001) => {
+    return (
+      Math.abs(pt.latitude  - inc.Latitude)  < threshold &&
+      Math.abs(pt.longitude - inc.Longitude) < threshold
+    );
+  };
+
+  mergedRoutes.sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration));
+
+
+  const [railDown, trafficIncidents, roadWorks] = await Promise.all([
+    fetchTrainAlerts(),
+    fetchTrafficIncidents(),
+    fetchRoadWorks()
+  ]);
+
+  const codeByDesc = Object.fromEntries(
+    busStops.map(s => [s.Description, s.BusStopCode])
+  );
+
+  await Promise.all( mergedRoutes.map(async route => {
+    const issues = [];  
+  
+    // train delays?
+    if (route.steps.some(s =>
+          s.transitInfo?.vehicleType === "SUBWAY" &&
+          railDown.includes(s.transitInfo.lineName)
+       )) {
+      issues.push("train delays");
+    }
+    
+
+    //bus crowded?
+    for (const s of route.steps) {
+      const ti = s.transitInfo;
+      if (ti?.vehicleType === 'BUS') {
+        const code = codeByDesc[ti.departureStop];
+        const load = await fetchBusLoad(code, ti.lineName);
+        if (load === 'SDA' || load === 'LSD') {
+          issues.push("crowded bus");
+          break;
+        }
+      }
+    }
+  
+    const usesBus = route.steps.some(s =>
+      s.transitInfo?.vehicleType === "BUS"
+    );
+  
+    if (usesBus) {
+      // any road incident or works?
+      const nearbyInc = trafficIncidents.some(inc =>
+        route.polyline.some(pt => isNear(pt, inc))
+      );
+      if (nearbyInc) issues.push("traffic incident");
+    
+      // 2) filter road works similarly (assuming each work has .Latitude/.Longitude)
+      const nearbyWork = roadWorks.some(w =>
+        route.polyline.some(pt => isNear(pt, w))
+      );
+      if (nearbyWork) issues.push("road works");
+    
+      route.issues = issues;  
+  }}));
 
   return mergedRoutes;
 
-
-
   } catch (error) {
-    console.error("Error fetching public-transit route:", error.response?.data || error.message);
-    throw new Error('Public-transport routes failed: ' + (error.message || 'unknown'));
-  }
+    console.error(
+    "Error fetching public-transit route:",
+    error.response?.data || error.message
+  );
+  throw new Error('Public-transport routes failed: ' + (error.message || 'unknown'));
+}
 };
 
 export default P2PPublicTrans;

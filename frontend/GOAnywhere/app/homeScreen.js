@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import Collapsible from 'react-native-collapsible';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
@@ -55,6 +56,7 @@ export default function HomeScreen() {
   const [trafficExpanded, setTrafficExpanded] = useState(false);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
 
+  
   // Crowdsourced Menu
   const [isCrowdModalVisible, setIsCrowdModalVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
@@ -85,27 +87,7 @@ export default function HomeScreen() {
     { name: 'Saved 1', icon: 'star'},
     { name: 'Saved 2', icon: 'star'},
   ];
-  const locationHistory = [
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' },
-    { name: '168790', address: '2 Spooner Rd' }
-  ];
+  
   const showCrowdModal = () => {
     setReportMode(null);
     setIsCrowdModalVisible(true);
@@ -220,9 +202,24 @@ export default function HomeScreen() {
       const data = await response.json();
   
       if (data.results.length > 0) {
-        const { lat, lng } = data.results[0].geometry.location;
+        const result = data.results[0];
+        const { lat, lng } = result.geometry.location;
         setMapRegion({ latitude: lat, longitude: lng, latitudeDelta: 0.05, longitudeDelta: 0.05 });
         setMarker({ latitude: lat, longitude: lng });
+
+        const detailedAddress = result.formatted_address;
+
+        const newEntry = {
+          name: searchInput,
+          address: detailedAddress
+        };
+
+        // dedupe & cap at 20 entries
+        const updatedHistory = [newEntry, ...locationHistory.filter(e => e.address !== detailedAddress)];
+        const trimmed = updatedHistory.slice(0, 20);
+
+        setLocationHistory(trimmed);
+        await AsyncStorage.setItem('locationHistory', JSON.stringify(trimmed));
       } else {
         alert('Location not found.');
       }
@@ -335,6 +332,19 @@ export default function HomeScreen() {
       setIsSidebarVisible(false);
     });
   };
+
+  const [locationHistory, setLocationHistory] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const json = await AsyncStorage.getItem('locationHistory');
+        if (json) setLocationHistory(JSON.parse(json));
+      } catch (e) {
+        console.error('Failed to load history', e);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     // Load user data
@@ -465,7 +475,7 @@ export default function HomeScreen() {
                         style={styles.historyEntry}
                       >
                         <Ionicons name="time-outline" size={28} style={{ marginRight: 5 }}/>
-                        <View style={{ marginLeft: 5 }}>
+                        <View>
                           <Text style={styles.historyTitle}>{entry.name}</Text>
                           <Text style={styles.historySubtitle}>{entry.address}</Text>
                         </View>

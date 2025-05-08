@@ -120,7 +120,7 @@ const P2PDriver = async (startLocation, endLocation) => {
       };
     });
 
-    const isNear = (pt, inc, threshold = 0.00001) => {
+    const isNear = (pt, inc, threshold = 0.0001) => {
       return (
         Math.abs(pt.latitude  - inc.Latitude)  < threshold &&
         Math.abs(pt.longitude - inc.Longitude) < threshold

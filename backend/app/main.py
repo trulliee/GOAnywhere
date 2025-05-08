@@ -54,7 +54,7 @@ app.include_router(notifications_router, tags=["Notifications"])
 app.include_router(crowd_router, tags=["Crowdsourced"])
 #app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"]) # Include the dashboard router
 #app.include_router(crowd_router) # Include the crowdsourced router
-app.include_router(auth.router)
+app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(account_settings.router)
 
 if __name__ == "__main__":

@@ -175,7 +175,7 @@ export default AuthService;
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
-import { API_URL } from './utils/apiConfig'; // Make sure this points correctly to your backend
+import { API_URL } from './utils/apiConfig';
 
 class AuthService {
   // Sign up a new user
@@ -188,15 +188,17 @@ class AuthService {
           email,
           password,
           name,
-          phone_number: phoneNumber, // Optional field, send empty string if not used
+          phone_number: phoneNumber,
         }),
       });
 
-      const data = await response.json();
+      const text = await response.text();
       if (!response.ok) {
-        throw new Error(data.detail || 'Signup failed.');
+        console.error('Signup raw error:', text);
+        throw new Error('Signup failed. Server error or invalid response.');
       }
 
+      const data = JSON.parse(text); // Now safe to parse
       const userData = {
         uid: data.uid,
         email: data.email,
@@ -223,16 +225,20 @@ class AuthService {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
+      const text = await response.text(); // get raw response first
       if (!response.ok) {
-        throw new Error(data.detail || 'Login failed.');
+        console.error('Login raw error:', text);
+        throw new Error('Login failed. Server error or invalid credentials.');
       }
+
+      const data = JSON.parse(text); // safely parse now
 
       const userData = {
         uid: data.uid,
         email: data.email,
-        name: data.name || email.split('@')[0],
+        name: data.name || (email ? email.split('@')[0] : ''),
         token: data.token,
+        user_type: data.user_type,
       };
 
       await AsyncStorage.setItem('user_info', JSON.stringify(userData));

@@ -168,30 +168,38 @@ const P2PNavigation = () => {
     }, 0);
   };
 
-  const renderRouteOption = (route, index) => (
-    <TouchableOpacity
-      key={index}
-      style={styles.routeCard}
-      onPress={() => {
-        setSelectedRoute(route);
-        setBottomSheetVisible(false);
-      }}
-    >
-      <Text style={styles.routeTitle}>
-        Path {index + 1}: 
-      </Text>
-      <Text style={styles.routeSummary}>
-        {activeTab === 'driver'
-          ? getDriverStepSummary(route.steps)
-          : getPublicStepSummary(route.steps)}
-      </Text>
-      <Text style={styles.routeSubSummary}>
-        {route.duration} ({route.distance})
-        {activeTab === 'public' && ` • ${countStations(route.steps)} station${countStations(route.steps) > 1 ? 's' : ''}, ${countTransfers(route.steps)} transfer${countTransfers(route.steps) !== 1 ? 's' : ''}`}
-      </Text>
-
-    </TouchableOpacity>
-  );
+  const renderRouteOption = (route, index) => {
+    const warn = (route.issues && route.issues.length)
+      ? `(⚠️ May be affected by ${route.issues.join(', ')})`
+      : '';
+  
+    return (
+      <TouchableOpacity
+        key={index}
+        style={styles.routeCard}
+        onPress={() => {
+          setSelectedRoute(route);
+          setBottomSheetVisible(false);
+        }}
+      >
+        <Text style={styles.routeTitle}>
+          Path {index + 1}: {warn}
+        </Text>
+  
+        <Text style={styles.routeSummary}>
+          {activeTab === 'driver'
+            ? getDriverStepSummary(route.steps)
+            : getPublicStepSummary(route.steps)}
+        </Text>
+  
+        <Text style={styles.routeSubSummary}>
+          {route.duration} ({route.distance})
+          {activeTab === 'public' &&
+            ` • ${countStations(route.steps)} station${countStations(route.steps)>1?'s':''}, ${countTransfers(route.steps)} transfer${countTransfers(route.steps)!==1?'s':''}`}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
 return (
   <TouchableWithoutFeedback onPress={Keyboard.dismiss}>

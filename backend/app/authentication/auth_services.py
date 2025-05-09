@@ -7,6 +7,12 @@ class AuthService:
     @staticmethod
     async def create_user(email: str, password: str, display_name: str = None):
         try:
+            auth.get_user_by_email(email)
+            raise Exception("Email already exists.")
+        except auth.UserNotFoundError:
+            pass
+
+        try:
             user = auth.create_user(
                 email=email,
                 password=password,

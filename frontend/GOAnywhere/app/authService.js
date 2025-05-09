@@ -188,7 +188,7 @@ class AuthService {
           email,
           password,
           name,
-          phone_number: phoneNumber,
+          phoneNumber,
         }),
       });
 

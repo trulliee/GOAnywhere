@@ -56,37 +56,33 @@ function P2PNavigation() {
   const [reportMode, setReportMode] = useState(null); // 'driver' or 'public'
   const slideAnim = useRef(new Animated.Value(height)).current;
 
-  // Categories for reports
+  // Categories for reports - updated to match the images
   const driverCategories = [
-    "Accident", "Road Works", "Traffic Police",
+    "Accident", "Road Works", "Police",
     "Weather", "Hazard", "Map Issue"
   ];
   const publicCategories = [
     "Accident", "Transit Works", "High Crowd",
-    "Weather", "Hazard", "Traffic Police",
+    "Weather", "Hazard", "Police",
     "Delays", "Map Issue"
   ];
   const categoryIcons = {
-    "Accident": { name: "car-brake-alert", library: "MaterialCommunityIcons" },              
+    "Accident": { name: "car-crash", library: "FontAwesome5" },              
     "Road Works": { name: "hard-hat", library: "FontAwesome5" },               
-    "Transit Works": { name: "train", library: "FontAwesome" },             
+    "Transit Works": { name: "train", library: "FontAwesome5" },             
     "High Crowd": { name: "people", library: "MaterialIcons" },                  
-    "Weather": { name: "weather-cloudy", library: "MaterialCommunityIcons" },                      
-    "Hazard": { name: "warning", library: "MaterialIcons" },     
-    "Traffic Police": { name: "local-police", library: "MaterialIcons" },    
-    "Delays": { name: "time", library: "Ionicons" },                        
-    "Map Issue": { name: "map", library: "MaterialIcons" }                    
+    "Weather": { name: "cloud", library: "FontAwesome5" },                      
+    "Hazard": { name: "exclamation-triangle", library: "FontAwesome5" },     
+    "Police": { name: "user-secret", library: "FontAwesome5" },    
+    "Delays": { name: "hand-paper", library: "FontAwesome5" },                        
+    "Map Issue": { name: "map-marked", library: "FontAwesome5" }                    
   };
   
-  // Function to show crowd reporting selection modal
+  // Modified: Function to show crowd reporting selection modal
+  // Now directly uses the current activeTab value and shows the categories modal
   const showCrowdModal = () => {
-    setReportMode(null);
-    setIsCrowdModalVisible(true);
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    // Set report mode based on current tab
+    setReportMode(activeTab);
   };
 
   // Function to hide crowd reporting selection modal
@@ -98,7 +94,7 @@ function P2PNavigation() {
     }).start(() => setIsCrowdModalVisible(false));
   };
 
-  // Function to handle report mode selection
+  // Function to handle report mode selection (keeping for backward compatibility)
   const handleReportModeSelect = (mode) => {
     Animated.timing(slideAnim, {
       toValue: height,
@@ -521,15 +517,15 @@ function P2PNavigation() {
             </View>
             <View style={styles.summaryDetails}>
               <Text style={styles.summaryTitle}>
-                {shortenText(startLocation)} to {shortenText(endLocation)}
+                <Text>{shortenText(startLocation)}</Text> to <Text>{shortenText(endLocation)}</Text>
               </Text>
               <View style={styles.summaryMetrics}>
-                <Text style={styles.summaryMetric}>{selectedRoute.duration}</Text>
-                <Text style={styles.summaryMetric}>{selectedRoute.distance}</Text>
+                <Text style={styles.summaryMetric}><Text>{selectedRoute.duration}</Text></Text>
+                <Text style={styles.summaryMetric}><Text>{selectedRoute.distance}</Text></Text>
                 
                 {selectedRoute.issues && selectedRoute.issues.length > 0 && (
                   <Text style={styles.issuesText}>
-                    ⚠️ {selectedRoute.issues.join(', ')}
+                    ⚠️ <Text>{selectedRoute.issues.join(', ')}</Text>
                   </Text>
                 )}
               </View>
@@ -567,13 +563,13 @@ function P2PNavigation() {
                           </Text>
                         </View>
                         <Text style={styles.instructionDetail}>
-                          From: {isTransit.departureStop}
+                          From: <Text>{isTransit.departureStop}</Text>
                         </Text>
                         <Text style={styles.instructionDetail}>
-                          To: {isTransit.arrivalStop}
+                          To: <Text>{isTransit.arrivalStop}</Text>
                         </Text>
                         <Text style={styles.instructionDetail}>
-                          {isTransit.numStops} stops
+                          <Text>{isTransit.numStops}</Text> stops
                         </Text>
                       </>
                     ) : (
@@ -598,7 +594,7 @@ function P2PNavigation() {
                         </View>
                         {step.distance && (
                           <Text style={styles.instructionDetail}>
-                            Distance: {step.distance}
+                            Distance: <Text>{step.distance}</Text>
                           </Text>
                         )}
                       </>
@@ -661,6 +657,7 @@ function P2PNavigation() {
     
     return (
       <View style={styles.navigationView}>
+        {/* Modified navigation header to show mode */}
         <View style={styles.navigationHeader}>
           <TouchableOpacity 
             style={styles.backButtonNav} 
@@ -685,7 +682,19 @@ function P2PNavigation() {
           >
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.navLocationText}>Current Location</Text>
+          
+          {/* Added mode indicator */}
+          <View style={styles.modeIndicator}>
+            <MaterialIcons 
+              name={activeTab === 'driver' ? "directions-car" : "directions-transit"} 
+              size={20} 
+              color="#fff" 
+            />
+            <Text style={styles.navModeText}>
+              {activeTab === 'driver' ? "Driver Mode" : "Public Transit"}
+            </Text>
+          </View>
+          
           <TouchableOpacity style={styles.homeButton}>
             <Text style={styles.homeButtonText}>Destination</Text>
           </TouchableOpacity>
@@ -702,10 +711,10 @@ function P2PNavigation() {
               />
               <View style={styles.directionTextContainer}>
                 <Text style={styles.directionMainText}>
-                  {getDirectionText(nextInstruction.maneuver || 'straight')}
+                  <Text>{getDirectionText(nextInstruction.maneuver || 'straight')}</Text>
                 </Text>
                 <Text style={styles.directionDistanceText}>
-                  IN {nextInstruction.distance || "1.0 km"}
+                  IN <Text>{nextInstruction.distance || "1.0 km"}</Text>
                 </Text>
               </View>
             </View>
@@ -723,11 +732,11 @@ function P2PNavigation() {
                 <MaterialIcons name="directions-bus" size={24} color="#fff" />
               </View>
               <Text style={styles.transitLineText}>
-                {isTransit ? isTransit.lineName : ''} Bus Stops
+                <Text>{isTransit ? isTransit.lineName : ''}</Text> Bus Stops
               </Text>
               <View style={styles.stopsCircle}>
                 <Text style={styles.stopsNumber}>
-                  {isTransit ? isTransit.numStops : '?'}
+                  <Text>{isTransit ? isTransit.numStops : '?'}</Text>
                 </Text>
               </View>
             </View>
@@ -737,11 +746,11 @@ function P2PNavigation() {
                 <MaterialIcons name="train" size={24} color="#fff" />
               </View>
               <Text style={styles.transitLineText}>
-                {isTransit && isTransit.vehicleType === 'SUBWAY' ? isTransit.lineName : ''} Stations
+                <Text>{isTransit && isTransit.vehicleType === 'SUBWAY' ? isTransit.lineName : ''}</Text> Stations
               </Text>
               <View style={styles.stopsCircle}>
                 <Text style={styles.stopsNumber}>
-                  {isTransit && isTransit.vehicleType === 'SUBWAY' ? isTransit.numStops : '0'}
+                  <Text>{isTransit && isTransit.vehicleType === 'SUBWAY' ? isTransit.numStops : '0'}</Text>
                 </Text>
               </View>
             </View>
@@ -771,7 +780,7 @@ function P2PNavigation() {
                             styles.timelineLocation, 
                             isActive && styles.activeTimelineText
                           ]}>
-                            {ti ? ti.departureStop : cleanInstruction(step.instruction)}
+                            <Text>{ti ? ti.departureStop : cleanInstruction(step.instruction)}</Text>
                           </Text>
                           {ti && (
                             <View style={[styles.transitLineIndicator, { backgroundColor: getLineColor(ti.lineName) }]}>
@@ -877,29 +886,38 @@ function P2PNavigation() {
           </ScrollView>
         </Animated.View>
         
-        {/* Fixed Navigation Controls at Bottom - Simplified to match the screenshots */}
-        <View style={styles.navigationControls}>
-          <TouchableOpacity style={styles.controlButton} onPress={showCrowdModal}>
-            <View style={styles.controlIconContainer}>
-              <MaterialCommunityIcons name="car-brake-alert" size={28} color="#fff" />
-            </View>
-            <Text style={styles.controlText}>Accident</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.controlButton} onPress={showCrowdModal}>
-            <View style={styles.controlIconContainer}>
-              <FontAwesome5 name="hard-hat" size={28} color="#fff" />
-            </View>
-            <Text style={styles.controlText}>Road Works</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.controlButton} onPress={showCrowdModal}>
-            <View style={styles.controlIconContainer}>
-              <MaterialIcons name="people" size={28} color="#fff" />
-            </View>
-            <Text style={styles.controlText}>High Crowd</Text>
-          </TouchableOpacity>
-        </View>
+          {/* Fixed Navigation Controls at Bottom - Modified to match image styles */}
+          <View style={styles.navigationControls}>
+            {/* These buttons now use the icons matching the images */}
+            <TouchableOpacity style={styles.controlButton} onPress={() => submitCrowdsourcedReport("Accident")}>
+              <View style={styles.controlIconContainer}>
+                <FontAwesome5 name="car-crash" size={24} color="#fff" />
+              </View>
+              <Text style={styles.controlText}>Accident</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.controlButton} onPress={() => submitCrowdsourcedReport(activeTab === 'driver' ? "Road Works" : "Transit Works")}>
+              <View style={styles.controlIconContainer}>
+                {activeTab === 'driver' ? (
+                  <FontAwesome5 name="hard-hat" size={24} color="#fff" />
+                ) : (
+                  <FontAwesome5 name="train" size={24} color="#fff" />
+                )}
+              </View>
+              <Text style={styles.controlText}>{activeTab === 'driver' ? "Road Works" : "Transit Works"}</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.controlButton} onPress={() => submitCrowdsourcedReport(activeTab === 'driver' ? "Police" : "High Crowd")}>
+              <View style={styles.controlIconContainer}>
+                {activeTab === 'driver' ? (
+                  <FontAwesome5 name="user-secret" size={24} color="#fff" />
+                ) : (
+                  <MaterialIcons name="people" size={24} color="#fff" />
+                )}
+              </View>
+              <Text style={styles.controlText}>{activeTab === 'driver' ? "Police" : "High Crowd"}</Text>
+            </TouchableOpacity>
+          </View>
       </View>
     );
   };
@@ -1008,32 +1026,10 @@ function P2PNavigation() {
     );
   };
 
-  // Render Crowdsourced modals 
   const renderCrowdsourcedModals = () => {
     return (
       <>
-        {/* Crowdsourced Mode Selection Modal */}
-        {isCrowdModalVisible && (
-          <TouchableOpacity style={styles.modalOverlay} onPress={hideCrowdModal} activeOpacity={1}>
-            <Animated.View style={[
-              styles.bottomSheet,
-              { 
-                transform: [{ translateY: slideAnim }],
-                alignSelf: 'stretch'
-              }
-            ]}>
-              <Text style={styles.sheetTitle}>Report As</Text>
-              <TouchableOpacity style={styles.sheetButton} onPress={() => handleReportModeSelect('driver')}>
-                <Text style={styles.sheetButtonText}>Driver</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.sheetButton} onPress={() => handleReportModeSelect('public')}>
-                <Text style={styles.sheetButtonText}>Public Transport</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          </TouchableOpacity>
-        )}
-        
-        {/* Report Categories Modal */}
+        {/* Report Categories Modal - Styled to match the provided images */}
         {reportMode && (
           <TouchableWithoutFeedback onPress={() => setReportMode(null)}>
             <View style={styles.modalOverlay}>
@@ -1043,29 +1039,32 @@ function P2PNavigation() {
                     {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
                   </Text>
 
-                  <View style={styles.reportCategoryContainer}>
-                    {(reportMode === 'driver' ? driverCategories : publicCategories).map((category, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={styles.reportCategoryButton}
-                        onPress={() => submitCrowdsourcedReport(category)}
-                      >
-                        {(() => {
-                          const iconInfo = categoryIcons[category] || {};
-                          
-                          if (iconInfo.library === "MaterialCommunityIcons") {
-                            return <MaterialCommunityIcons name={iconInfo.name || "help-circle"} size={28} style={{ marginBottom: 5 }} />;
-                          } else if (iconInfo.library === "FontAwesome5") {
-                            return <FontAwesome5 name={iconInfo.name || "question"} size={28} style={{ marginBottom: 5 }} />;
-                          } else if (iconInfo.library === "FontAwesome") {
-                            return <FontAwesome name={iconInfo.name || "question"} size={28} style={{ marginBottom: 5 }} />;
-                          } else {
-                            return <MaterialIcons name={iconInfo.name || "help"} size={28} style={{ marginBottom: 5 }} />;
-                          }
-                        })()}
-                        <Text style={styles.reportCategoryText}>{category}</Text>
-                      </TouchableOpacity>
-                    ))}
+                  <View style={styles.reportCategoryGrid}>
+                    {(reportMode === 'driver' ? driverCategories : publicCategories).map((category, index) => {
+                      const iconInfo = categoryIcons[category] || {};
+                      return (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.reportCategoryButton}
+                          onPress={() => submitCrowdsourcedReport(category)}
+                        >
+                          <View style={styles.categoryIconContainer}>
+                            {(() => {
+                              if (iconInfo.library === "FontAwesome5") {
+                                return <FontAwesome5 name={iconInfo.name || "question"} size={24} color="#fff" />;
+                              } else if (iconInfo.library === "FontAwesome") {
+                                return <FontAwesome name={iconInfo.name || "question"} size={24} color="#fff" />;
+                              } else if (iconInfo.library === "MaterialCommunityIcons") {
+                                return <MaterialCommunityIcons name={iconInfo.name || "help-circle"} size={24} color="#fff" />;
+                              } else {
+                                return <MaterialIcons name={iconInfo.name || "help"} size={24} color="#fff" />;
+                              }
+                            })()}
+                          </View>
+                          <Text style={styles.reportCategoryText}>{category}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
               </TouchableWithoutFeedback>
@@ -1141,17 +1140,15 @@ function P2PNavigation() {
         ))}
       </MapView>
       
-      {/* Header Navigation Bar */}
-      <View style={styles.headerNavBar}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="chevron-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>P2PNavigation</Text>
-        <View style={{width: 24}} />
-      </View>
+      {/* Modified: Header Navigation Bar - Only displayed when not navigating */}
+      {!isNavigating && !showRoutePreview && (
+        <View style={styles.headerNavBar}>
+          {/* Removed back button and title */}
+          <View style={{width: 24}} />
+          <View style={{width: 24}} />
+          <View style={{width: 24}} />
+        </View>
+      )}
 
       {/* Search Input Fields - Positioned at the top but with proper spacing from header */}
       {searchMode && !isNavigating && !showRoutePreview && !selectedRoute && (
@@ -1218,18 +1215,21 @@ function P2PNavigation() {
       {/* Route Selection Bottom Sheet */}
       {bottomSheetVisible && (
         <View style={styles.bottomSheet}>
-          <View style={styles.tabRow}>
+          {/* Enhanced tab row with more prominent styling */}
+          <View style={styles.tabRowContainer}>
             <TouchableOpacity
               onPress={() => setActiveTab('driver')}
               style={[styles.tab, activeTab === 'driver' && styles.activeTab]}
             >
-              <Text style={styles.tabText}>Driver</Text>
+              <MaterialIcons name="directions-car" size={20} color={activeTab === 'driver' ? "#fff" : "#aaa"} />
+              <Text style={[styles.tabText, activeTab === 'driver' && styles.activeTabText]}>Driver</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setActiveTab('public')}
               style={[styles.tab, activeTab === 'public' && styles.activeTab]}
             >
-              <Text style={styles.tabText}>Public Transport</Text>
+              <MaterialIcons name="directions-transit" size={20} color={activeTab === 'public' ? "#fff" : "#aaa"} />
+              <Text style={[styles.tabText, activeTab === 'public' && styles.activeTabText]}>Public Transport</Text>
             </TouchableOpacity>
           </View>
 
@@ -1292,7 +1292,7 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 50 : 40,
     paddingHorizontal: 16,
     paddingBottom: 8,
-    backgroundColor: 'white',
+    backgroundColor: 'transparent',
     zIndex: 10,
   },
   headerTitle: {
@@ -1516,24 +1516,33 @@ const styles = StyleSheet.create({
     padding: 16, 
     maxHeight: height * 0.5 
   },
-  tabRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-around', 
-    marginBottom: 16 
+  tabRowContainer: {
+    marginVertical: 10,
+    backgroundColor: '#4a4a4a',
+    borderRadius: 10,
+    flexDirection: 'row',
+    marginBottom: 16,
+    padding: 5,
   },
   tab: { 
+    flexDirection: 'row',
     padding: 10,
-    width: '45%',
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
   },
   activeTab: { 
-    borderBottomWidth: 2, 
-    borderBottomColor: 'white' 
+    backgroundColor: '#666',
   },
   tabText: { 
-    color: 'white', 
+    color: '#aaa', 
     fontWeight: 'bold',
     fontSize: 16,
+    marginLeft: 6,
+  },
+  activeTabText: {
+    color: 'white',
   },
   routeCard: { 
     backgroundColor: 'white', 
@@ -1858,6 +1867,21 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
   },
+  // New styles for navigation mode indicator
+  modeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#555',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+  },
+  navModeText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginLeft: 6,
+  },
   publicTransitContainer: {
     backgroundColor: '#333',
     marginTop: 60,
@@ -2008,19 +2032,50 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
   },
-  // Crowdsourced report modals
+  // Fixed navigation controls at bottom to use the proper icons
+  navigationControls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#333',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+  },
+  controlButton: {
+    alignItems: 'center',
+  },
+  controlIconContainer: {
+    backgroundColor: '#555',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  controlText: {
+    color: 'white',
+    fontSize: 12,
+  },
+  
+  // Crowdsourced report modals - updated to match the images
   modalOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
     zIndex: 15,
   },
   bottomSheet: {
-    backgroundColor: '#fff',
+    backgroundColor: '#333',
     padding: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -2028,41 +2083,34 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 15,
+    marginBottom: 20,
     textAlign: 'center',
+    color: '#fff'
   },
-  sheetButton: {
-    backgroundColor: '#f2f2f2',
-    paddingVertical: 12,
-    borderRadius: 10,
-    marginVertical: 6,
-    alignItems: 'center',
-  },
-  sheetButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  reportCategoryContainer: {
+  reportCategoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    marginTop: 10,
   },
   reportCategoryButton: {
-    width: '30%',
-    marginVertical: 10,
-    backgroundColor: '#eee',
-    paddingVertical: 20,
-    borderRadius: 12,
+    width: '32%',
+    marginBottom: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
+  },
+  categoryIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#555',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   reportCategoryText: {
     fontSize: 12,
+    color: '#fff',
     textAlign: 'center',
-    marginTop: 5,
   },
 });
 

@@ -12,18 +12,20 @@ import {
   BackHandler, 
   Alert,
   Image,
-  Platform
+  Platform,
+  Animated
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { Ionicons, MaterialIcons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons, MaterialCommunityIcons, FontAwesome5, FontAwesome } from '@expo/vector-icons';
 import P2PPublicTrans from './P2PPublicTrans';
 import P2PDriver from './P2PDriver';
 import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
-const P2PNavigation = () => {
+function P2PNavigation() {
   const navigation = useNavigation();
   const mapRef = useRef(null);
   const [startLocation, setStartLocation] = useState('');
@@ -39,13 +41,91 @@ const P2PNavigation = () => {
   const [showControls, setShowControls] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
-  const [showReportPanel, setShowReportPanel] = useState(false);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
+  const [showRoutePreview, setShowRoutePreview] = useState(false);
+  const [userName, setUserName] = useState('USER');
+  const locationSubscription = useRef(null);
+  const bottomSheetAnimation = useRef(new Animated.Value(0)).current;
+  
+  // Crowdsourced reporting states
+  const [showCrowdsourcedPanel, setShowCrowdsourcedPanel] = useState(false);
+  const [isCrowdModalVisible, setIsCrowdModalVisible] = useState(false);
+  const [reportMode, setReportMode] = useState(null); // 'driver' or 'public'
+  const slideAnim = useRef(new Animated.Value(height)).current;
+
+  // Categories for reports
+  const driverCategories = [
+    "Accident", "Road Works", "Traffic Police",
+    "Weather", "Hazard", "Map Issue"
+  ];
+  const publicCategories = [
+    "Accident", "Transit Works", "High Crowd",
+    "Weather", "Hazard", "Traffic Police",
+    "Delays", "Map Issue"
+  ];
+  const categoryIcons = {
+    "Accident": { name: "car-brake-alert", library: "MaterialCommunityIcons" },              
+    "Road Works": { name: "hard-hat", library: "FontAwesome5" },               
+    "Transit Works": { name: "train", library: "FontAwesome" },             
+    "High Crowd": { name: "people", library: "MaterialIcons" },                  
+    "Weather": { name: "weather-cloudy", library: "MaterialCommunityIcons" },                      
+    "Hazard": { name: "warning", library: "MaterialIcons" },     
+    "Traffic Police": { name: "local-police", library: "MaterialIcons" },    
+    "Delays": { name: "time", library: "Ionicons" },                        
+    "Map Issue": { name: "map", library: "MaterialIcons" }                    
+  };
+  
+  // Function to show crowd reporting selection modal
+  const showCrowdModal = () => {
+    setReportMode(null);
+    setIsCrowdModalVisible(true);
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  // Function to hide crowd reporting selection modal
+  const hideCrowdModal = () => {
+    Animated.timing(slideAnim, {
+      toValue: height,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setIsCrowdModalVisible(false));
+  };
+
+  // Function to handle report mode selection
+  const handleReportModeSelect = (mode) => {
+    Animated.timing(slideAnim, {
+      toValue: height,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsCrowdModalVisible(false);
+      setReportMode(mode);
+    });
+  };
 
   useEffect(() => {
     requestLocationPermission();
+    loadUserName();
+    
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (showReportPanel) {
-        setShowReportPanel(false);
+      if (reportMode) {
+        setReportMode(null);
+        return true;
+      }
+      if (isCrowdModalVisible) {
+        hideCrowdModal();
+        return true;
+      }
+      if (showCrowdsourcedPanel) {
+        setShowCrowdsourcedPanel(false);
+        return true;
+      }
+      if (showRoutePreview) {
+        setShowRoutePreview(false);
         return true;
       }
       if (isNavigating) {
@@ -57,6 +137,7 @@ const P2PNavigation = () => {
             { 
               text: "Yes", 
               onPress: () => {
+                stopLocationTracking();
                 setIsNavigating(false);
                 setSearchMode(true);
                 setSelectedRoute(null);
@@ -74,19 +155,154 @@ const P2PNavigation = () => {
       }
       return false;
     });
-    return () => backHandler.remove();
-  }, [selectedRoute, isNavigating, showReportPanel]);
+    
+    return () => {
+      backHandler.remove();
+      stopLocationTracking();
+    };
+  }, [selectedRoute, isNavigating, showRoutePreview, showCrowdsourcedPanel, isCrowdModalVisible, reportMode]);
+
+  // Load username from AsyncStorage
+  const loadUserName = async () => {
+    try {
+      const storedName = await AsyncStorage.getItem('userName');
+      if (storedName) {
+        setUserName(storedName.toUpperCase());
+      }
+    } catch (error) {
+      console.error('Error loading username:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (showCrowdsourcedPanel) {
+      // Animate bottom sheet up
+      Animated.timing(bottomSheetAnimation, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: false
+      }).start();
+    } else {
+      // Animate bottom sheet down
+      Animated.timing(bottomSheetAnimation, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: false
+      }).start();
+    }
+  }, [showCrowdsourcedPanel]);
 
   const requestLocationPermission = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return;
-    const { latitude, longitude } = (await Location.getCurrentPositionAsync()).coords;
+    
+    const { latitude, longitude } = (await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.BestForNavigation
+    })).coords;
+    
     setCurrentRegion({
       latitude,
       longitude,
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     });
+  };
+
+  const startLocationTracking = async () => {
+    try {
+      // Request permissions if not already granted
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Required", "Location permission is needed for navigation.");
+        return;
+      }
+      
+      // Get current location accuracy
+      await Location.getBackgroundPermissionsAsync();
+      
+      // Start watching position with high accuracy
+      locationSubscription.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          distanceInterval: 10, // Update every 10 meters
+          timeInterval: 1000, // Update every second
+        },
+        (location) => {
+          // Update current region
+          const { latitude, longitude, speed } = location.coords;
+          
+          // Convert speed from m/s to km/h
+          const speedKmh = speed !== null ? Math.round(speed * 3.6) : 0;
+          
+          setCurrentSpeed(speedKmh);
+          
+          // Update map position
+          if (mapRef.current && isNavigating) {
+            setCurrentRegion({
+              latitude,
+              longitude,
+              latitudeDelta: 0.005,
+              longitudeDelta: 0.005,
+            });
+          }
+          
+          // Check if we've reached next waypoint
+          if (selectedRoute && isNavigating) {
+            checkWaypoint(latitude, longitude);
+          }
+        }
+      );
+    } catch (error) {
+      console.error("Error starting location tracking:", error);
+    }
+  };
+
+  const stopLocationTracking = () => {
+    if (locationSubscription.current) {
+      locationSubscription.current.remove();
+      locationSubscription.current = null;
+    }
+  };
+
+  const checkWaypoint = (latitude, longitude) => {
+    if (!selectedRoute || currentStep >= selectedRoute.steps.length) return;
+    
+    const currentStepObj = selectedRoute.steps[currentStep];
+    if (!currentStepObj.endLocation) return;
+    
+    // Check if we're within 50 meters of the waypoint
+    const distance = calculateDistance(
+      latitude,
+      longitude,
+      currentStepObj.endLocation.latitude,
+      currentStepObj.endLocation.longitude
+    );
+    
+    if (distance < 0.05) { // 50 meters threshold
+      // Move to next step
+      if (currentStep < selectedRoute.steps.length - 1) {
+        setCurrentStep(currentStep + 1);
+      }
+    }
+  };
+
+  // Calculate distance between two points in km using Haversine formula
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2)
+    ; 
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    const d = R * c; // Distance in km
+    return d;
+  };
+
+  const deg2rad = (deg) => {
+    return deg * (Math.PI/180);
   };
 
   const toMinutes = txt => {
@@ -139,11 +355,8 @@ const P2PNavigation = () => {
     }
   };
 
-  const startNavigation = () => {
+  const showNavigationPreview = () => {
     if (!selectedRoute) return;
-    setIsNavigating(true);
-    setExpanded(false);
-    setCurrentStep(0);
     
     // Fit the map to the route
     if (mapRef.current && selectedRoute.polyline) {
@@ -152,6 +365,251 @@ const P2PNavigation = () => {
         edgePadding: { top: 100, right: 50, bottom: 200, left: 50 },
         animated: true
       });
+    }
+    
+    // Show the route preview
+    setShowRoutePreview(true);
+  };
+
+  const toggleCrowdsourcedPanel = () => {
+    setShowCrowdsourcedPanel(!showCrowdsourcedPanel);
+  };
+
+  // Get user's current location for the crowdsourced report
+  const getCurrentLocation = async () => {
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      alert('Permission to access location was denied');
+      return null;
+    }
+  
+    let location = await Location.getCurrentPositionAsync({});
+    return {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+      timestamp: Date.now()
+    };
+  };
+
+  // Submit a crowdsourced report
+  const submitCrowdsourcedReport = async (reportType) => {
+    const location = await getCurrentLocation();
+    if (!location) return;
+  
+    try {
+      // Prepare the data to send to the backend
+      const reportData = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        reportType: reportType,
+        username: userName,
+        userId: 'anonymous', // Use user ID if available from auth service
+        timestamp: Date.now()
+      };
+      
+      console.log('Sending report to backend:', reportData);
+      
+      // When you connect to backend, you'll send the data something like this:
+      // await fetch('your-api-endpoint', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify(reportData),
+      // });
+      
+      // Show a success message
+      Alert.alert("Report Submitted", `You reported: ${reportType} at your current location`);
+      setReportMode(null);
+    } catch (error) {
+      console.error("Error submitting report: ", error);
+      Alert.alert("Submission Failed", "Please try again.");
+    }
+  };
+
+  const startNavigation = () => {
+    if (!selectedRoute) return;
+    setShowRoutePreview(false);
+    setIsNavigating(true);
+    setExpanded(false);
+    setCurrentStep(0);
+    setCurrentSpeed(0);
+    
+    // Start location tracking for speed updates
+    startLocationTracking();
+    
+    // Fit the map to the route
+    if (mapRef.current && selectedRoute.polyline) {
+      const coordinates = selectedRoute.polyline;
+      mapRef.current.fitToCoordinates(coordinates, {
+        edgePadding: { top: 100, right: 50, bottom: 200, left: 50 },
+        animated: true
+      });
+    }
+  };
+
+  const chooseAnotherRoute = () => {
+    setShowRoutePreview(false);
+    setBottomSheetVisible(true);
+  };
+
+  const renderRoutePreview = () => {
+    if (!selectedRoute || !showRoutePreview) return null;
+    
+    return (
+      <View style={styles.routePreviewContainer}>
+        <View style={styles.previewHeader}>
+          <TouchableOpacity 
+            style={styles.backButtonPreview} 
+            onPress={() => setShowRoutePreview(false)}
+          >
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.previewTitle}>Route Overview</Text>
+          <View style={{ width: 24 }} /> {/* For balance */}
+        </View>
+        
+        <View style={styles.routeSummaryBox}>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryIconContainer}>
+              {activeTab === 'driver' ? (
+                <MaterialIcons name="directions-car" size={24} color="#fff" />
+              ) : (
+                <MaterialIcons 
+                  name={selectedRoute.type === 'Bus Only' ? "directions-bus" : 
+                        selectedRoute.type === 'MRT Only' ? "train" : "multiple-stop"} 
+                  size={24} 
+                  color="#fff" 
+                />
+              )}
+            </View>
+            <View style={styles.summaryDetails}>
+              <Text style={styles.summaryTitle}>
+                {shortenText(startLocation)} to {shortenText(endLocation)}
+              </Text>
+              <View style={styles.summaryMetrics}>
+                <Text style={styles.summaryMetric}>{selectedRoute.duration}</Text>
+                <Text style={styles.summaryMetric}>{selectedRoute.distance}</Text>
+                
+                {selectedRoute.issues && selectedRoute.issues.length > 0 && (
+                  <Text style={styles.issuesText}>
+                    ⚠️ {selectedRoute.issues.join(', ')}
+                  </Text>
+                )}
+              </View>
+            </View>
+          </View>
+        </View>
+        
+        <ScrollView style={styles.instructionsScroll}>
+          <View style={styles.instructionsContainer}>
+            <Text style={styles.instructionsTitle}>Navigation Instructions</Text>
+            
+            {selectedRoute.steps.map((step, idx) => {
+              const isTransit = step.transitInfo;
+              
+              return (
+                <View key={idx} style={styles.instructionItem}>
+                  <View style={styles.instructionNumberCircle}>
+                    <Text style={styles.instructionNumber}>{idx + 1}</Text>
+                  </View>
+                  
+                  <View style={styles.instructionContent}>
+                    {isTransit ? (
+                      <>
+                        <View style={styles.instructionHeader}>
+                          <MaterialIcons 
+                            name={isTransit.vehicleType === 'SUBWAY' ? "train" : "directions-bus"} 
+                            size={20} 
+                            color={isTransit.vehicleType === 'SUBWAY' ? 
+                              getLineColor(isTransit.lineName) : "#e51a1e"} 
+                          />
+                          <Text style={styles.instructionTitle}>
+                            {isTransit.vehicleType === 'SUBWAY' ? 
+                              `Take ${isTransit.lineName} Line` : 
+                              `Take Bus ${isTransit.lineName}`}
+                          </Text>
+                        </View>
+                        <Text style={styles.instructionDetail}>
+                          From: {isTransit.departureStop}
+                        </Text>
+                        <Text style={styles.instructionDetail}>
+                          To: {isTransit.arrivalStop}
+                        </Text>
+                        <Text style={styles.instructionDetail}>
+                          {isTransit.numStops} stops
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.instructionHeader}>
+                          {step.maneuver ? (
+                            <MaterialIcons 
+                              name={getManeuverIcon(step.maneuver)} 
+                              size={20} 
+                              color="#fff" 
+                            />
+                          ) : (
+                            <MaterialIcons 
+                              name={step.travelMode === "WALKING" ? "directions-walk" : "arrow-forward"} 
+                              size={20} 
+                              color="#fff" 
+                            />
+                          )}
+                          <Text style={styles.instructionTitle}>
+                            {cleanInstruction(step.instruction)}
+                          </Text>
+                        </View>
+                        {step.distance && (
+                          <Text style={styles.instructionDetail}>
+                            Distance: {step.distance}
+                          </Text>
+                        )}
+                      </>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+        
+        <View style={styles.previewActions}>
+          <TouchableOpacity 
+            style={styles.chooseAnotherButton} 
+            onPress={chooseAnotherRoute}
+          >
+            <Text style={styles.chooseAnotherText}>Choose Another</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.startNavigationButton} 
+            onPress={startNavigation}
+          >
+            <Text style={styles.startNavigationText}>Start Navigation</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  // Get an icon name based on the maneuver type
+  const getManeuverIcon = (maneuver) => {
+    switch (maneuver) {
+      case 'turn-right': return 'turn-right';
+      case 'turn-left': return 'turn-left';
+      case 'uturn-right': return 'uturn-right';
+      case 'uturn-left': return 'uturn-left';
+      case 'keep-right': return 'turn-slight-right';
+      case 'keep-left': return 'turn-slight-left';
+      case 'merge': return 'merge';
+      case 'roundabout-right': return 'roundabout-right';
+      case 'roundabout-left': return 'roundabout-left';
+      case 'straight': return 'arrow-upward';
+      case 'fork-right': return 'turn-slight-right';
+      case 'fork-left': return 'turn-slight-left';
+      case 'ferry': return 'directions-boat';
+      default: return 'arrow-forward';
     }
   };
 
@@ -179,6 +637,7 @@ const P2PNavigation = () => {
                   { 
                     text: "Yes", 
                     onPress: () => {
+                      stopLocationTracking();
                       setIsNavigating(false);
                       setSearchMode(true);
                       setSelectedRoute(null);
@@ -196,25 +655,32 @@ const P2PNavigation = () => {
           </TouchableOpacity>
         </View>
         
-        {activeTab === 'driver' ? (
-          <View style={styles.drivingInfoContainer}>
-            <View style={styles.speedLimitCircle}>
-              <Text style={styles.speedLimitText}>100</Text>
-            </View>
-            
-            {nextInstruction && (
-              <View style={styles.nextInstructionBox}>
-                <View style={styles.navigationIconContainer}>
-                  <MaterialIcons name="turn-right" size={40} color="#fff" />
-                </View>
-                <View style={styles.instructionTextContainer}>
-                  <Text style={styles.turnDirectionText}>TURN RIGHT</Text>
-                  <Text style={styles.distanceText}>IN 500M</Text>
-                </View>
+        {/* New Top Navigation Bar with Instructions and Speed */}
+        {activeTab === 'driver' && nextInstruction && (
+          <View style={styles.topNavigationBar}>
+            <View style={styles.directionContainer}>
+              <MaterialIcons 
+                name={getManeuverIcon(nextInstruction.maneuver || 'straight')} 
+                size={28} 
+                color="#fff" 
+              />
+              <View style={styles.directionTextContainer}>
+                <Text style={styles.directionMainText}>
+                  {getDirectionText(nextInstruction.maneuver || 'straight')}
+                </Text>
+                <Text style={styles.directionDistanceText}>
+                  IN {nextInstruction.distance || "1.0 km"}
+                </Text>
               </View>
-            )}
+            </View>
+            <View style={styles.speedContainer}>
+              <Text style={styles.speedText}>{currentSpeed}</Text>
+              <Text style={styles.speedUnit}>km/h</Text>
+            </View>
           </View>
-        ) : (
+        )}
+        
+        {activeTab === 'public' ? (
           <View style={styles.publicTransitContainer}>
             <View style={styles.transitInfoRow}>
               <View style={styles.transitTypeIcon}>
@@ -260,9 +726,15 @@ const P2PNavigation = () => {
                     
                     return (
                       <View key={idx} style={styles.timelineItem}>
-                        <View style={styles.timelineDot} />
+                        <View style={[
+                          styles.timelineDot, 
+                          isActive && styles.activeTimelineDot
+                        ]} />
                         <View style={styles.timelineContent}>
-                          <Text style={styles.timelineLocation}>
+                          <Text style={[
+                            styles.timelineLocation, 
+                            isActive && styles.activeTimelineText
+                          ]}>
                             {ti ? ti.departureStop : cleanInstruction(step.instruction)}
                           </Text>
                           {ti && (
@@ -279,31 +751,113 @@ const P2PNavigation = () => {
               </ScrollView>
             )}
           </View>
-        )}
+        ) : null}
         
+        {/* Bottom up arrow button for crowdsourced reports */}
         <TouchableOpacity 
-          style={styles.expandButton} 
-          onPress={() => setExpanded(!expanded)}>
-          <Ionicons name={expanded ? "chevron-down" : "chevron-up"} size={24} color="#fff" />
+          style={styles.upArrowButton} 
+          onPress={toggleCrowdsourcedPanel}
+        >
+          <Ionicons 
+            name={showCrowdsourcedPanel ? "chevron-down" : "chevron-up"}
+            size={24} 
+            color="#fff" 
+          />
         </TouchableOpacity>
         
-        {/* Bottom controls for navigation */}
+        {/* Animated Crowdsourced Panel */}
+        <Animated.View 
+          style={[
+            styles.crowdsourcedPanel,
+            {
+              transform: [
+                {
+                  translateY: bottomSheetAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [height, height - 200]
+                  })
+                }
+              ]
+            }
+          ]}
+        >
+          <View style={styles.reportButtonsRow}>
+            <TouchableOpacity style={styles.reportButton} onPress={() => submitCrowdsourcedReport("Accident")}>
+              <View style={styles.reportIconCircle}>
+                <MaterialCommunityIcons name="car-brake-alert" size={28} color="#fff" />
+              </View>
+              <Text style={styles.reportButtonText}>Accident</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.reportButton} onPress={() => submitCrowdsourcedReport("Road Works")}>
+              <View style={styles.reportIconCircle}>
+                <FontAwesome5 name="hard-hat" size={28} color="#fff" />
+              </View>
+              <Text style={styles.reportButtonText}>Road Works</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.reportButton} onPress={() => submitCrowdsourcedReport("High Crowd")}>
+              <View style={styles.reportIconCircle}>
+                <MaterialIcons name="people" size={28} color="#fff" />
+              </View>
+              <Text style={styles.reportButtonText}>High Crowd</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.reportsScrollView}>
+            <View style={styles.recentReportsContainer}>
+              <Text style={styles.reportsTitle}>Recent Reports</Text>
+              
+              <View style={styles.reportItem}>
+                <View style={styles.reportItemIcon}>
+                  <MaterialCommunityIcons name="car-brake-alert" size={20} color="#fff" />
+                </View>
+                <View style={styles.reportItemContent}>
+                  <Text style={styles.reportItemTitle}>Accident</Text>
+                  <Text style={styles.reportItemDetails}>Reported 5 min ago • 1.2km ahead</Text>
+                </View>
+              </View>
+              
+              <View style={styles.reportItem}>
+                <View style={[styles.reportItemIcon, { backgroundColor: '#ff9800' }]}>
+                  <FontAwesome5 name="hard-hat" size={20} color="#fff" />
+                </View>
+                <View style={styles.reportItemContent}>
+                  <Text style={styles.reportItemTitle}>Road Works</Text>
+                  <Text style={styles.reportItemDetails}>Reported 30 min ago • 3.5km ahead</Text>
+                </View>
+              </View>
+              
+              <View style={styles.reportItem}>
+                <View style={[styles.reportItemIcon, { backgroundColor: '#2196f3' }]}>
+                  <MaterialIcons name="people" size={20} color="#fff" />
+                </View>
+                <View style={styles.reportItemContent}>
+                  <Text style={styles.reportItemTitle}>High Crowd</Text>
+                  <Text style={styles.reportItemDetails}>Reported 15 min ago • 2.8km ahead</Text>
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+        </Animated.View>
+        
+        {/* Fixed Navigation Controls at Bottom - Simplified to match the screenshots */}
         <View style={styles.navigationControls}>
-          <TouchableOpacity style={styles.controlButton} onPress={() => setShowReportPanel(true)}>
+          <TouchableOpacity style={styles.controlButton} onPress={showCrowdModal}>
             <View style={styles.controlIconContainer}>
               <MaterialCommunityIcons name="car-brake-alert" size={28} color="#fff" />
             </View>
             <Text style={styles.controlText}>Accident</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.controlButton}>
+          <TouchableOpacity style={styles.controlButton} onPress={showCrowdModal}>
             <View style={styles.controlIconContainer}>
               <FontAwesome5 name="hard-hat" size={28} color="#fff" />
             </View>
             <Text style={styles.controlText}>Road Works</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.controlButton}>
+          <TouchableOpacity style={styles.controlButton} onPress={showCrowdModal}>
             <View style={styles.controlIconContainer}>
               <MaterialIcons name="people" size={28} color="#fff" />
             </View>
@@ -313,91 +867,27 @@ const P2PNavigation = () => {
       </View>
     );
   };
-  
-  const renderReportPanel = () => {
-    if (!showReportPanel) return null;
-    
-    return (
-      <View style={styles.reportPanel}>
-        <View style={styles.reportHeader}>
-          <TouchableOpacity onPress={() => setShowReportPanel(false)}>
-            <Ionicons name="close" size={24} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.reportTitle}>Report Issue</Text>
-          <View style={{ width: 24 }} /> {/* Empty view for balance */}
-        </View>
-        
-        <View style={styles.reportOptionsContainer}>
-          <View style={styles.reportOptionsRow}>
-            <TouchableOpacity style={styles.reportOption}>
-              <View style={styles.reportIconContainer}>
-                <MaterialCommunityIcons name="car-brake-alert" size={32} color="#fff" />
-              </View>
-              <Text style={styles.reportOptionText}>Accident</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.reportOption}>
-              <View style={styles.reportIconContainer}>
-                <FontAwesome5 name="hard-hat" size={32} color="#fff" />
-              </View>
-              <Text style={styles.reportOptionText}>Road Works</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.reportOption}>
-              <View style={styles.reportIconContainer}>
-                <MaterialIcons name="people" size={32} color="#fff" />
-              </View>
-              <Text style={styles.reportOptionText}>High Crowd</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.reportOptionsRow}>
-            <TouchableOpacity style={styles.reportOption}>
-              <View style={styles.reportIconContainer}>
-                <MaterialCommunityIcons name="weather-cloudy" size={32} color="#fff" />
-              </View>
-              <Text style={styles.reportOptionText}>Weather</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.reportOption}>
-              <View style={styles.reportIconContainer}>
-                <MaterialIcons name="warning" size={32} color="#fff" />
-              </View>
-              <Text style={styles.reportOptionText}>Hazard</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.reportOption}>
-              <View style={styles.reportIconContainer}>
-                <MaterialIcons name="local-police" size={32} color="#fff" />
-              </View>
-              <Text style={styles.reportOptionText}>Police</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.reportOptionsRow}>
-            <TouchableOpacity style={styles.reportOption}>
-              <View style={styles.reportIconContainer}>
-                <MaterialIcons name="pan-tool" size={32} color="#fff" />
-              </View>
-              <Text style={styles.reportOptionText}>Details</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.reportOption}>
-              <View style={styles.reportIconContainer}>
-                <MaterialIcons name="map" size={32} color="#fff" />
-              </View>
-              <Text style={styles.reportOptionText}>Mark on Map</Text>
-            </TouchableOpacity>
-            
-            <View style={styles.reportOption}>
-              {/* Empty for balance */}
-            </View>
-          </View>
-        </View>
-      </View>
-    );
-  };
 
+  // Convert maneuver to human-readable text
+  const getDirectionText = (maneuver) => {
+    switch (maneuver) {
+      case 'turn-right': return 'TURN RIGHT';
+      case 'turn-left': return 'TURN LEFT';
+      case 'uturn-right': return 'MAKE U-TURN';
+      case 'uturn-left': return 'MAKE U-TURN';
+      case 'keep-right': return 'KEEP RIGHT';
+      case 'keep-left': return 'KEEP LEFT';
+      case 'merge': return 'MERGE';
+      case 'roundabout-right': return 'ENTER ROUNDABOUT';
+      case 'roundabout-left': return 'ENTER ROUNDABOUT';
+      case 'straight': return 'CONTINUE STRAIGHT';
+      case 'fork-right': return 'TAKE RIGHT FORK';
+      case 'fork-left': return 'TAKE LEFT FORK';
+      case 'ferry': return 'BOARD FERRY';
+      default: return 'CONTINUE';
+    }
+  };
+  
   const shortenText = (text) => {
     if (!text) return '';
     return text.length > 30 ? text.slice(0, 27) + '...' : text;
@@ -482,6 +972,74 @@ const P2PNavigation = () => {
     );
   };
 
+  // Render Crowdsourced modals 
+  const renderCrowdsourcedModals = () => {
+    return (
+      <>
+        {/* Crowdsourced Mode Selection Modal */}
+        {isCrowdModalVisible && (
+          <TouchableOpacity style={styles.modalOverlay} onPress={hideCrowdModal} activeOpacity={1}>
+            <Animated.View style={[
+              styles.bottomSheet,
+              { 
+                transform: [{ translateY: slideAnim }],
+                alignSelf: 'stretch'
+              }
+            ]}>
+              <Text style={styles.sheetTitle}>Report As</Text>
+              <TouchableOpacity style={styles.sheetButton} onPress={() => handleReportModeSelect('driver')}>
+                <Text style={styles.sheetButtonText}>Driver</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.sheetButton} onPress={() => handleReportModeSelect('public')}>
+                <Text style={styles.sheetButtonText}>Public Transport</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </TouchableOpacity>
+        )}
+        
+        {/* Report Categories Modal */}
+        {reportMode && (
+          <TouchableWithoutFeedback onPress={() => setReportMode(null)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.bottomSheet}>
+                  <Text style={styles.sheetTitle}>
+                    {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
+                  </Text>
+
+                  <View style={styles.reportCategoryContainer}>
+                    {(reportMode === 'driver' ? driverCategories : publicCategories).map((category, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.reportCategoryButton}
+                        onPress={() => submitCrowdsourcedReport(category)}
+                      >
+                        {(() => {
+                          const iconInfo = categoryIcons[category] || {};
+                          
+                          if (iconInfo.library === "MaterialCommunityIcons") {
+                            return <MaterialCommunityIcons name={iconInfo.name || "help-circle"} size={28} style={{ marginBottom: 5 }} />;
+                          } else if (iconInfo.library === "FontAwesome5") {
+                            return <FontAwesome5 name={iconInfo.name || "question"} size={28} style={{ marginBottom: 5 }} />;
+                          } else if (iconInfo.library === "FontAwesome") {
+                            return <FontAwesome name={iconInfo.name || "question"} size={28} style={{ marginBottom: 5 }} />;
+                          } else {
+                            return <MaterialIcons name={iconInfo.name || "help"} size={28} style={{ marginBottom: 5 }} />;
+                          }
+                        })()}
+                        <Text style={styles.reportCategoryText}>{category}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        )}
+      </>
+    );
+  };
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
@@ -489,14 +1047,12 @@ const P2PNavigation = () => {
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
           style={styles.map}
-          region={
-            currentRegion || {
-              latitude: 1.3521,
-              longitude: 103.8198,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            }
-          }
+          region={currentRegion || {
+            latitude: 1.3521,
+            longitude: 103.8198,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
           showsUserLocation={true}
           followsUserLocation={isNavigating}
         >
@@ -518,7 +1074,7 @@ const P2PNavigation = () => {
           ))}
         </MapView>
 
-        {searchMode && !isNavigating && (
+        {searchMode && !isNavigating && !showRoutePreview && (
           <View style={styles.topSection}>
             {!selectedRoute ? (
               <>
@@ -538,8 +1094,6 @@ const P2PNavigation = () => {
                     onChangeText={setEndLocation}
                   />
                 </View>
-                
-                {/* Removed public transport and driver timing buttons */}
                 
                 <TouchableOpacity style={styles.searchButton} onPress={handleSearchPaths}>
                   <Text style={styles.searchButtonText}>Find Routes</Text>
@@ -567,8 +1121,8 @@ const P2PNavigation = () => {
                   </View>
                 </View>
                 
-                <TouchableOpacity style={styles.startNavButton} onPress={startNavigation}>
-                  <Text style={styles.startNavText}>Start</Text>
+                <TouchableOpacity style={styles.startNavButton} onPress={showNavigationPreview}>
+                  <Text style={styles.startNavText}>Preview</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -625,12 +1179,15 @@ const P2PNavigation = () => {
           </View>
         )}
         
+        {showRoutePreview && renderRoutePreview()}
         {isNavigating && renderNavigationView()}
-        {showReportPanel && renderReportPanel()}
+        
+        {/* Crowdsourced reporting modals */}
+        {renderCrowdsourcedModals()}
       </View>
     </TouchableWithoutFeedback>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: { 
@@ -658,7 +1215,7 @@ const styles = StyleSheet.create({
     borderRadius: 8, 
     padding: 8, 
     overflow: 'hidden',
-    marginBottom: 10, // Added margin for spacing
+    marginBottom: 10,
   },
   input: { 
     backgroundColor: '#555', 
@@ -679,6 +1236,140 @@ const styles = StyleSheet.create({
     color: 'white', 
     fontWeight: 'bold', 
     textAlign: 'center' 
+  },
+  // Top Navigation Bar with Turn Instructions and Speed
+  topNavigationBar: {
+    position: 'absolute',
+    top: 60, // Just below the header
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderRadius: 8,
+    padding: 12,
+    zIndex: 10,
+  },
+  directionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  directionTextContainer: {
+    marginLeft: 10,
+  },
+  directionMainText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  directionDistanceText: {
+    color: '#ccc',
+    fontSize: 14,
+  },
+  speedContainer: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  speedText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  speedUnit: {
+    fontSize: 12,
+    color: '#666',
+  },
+  // Crowdsourced Panel Styles
+  upArrowButton: {
+    position: 'absolute',
+    bottom: 100,
+    alignSelf: 'center',
+    backgroundColor: '#333',
+    width: 60,
+    height: 30,
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 15,
+  },
+  crowdsourcedPanel: {
+    position: 'absolute',
+    height: 200,
+    left: 0,
+    right: 0,
+    backgroundColor: '#333',
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+    padding: 12,
+    zIndex: 12,
+  },
+  reportButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 12,
+  },
+  reportButton: {
+    alignItems: 'center',
+  },
+  reportIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  reportButtonText: {
+    color: 'white',
+    fontSize: 12,
+  },
+  reportsScrollView: {
+    flex: 1,
+  },
+  recentReportsContainer: {
+    paddingHorizontal: 8,
+  },
+  reportsTitle: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  reportItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#444',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  reportItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#e53935', // Red for accident
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  reportItemContent: {
+    flex: 1,
+  },
+  reportItemTitle: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  reportItemDetails: {
+    color: '#ccc',
+    fontSize: 12,
   },
   bottomSheet: { 
     position: 'absolute', 
@@ -832,6 +1523,161 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
+  // Route Preview Styles
+  routePreviewContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#333',
+    zIndex: 15,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#222',
+  },
+  backButtonPreview: {
+    padding: 8,
+  },
+  previewTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  routeSummaryBox: {
+    margin: 16,
+    backgroundColor: '#444',
+    borderRadius: 12,
+    padding: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  summaryIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#666',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  summaryDetails: {
+    flex: 1,
+  },
+  summaryTitle: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  summaryMetrics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  summaryMetric: {
+    color: '#ccc',
+    fontSize: 14,
+    marginRight: 12,
+  },
+  issuesText: {
+    color: '#ffcc00',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  instructionsScroll: {
+    flex: 1,
+  },
+  instructionsContainer: {
+    padding: 16,
+  },
+  instructionsTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  instructionItem: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#555',
+  },
+  instructionNumberCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#666',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    marginTop: 2,
+  },
+  instructionNumber: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  instructionContent: {
+    flex: 1,
+  },
+  instructionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  instructionTitle: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 8,
+    flex: 1,
+  },
+  instructionDetail: {
+    color: '#ccc',
+    fontSize: 14,
+    marginTop: 2,
+  },
+  previewActions: {
+    flexDirection: 'row',
+    padding: 16,
+    backgroundColor: '#222',
+    justifyContent: 'space-between',
+  },
+  chooseAnotherButton: {
+    backgroundColor: '#555',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flex: 1,
+    marginRight: 8,
+    alignItems: 'center',
+  },
+  chooseAnotherText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  startNavigationButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flex: 1,
+    marginLeft: 8,
+    alignItems: 'center',
+  },
+  startNavigationText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  // Navigation View Styles
   navigationView: {
     position: 'absolute',
     top: 0,
@@ -865,56 +1711,6 @@ const styles = StyleSheet.create({
   homeButtonText: {
     color: 'white',
     fontSize: 12,
-  },
-  drivingInfoContainer: {
-    position: 'absolute',
-    top: 60,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  speedLimitCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'white',
-    borderWidth: 3,
-    borderColor: 'black',
-    justifyContent: 'center',
-    alignItems: 'center',
-    margin: 16,
-  },
-  speedLimitText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'black',
-  },
-  nextInstructionBox: {
-    position: 'absolute',
-    bottom: -240,
-    backgroundColor: '#333',
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '80%',
-    justifyContent: 'center',
-  },
-  navigationIconContainer: {
-    marginRight: 16,
-  },
-  instructionTextContainer: {
-    alignItems: 'center',
-  },
-  turnDirectionText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  distanceText: {
-    color: 'white',
-    fontSize: 14,
-    marginTop: 4,
   },
   publicTransitContainer: {
     backgroundColor: '#333',
@@ -980,17 +1776,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 12,
   },
-  expandButton: {
-    position: 'absolute',
-    bottom: 200,
-    alignSelf: 'center',
-    backgroundColor: '#333',
-    width: 50,
-    height: 30,
-    borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
+  transitDetailScroll: {
+    marginTop: 16,
+    maxHeight: 300,
+  },
+  timelineContainer: {
+    paddingLeft: 8,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    marginBottom: 24,
+    position: 'relative',
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: 'white',
+    marginRight: 12,
+    marginTop: 4,
+  },
+  activeTimelineDot: {
+    backgroundColor: '#4CAF50',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginRight: 8,
+    marginTop: 2,
+  },
+  timelineContent: {
+    flex: 1,
+  },
+  timelineLocation: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  activeTimelineText: {
+    color: '#4CAF50',
+    fontWeight: 'bold',
+  },
+  transitLineIndicator: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  transitLineName: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  timelineTime: {
+    color: '#ccc',
+    fontSize: 12,
+    marginTop: 2,
   },
   navigationControls: {
     position: 'absolute',
@@ -1021,103 +1862,63 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
   },
-  transitDetailScroll: {
-    marginTop: 16,
-    maxHeight: 300,
-  },
-  timelineContainer: {
-    paddingLeft: 8,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    marginBottom: 24,
-    position: 'relative',
-  },
-  timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: 'white',
-    marginRight: 12,
-    marginTop: 4,
-  },
-  timelineContent: {
-    flex: 1,
-  },
-  timelineLocation: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  transitLineIndicator: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginTop: 4,
-  },
-  transitLineName: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  timelineTime: {
-    color: '#ccc',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  reportPanel: {
+  // Crowdsourced report modals
+  modalOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+    zIndex: 15,
   },
-  reportHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '90%',
-    marginBottom: 24,
-  },
-  reportTitle: {
-    color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  reportOptionsContainer: {
-    width: '90%',
-    backgroundColor: '#333',
-    borderRadius: 16,
+  bottomSheet: {
+    backgroundColor: '#fff',
     padding: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
-  reportOptionsRow: {
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  sheetButton: {
+    backgroundColor: '#f2f2f2',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginVertical: 6,
+    alignItems: 'center',
+  },
+  sheetButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  reportCategoryContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    paddingHorizontal: 10,
+    marginTop: 10,
   },
-  reportOption: {
+  reportCategoryButton: {
     width: '30%',
+    marginVertical: 10,
+    backgroundColor: '#eee',
+    paddingVertical: 20,
+    borderRadius: 12,
     alignItems: 'center',
-  },
-  reportIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#555',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
+    elevation: 2,
   },
-  reportOptionText: {
-    color: 'white',
+  reportCategoryText: {
     fontSize: 12,
     textAlign: 'center',
+    marginTop: 5,
   },
 });
 
+// Use a separate export default statement 
 export default P2PNavigation;

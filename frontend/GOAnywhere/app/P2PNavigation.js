@@ -63,25 +63,44 @@ const P2PNavigation = () => {
 
   const handleSearchPaths = async () => {
     Keyboard.dismiss();
-      if (!startLocation || !endLocation) {
-          Alert.alert('Missing Info', 'Please enter both origin and destination.');
-          return;
-        }
+  
+    if (!startLocation || !endLocation) {
+      return Alert.alert(
+        'Missing Info',
+        'Please enter both origin and destination.'
+      );
+    }
+  
+    if (startLocation.trim().toLowerCase() === endLocation.trim().toLowerCase()) {
+      return Alert.alert(
+        'Invalid Route',
+        'Origin and destination cannot be the same.'
+      );
+    }
+  
     try {
-        const driverRoutes = await P2PDriver(startLocation, endLocation);
-        const publicRoutes = await P2PPublicTrans(startLocation, endLocation);
-      
-        driverRoutes.sort((a, b) => parseFloat(a.duration) - parseFloat(b.duration));
-        publicRoutes.sort((a, b) => parseFloat(a.duration) - parseFloat(b.duration));
-      
-        setRoutes({ driver: driverRoutes || [], public: publicRoutes || [] });
-        setBottomSheetVisible(true);
-        setSelectedRoute(null);
-        setExpanded(false);
+      const driverRoutes = await P2PDriver(startLocation, endLocation);
+      const publicRoutes = await P2PPublicTrans(startLocation, endLocation);
+  
+      driverRoutes.sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration));
+      publicRoutes.sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration));
+  
+      setRoutes({
+        driver: driverRoutes,
+        public: publicRoutes
+      });
+      setBottomSheetVisible(true);
+      setSelectedRoute(null);
+      setExpanded(false);
     } catch (error) {
       console.error('Error fetching paths:', error);
+      Alert.alert(
+        'Routing Error',
+        error.message || 'Could not fetch routes. Please check your locations.'
+      );
     }
   };
+  
 
   const shortenText = (text) => {
     if (!text) return '';
@@ -149,30 +168,38 @@ const P2PNavigation = () => {
     }, 0);
   };
 
-  const renderRouteOption = (route, index) => (
-    <TouchableOpacity
-      key={index}
-      style={styles.routeCard}
-      onPress={() => {
-        setSelectedRoute(route);
-        setBottomSheetVisible(false);
-      }}
-    >
-      <Text style={styles.routeTitle}>
-        Path {index + 1}: 
-      </Text>
-      <Text style={styles.routeSummary}>
-        {activeTab === 'driver'
-          ? getDriverStepSummary(route.steps)
-          : getPublicStepSummary(route.steps)}
-      </Text>
-      <Text style={styles.routeSubSummary}>
-        {route.duration} ({route.distance})
-        {activeTab === 'public' && ` • ${countStations(route.steps)} station${countStations(route.steps) > 1 ? 's' : ''}, ${countTransfers(route.steps)} transfer${countTransfers(route.steps) !== 1 ? 's' : ''}`}
-      </Text>
-
-    </TouchableOpacity>
-  );
+  const renderRouteOption = (route, index) => {
+    const warn = (route.issues && route.issues.length)
+      ? `(⚠️ May be affected by ${route.issues.join(', ')})`
+      : '';
+  
+    return (
+      <TouchableOpacity
+        key={index}
+        style={styles.routeCard}
+        onPress={() => {
+          setSelectedRoute(route);
+          setBottomSheetVisible(false);
+        }}
+      >
+        <Text style={styles.routeTitle}>
+          Path {index + 1}: {warn}
+        </Text>
+  
+        <Text style={styles.routeSummary}>
+          {activeTab === 'driver'
+            ? getDriverStepSummary(route.steps)
+            : getPublicStepSummary(route.steps)}
+        </Text>
+  
+        <Text style={styles.routeSubSummary}>
+          {route.duration} ({route.distance})
+          {activeTab === 'public' &&
+            ` • ${countStations(route.steps)} station${countStations(route.steps)>1?'s':''}, ${countTransfers(route.steps)} transfer${countTransfers(route.steps)!==1?'s':''}`}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
 return (
   <TouchableWithoutFeedback onPress={Keyboard.dismiss}>

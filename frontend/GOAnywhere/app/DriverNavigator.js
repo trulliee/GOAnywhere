@@ -67,8 +67,19 @@ export default function DriverNavigator() {
       const raw = `${nextStep.instruction} in ${dist} m`;
       setInstructionText(raw.replace(/([a-z])([A-Z])/g, '$1, $2'));
     }
+    const finalCoords = polyline?.[polyline.length - 1];
+    if (finalCoords) {
+      const distToEnd = Math.round(haversine(location, finalCoords));
+      const arrivalThreshold = 30; // meters
+      if (distToEnd < arrivalThreshold) {
+        Alert.alert('Arrived!', 'You have reached your destination.');
+        navigation.goBack();
+      }
+    }
   }, [location, currentStepIndex]);
 
+
+  
   const submitReport = async category => {
     setModalVisible(false);
     if (!location) return;

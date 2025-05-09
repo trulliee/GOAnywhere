@@ -13,7 +13,8 @@ import {
   Alert,
   Image,
   Platform,
-  Animated
+  Animated,
+  StatusBar
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -24,6 +25,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
+const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 
 function P2PNavigation() {
   const navigation = useNavigation();
@@ -44,6 +46,7 @@ function P2PNavigation() {
   const [currentSpeed, setCurrentSpeed] = useState(0);
   const [showRoutePreview, setShowRoutePreview] = useState(false);
   const [userName, setUserName] = useState('USER');
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const locationSubscription = useRef(null);
   const bottomSheetAnimation = useRef(new Animated.Value(0)).current;
   
@@ -192,20 +195,53 @@ function P2PNavigation() {
     }
   }, [showCrowdsourcedPanel]);
 
+  const getAddressFromCoordinates = async (latitude, longitude) => {
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`
+      );
+      const data = await response.json();
+      
+      if (data.results && data.results.length > 0) {
+        // Get the formatted address
+        return data.results[0].formatted_address;
+      }
+      return 'Current Location'; // Default fallback
+    } catch (error) {
+      console.error('Error getting address:', error);
+      return 'Current Location'; // Default fallback
+    }
+  };
+
   const requestLocationPermission = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return;
-    
-    const { latitude, longitude } = (await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.BestForNavigation
-    })).coords;
-    
-    setCurrentRegion({
-      latitude,
-      longitude,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    });
+    setIsLoadingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setIsLoadingLocation(false);
+        return;
+      }
+      
+      const { latitude, longitude } = (await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation
+      })).coords;
+      
+      setCurrentRegion({
+        latitude,
+        longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+      
+      // Get address from coordinates and set as start location
+      const address = await getAddressFromCoordinates(latitude, longitude);
+      setStartLocation(address);
+    } catch (error) {
+      console.error('Error requesting location:', error);
+      setStartLocation('Current Location'); // Default fallback
+    } finally {
+      setIsLoadingLocation(false);
+    }
   };
 
   const startLocationTracking = async () => {
@@ -651,7 +687,7 @@ function P2PNavigation() {
           </TouchableOpacity>
           <Text style={styles.navLocationText}>Current Location</Text>
           <TouchableOpacity style={styles.homeButton}>
-            <Text style={styles.homeButtonText}>Home</Text>
+            <Text style={styles.homeButtonText}>Destination</Text>
           </TouchableOpacity>
         </View>
         
@@ -1040,202 +1076,301 @@ function P2PNavigation() {
     );
   };
 
-  return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
-        <MapView
-          ref={mapRef}
-          provider={PROVIDER_GOOGLE}
-          style={styles.map}
-          region={currentRegion || {
-            latitude: 1.3521,
-            longitude: 103.8198,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
+  // Render a route card for the bottom of the page
+  const renderRouteCard = () => {
+    if (!selectedRoute && routes.driver.length > 0) {
+      // Display the first route suggestion when no route is selected
+      const route = routes.driver[0];
+      
+      return (
+        <TouchableOpacity 
+          style={styles.floatingRouteCard}
+          onPress={() => {
+            setSelectedRoute(route);
+            setBottomSheetVisible(false);
           }}
-          showsUserLocation={true}
-          followsUserLocation={isNavigating}
         >
-          {selectedRoute?.polyline && (
-            <Polyline 
-              coordinates={selectedRoute.polyline} 
-              strokeWidth={5} 
-              strokeColor={activeTab === 'driver' ? "#0066ff" : "#e51a1e"} 
-            />
-          )}
-          
-          {selectedRoute?.markers?.map((marker, i) => (
-            <Marker 
-              key={i} 
-              coordinate={marker} 
-              title={marker.title}
-              pinColor={i === 0 ? "green" : i === selectedRoute.markers.length - 1 ? "red" : "blue"}
-            />
-          ))}
-        </MapView>
-
-        {searchMode && !isNavigating && !showRoutePreview && (
-          <View style={styles.topSection}>
-            {!selectedRoute ? (
-              <>
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Current Location"
-                    placeholderTextColor="#888"
-                    value={startLocation}
-                    onChangeText={setStartLocation}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Home"
-                    placeholderTextColor="#888"
-                    value={endLocation}
-                    onChangeText={setEndLocation}
-                  />
-                </View>
-                
-                <TouchableOpacity style={styles.searchButton} onPress={handleSearchPaths}>
-                  <Text style={styles.searchButtonText}>Find Routes</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <View style={styles.routeInfoBar}>
-                <TouchableOpacity 
-                  style={styles.backButton}
-                  onPress={() => {
-                    setSelectedRoute(null);
-                    setExpanded(false);
-                  }}
-                >
-                  <Ionicons name="chevron-back" size={24} color="#fff" />
-                </TouchableOpacity>
-                
-                <View style={styles.routeDetails}>
-                  <Text style={styles.routeInfoText}>
-                    {shortenText(startLocation)} to {shortenText(endLocation)}
-                  </Text>
-                  <View style={styles.routeInfoDetails}>
-                    <Text style={styles.routeDurationText}>{selectedRoute.duration}</Text>
-                    <Text style={styles.routeDistanceText}>{selectedRoute.distance}</Text>
-                  </View>
-                </View>
-                
-                <TouchableOpacity style={styles.startNavButton} onPress={showNavigationPreview}>
-                  <Text style={styles.startNavText}>Preview</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+          <View style={styles.floatingCardTop}>
+            <Text style={styles.routeDuration}>{route.duration}</Text>
+            <Text style={styles.routeDistance}>{route.distance}</Text>
           </View>
-        )}
-
-        {bottomSheetVisible && (
-          <View style={styles.bottomSheet}>
-            <View style={styles.tabRow}>
-              <TouchableOpacity
-                onPress={() => setActiveTab('driver')}
-                style={[styles.tab, activeTab === 'driver' && styles.activeTab]}
-              >
-                <Text style={styles.tabText}>Driver</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setActiveTab('public')}
-                style={[styles.tab, activeTab === 'public' && styles.activeTab]}
-              >
-                <Text style={styles.tabText}>Public Transport</Text>
-              </TouchableOpacity>
-            </View>
-
-            {activeTab === 'public' && (
-              <View style={styles.filterRow}>
-                {['Any', 'Bus Only', 'MRT Only'].map(f => (
-                  <TouchableOpacity
-                    key={f}
-                    style={[styles.filterButton, publicFilter === f && styles.activeFilter]}
-                    onPress={() => setPublicFilter(f)}
-                  >
-                    <Text style={[styles.filterText, publicFilter === f && styles.activeFilterText]}>{f}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            <ScrollView>
-              {(
-                activeTab === 'driver'
-                  ? routes.driver
-                      .slice()
-                      .sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration))
-                  : routes.public
-                      .filter(r => {
-                        if (publicFilter === 'Bus Only') return r.type === 'Bus Only';
-                        if (publicFilter === 'MRT Only') return r.type === 'MRT Only';
-                        return true;
-                      })
-                      .slice()
-                      .sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration))
-              ).map(renderRouteOption)}
-            </ScrollView>
+          <View style={styles.floatingCardRoute}>
+            <MaterialIcons name="directions-car" size={18} color="#333" />
+            <Text style={styles.driverRouteText}>{route.summary}</Text>
           </View>
+        </TouchableOpacity>
+      );
+    }
+    return null;
+  };
+
+  // Updated return with a more structured layout
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent={true} />
+      
+      {/* Main Map View */}
+      <MapView
+        ref={mapRef}
+        provider={PROVIDER_GOOGLE}
+        style={styles.map}
+        region={currentRegion || {
+          latitude: 1.3521,
+          longitude: 103.8198,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }}
+        showsUserLocation={true}
+        followsUserLocation={isNavigating}
+      >
+        {selectedRoute?.polyline && (
+          <Polyline 
+            coordinates={selectedRoute.polyline} 
+            strokeWidth={5} 
+            strokeColor={activeTab === 'driver' ? "#0066ff" : "#e51a1e"} 
+          />
         )}
         
-        {showRoutePreview && renderRoutePreview()}
-        {isNavigating && renderNavigationView()}
-        
-        {/* Crowdsourced reporting modals */}
-        {renderCrowdsourcedModals()}
+        {selectedRoute?.markers?.map((marker, i) => (
+          <Marker 
+            key={i} 
+            coordinate={marker} 
+            title={marker.title}
+            pinColor={i === 0 ? "green" : i === selectedRoute.markers.length - 1 ? "red" : "blue"}
+          />
+        ))}
+      </MapView>
+      
+      {/* Header Navigation Bar */}
+      <View style={styles.headerNavBar}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={24} color="#000" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>P2PNavigation</Text>
+        <View style={{width: 24}} />
       </View>
-    </TouchableWithoutFeedback>
+
+      {/* Search Input Fields - Positioned at the top but with proper spacing from header */}
+      {searchMode && !isNavigating && !showRoutePreview && !selectedRoute && (
+        <View style={styles.inputArea}>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder={isLoadingLocation ? "Getting current location..." : "Current Location"}
+              placeholderTextColor="#888"
+              value={startLocation}
+              onChangeText={setStartLocation}
+            />
+            <TextInput
+              style={[styles.input, styles.lastInput]}
+              placeholder="Destination"
+              placeholderTextColor="#888"
+              value={endLocation}
+              onChangeText={setEndLocation}
+            />
+          </View>
+          
+          <TouchableOpacity 
+            style={[styles.searchButton, (isLoadingLocation) && styles.disabledButton]}
+            onPress={handleSearchPaths}
+            disabled={isLoadingLocation}
+          >
+            <Text style={styles.searchButtonText}>Find Routes</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
+      {/* Selected Route Info */}
+      {selectedRoute && searchMode && !isNavigating && !showRoutePreview && (
+        <View style={styles.routeInfoBar}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => {
+              setSelectedRoute(null);
+              setExpanded(false);
+            }}
+          >
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          
+          <View style={styles.routeDetails}>
+            <Text style={styles.routeInfoText}>
+              {shortenText(startLocation)} to {shortenText(endLocation)}
+            </Text>
+            <View style={styles.routeInfoDetails}>
+              <Text style={styles.routeDurationText}>{selectedRoute.duration}</Text>
+              <Text style={styles.routeDistanceText}>{selectedRoute.distance}</Text>
+            </View>
+          </View>
+          
+          <TouchableOpacity style={styles.startNavButton} onPress={showNavigationPreview}>
+            <Text style={styles.startNavText}>Preview</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Bottom Route Card */}
+      {(!selectedRoute && routes.driver.length > 0 && !bottomSheetVisible) && renderRouteCard()}
+     
+      {/* Route Selection Bottom Sheet */}
+      {bottomSheetVisible && (
+        <View style={styles.bottomSheet}>
+          <View style={styles.tabRow}>
+            <TouchableOpacity
+              onPress={() => setActiveTab('driver')}
+              style={[styles.tab, activeTab === 'driver' && styles.activeTab]}
+            >
+              <Text style={styles.tabText}>Driver</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setActiveTab('public')}
+              style={[styles.tab, activeTab === 'public' && styles.activeTab]}
+            >
+              <Text style={styles.tabText}>Public Transport</Text>
+            </TouchableOpacity>
+          </View>
+
+          {activeTab === 'public' && (
+            <View style={styles.filterRow}>
+              {['Any', 'Bus Only', 'MRT Only'].map(f => (
+                <TouchableOpacity
+                  key={f}
+                  style={[styles.filterButton, publicFilter === f && styles.activeFilter]}
+                  onPress={() => setPublicFilter(f)}
+                >
+                  <Text style={[styles.filterText, publicFilter === f && styles.activeFilterText]}>{f}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <ScrollView>
+            {(
+              activeTab === 'driver'
+                ? routes.driver
+                    .slice()
+                    .sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration))
+                : routes.public
+                    .filter(r => {
+                      if (publicFilter === 'Bus Only') return r.type === 'Bus Only';
+                      if (publicFilter === 'MRT Only') return r.type === 'MRT Only';
+                      return true;
+                    })
+                    .slice()
+                    .sort((a, b) => toMinutes(a.duration) - toMinutes(b.duration))
+            ).map(renderRouteOption)}
+          </ScrollView>
+        </View>
+      )}
+      
+      {showRoutePreview && renderRoutePreview()}
+      {isNavigating && renderNavigationView()}
+      
+      {/* Crowdsourced reporting modals */}
+      {renderCrowdsourcedModals()}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#393939' 
+    backgroundColor: '#fff' 
   },
   map: { 
     position: 'absolute', 
     width: '100%', 
     height: '100%' 
   },
-  topSection: { 
-    position: 'absolute', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    backgroundColor: '#393939', 
-    padding: 12, 
+  headerNavBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    backgroundColor: 'white',
     zIndex: 10,
-    borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  inputArea: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    zIndex: 10,
   },
   inputContainer: { 
-    backgroundColor: '#555', 
+    backgroundColor: '#fff', 
     borderRadius: 8, 
-    padding: 8, 
-    overflow: 'hidden',
-    marginBottom: 10,
+    padding: 12, 
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    marginBottom: 12,
   },
   input: { 
-    backgroundColor: '#555', 
+    backgroundColor: '#fff', 
     borderBottomWidth: 1, 
-    borderBottomColor: '#777', 
-    color: 'white', 
-    marginBottom: 8, 
-    paddingHorizontal: 8, 
-    paddingVertical: 8, 
-    fontSize: 14 
+    borderBottomColor: '#ddd', 
+    color: '#000', 
+    paddingVertical: 12, 
+    fontSize: 16 
+  },
+  lastInput: {
+    borderBottomWidth: 0,
   },
   searchButton: { 
-    backgroundColor: '#555', 
-    padding: 12, 
+    backgroundColor: '#444', 
+    padding: 16, 
     borderRadius: 8, 
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  disabledButton: {
+    backgroundColor: '#666',
+    opacity: 0.7
   },
   searchButtonText: { 
     color: 'white', 
     fontWeight: 'bold', 
-    textAlign: 'center' 
+    fontSize: 16,
+  },
+  // Floating route card at bottom
+  floatingRouteCard: {
+    position: 'absolute',
+    bottom: 20,
+    left: 16,
+    right: 16,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  floatingCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  floatingCardRoute: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   // Top Navigation Bar with Turn Instructions and Speed
   topNavigationBar: {
@@ -1481,12 +1616,22 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   routeInfoBar: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 100 : 90,
+    left: 16, 
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#393939',
     padding: 12,
     borderRadius: 8,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   backButton: {
     padding: 8,
@@ -1693,6 +1838,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#333',
     paddingVertical: 12,
     paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
   },
   backButtonNav: {
     padding: 4,

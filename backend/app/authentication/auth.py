@@ -110,10 +110,11 @@ async def login(login_data: LoginRequest):
             response = await client.post(
                 f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}",
                 json={
-                "email": login_data.email,
-                "password": login_data.password,
-            "returnSecureToken": True
-    },                headers={"Content-Type": "application/json"}
+                    "email": login_data.email,
+                    "password": login_data.password,
+                    "returnSecureToken": True
+                },
+                headers={"Content-Type": "application/json"}
             )
         
         if response.status_code != 200:

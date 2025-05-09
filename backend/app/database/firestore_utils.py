@@ -2773,7 +2773,7 @@ def store_events_data(events):
     except Exception as e:
         print(f"Error storing events data: {e}")
 
-async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered"):
+async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered", created_at=None, last_login=None, settings=None):
     """
     Stores user data in Firestore
     
@@ -2795,8 +2795,12 @@ async def store_user_data(user_id, name=None, email=None, phone_number=None, use
         user_data = {
             'user_id': user_id,
             'user_type': user_type,
-            'created_at': firestore.SERVER_TIMESTAMP,
-            'last_login': firestore.SERVER_TIMESTAMP
+            'created_at': created_at or firestore.SERVER_TIMESTAMP,
+            'last_login': last_login or firestore.SERVER_TIMESTAMP,
+            'settings' : {
+                'locationSharing': False,
+                'notifications': True
+            }
         }
         
         # Add optional fields if provided

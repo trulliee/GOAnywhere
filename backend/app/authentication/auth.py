@@ -9,13 +9,15 @@ from app.database.firestore_utils import store_user_data, update_user_last_login
 from firebase_admin import auth
 import httpx
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+from fastapi import APIRouter
+
 router = APIRouter(
-    prefix="/auth",
-    tags=["Authentication"],
+    tags=["Auth"],
     responses={404: {"description": "Not found"}},
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Request Models
 class SignUpRequest(BaseModel):
@@ -93,6 +95,8 @@ async def sign_up(user_data: SignUpRequest):
             "token": token,
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print("Signup error:", str(e))
         raise HTTPException(status_code=400, detail="Signup failed. Please check your input.")
     
@@ -106,11 +110,10 @@ async def login(login_data: LoginRequest):
             response = await client.post(
                 f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}",
                 json={
-                    "email": login_data.email,
-                    "password": login_data.password,
-                    "returnSecureToken": True
-                },
-                headers={"Content-Type": "application/json"}
+                "email": login_data.email,
+                "password": login_data.password,
+            "returnSecureToken": True
+    },                headers={"Content-Type": "application/json"}
             )
         
         if response.status_code != 200:

@@ -9,7 +9,8 @@ echo Rebuilding Docker image...
 docker build -t goanywhere-backend .
 
 echo Running backend locally with Docker...
-docker run -p 8000:8000 ^
+docker run -p 0.0.0.0:8000:8000 ^
+  --cap-add=SYS_TIME ^
   -e USE_LOCAL_FIREBASE_CREDENTIALS=1 ^
   -e FIREBASE_CREDENTIALS_PATH=service-account-key.json ^
   -v "C:/Users/kaung/Desktop/GOAnywhere/backend/storage/service-account-key.json:/app/service-account-key.json" ^

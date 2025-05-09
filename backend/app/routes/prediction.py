@@ -7,12 +7,12 @@ from datetime import datetime
 import logging
 import os
 import requests
+import json
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from app.models.traffic_congestion_model import TrafficCongestionModel
 from app.models.travel_time_prediction import TravelTimePredictionModel
-from app.models.route_recommendation import RouteRecommendationModel
 from app.models.feedback_analyzer import FeedbackAnalyzer
 
 # Configure logging
@@ -79,6 +79,12 @@ async def predict_traffic(input_data: TrafficPredictionInput):
 
         # Send request
         response = requests.post(url, headers=headers, json=payload)
+
+        logger.info(f"Payload sent: {json.dumps(payload)}")
+        logger.info(f"URL: {url}")
+        logger.info(f"Response code: {response.status_code}")
+        logger.info(f"Response body: {response.text}")
+        
         if response.status_code != 200:
             logger.error(f"Vertex AI traffic model error: {response.text}")
             raise HTTPException(status_code=500, detail="Vertex AI model failed to respond.")
@@ -122,7 +128,6 @@ class TravelTimeInput(BaseModel):
     max_incident_severity: int = 0
     sum_incident_severity: int = 0
     distance_km: float = 5.0
-
     
 @router.post("/travel_time")
 async def predict_travel_time(input_data: TravelTimeInput):
@@ -158,133 +163,30 @@ async def predict_travel_time(input_data: TravelTimeInput):
         logger.error(f"Travel time prediction error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# (Leave route, feedback, and analysis logic unchanged...)
-
-class IncidentImpactInput(BaseModel):
-    road_name: str
-    type: str
-    timestamp: Optional[datetime] = None
-
-class Coordinates(BaseModel):
-    lat: float
-    lon: float
-
-class RoutePreferences(BaseModel):
-    avoid_toll: bool = False
-    avoid_expressway: bool = False
-    priority: str = "fastest"
-
-class RouteInput(BaseModel):
-    origin: Coordinates
-    destination: Coordinates
-    preferences: Optional[RoutePreferences] = None
-
-@router.post("/route")
-async def recommend_route(input_data: RouteInput):
-    """Recommend a route between origin and destination."""
-    try:
-        # Ensure route model is initialized
-        route_model.update_data(force=True)
-        
-        # Make prediction
-        result = route_model.recommend_route(
-            input_data.origin.dict(),
-            input_data.destination.dict(),
-            input_data.preferences.dict() if input_data.preferences else None
-        )
-        
-        if result.get("status") == "error":
-            raise HTTPException(status_code=500, detail=result.get("error", "Route recommendation failed"))
-        
-        return result
-    except Exception as e:
-        logger.error(f"Error in route recommendation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/routes/alternative")
-async def get_alternative_routes(input_data: RouteInput, count: int = Query(3, ge=1, le=5)):
-    """Get multiple alternative routes between origin and destination."""
-    try:
-        # Ensure route model is initialized
-        route_model.update_data(force=True)
-        
-        # Get alternative routes
-        results = route_model.get_alternative_routes(
-            input_data.origin.dict(),
-            input_data.destination.dict(),
-            count,
-            input_data.preferences.dict() if input_data.preferences else None
-        )
-        
-        if isinstance(results, list) and results and results[0].get("status") == "error":
-            raise HTTPException(status_code=500, detail=results[0].get("error", "Alternative routes recommendation failed"))
-        
-        return {
-            "status": "success",
-            "count": len(results),
-            "routes": results
-        }
-    except Exception as e:
-        logger.error(f"Error in alternative routes recommendation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-class FeedbackInput(BaseModel):
-    prediction_type: str
-    prediction_id: str
-    actual_value: float
-    predicted_value: float
+class FeedbackRatingInput(BaseModel):
     user_id: str
+    prediction_type: str
+    rating: int = Field(ge=1, le=5)
+    comment: Optional[str] = None
     timestamp: Optional[datetime] = None
 
 @router.post("/feedback")
-async def submit_feedback(input_data: FeedbackInput):
-    """Submit feedback for a prediction."""
+async def submit_feedback(input_data: FeedbackRatingInput):
     try:
-        # Prepare feedback data
         feedback_data = input_data.dict()
-        
-        # Record feedback
-        feedback_id = feedback_analyzer.record_feedback(feedback_data)
-        
+        feedback_id = feedback_analyzer.store_feedback(feedback_data)
         return {
             "status": "success",
             "feedback_id": feedback_id,
-            "message": "Feedback recorded successfully"
+            "message": "Feedback submitted successfully"
         }
     except Exception as e:
-        logger.error(f"Error recording feedback: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-class AnalysisInput(BaseModel):
-    prediction_type: str
-    time_period: str = "last_30_days"
-
-@router.post("/feedback/analyze")
-async def analyze_feedback(input_data: AnalysisInput):
-    """Analyze feedback for a prediction type."""
+@router.get("/feedback/summary")
+async def get_feedback_summary(prediction_type: str = Query(...), days: int = Query(30)):
     try:
-        # Get analysis
-        analysis = feedback_analyzer.analyze_feedback_trends(
-            input_data.prediction_type,
-            input_data.time_period
-        )
-        
-        return analysis
+        summary = feedback_analyzer.analyze_feedback(prediction_type, days)
+        return summary
     except Exception as e:
-        logger.error(f"Error analyzing feedback: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/feedback/report")
-async def generate_performance_report(input_data: AnalysisInput):
-    """Generate a comprehensive performance report."""
-    try:
-        # Generate report
-        report = feedback_analyzer.generate_performance_report(
-            input_data.prediction_type,
-            input_data.time_period
-        )
-        
-        return report
-    except Exception as e:
-        logger.error(f"Error generating report: {e}")
         raise HTTPException(status_code=500, detail=str(e))

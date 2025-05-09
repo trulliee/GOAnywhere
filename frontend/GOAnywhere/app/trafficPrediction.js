@@ -1,110 +1,104 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  View, Text, Button, StyleSheet, ActivityIndicator, 
+  View, Text, StyleSheet, ActivityIndicator, 
   ScrollView, TextInput, TouchableOpacity, 
-  SafeAreaView, Alert, Platform, Switch
+  SafeAreaView, Alert, Platform
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-import { API_URL } from './utils/apiConfig';
 import axios from 'axios';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { LineChart } from 'react-native-chart-kit';
-import { Dimensions } from 'react-native';
 import P2PDriver from './P2PDriver';
 
-const { width } = Dimensions.get('window');
+// Backend API URL
+const API_URL = 'https://goanywhere-backend-541900038032.asia-southeast1.run.app';
 
 export default function TrafficPrediction() {
-  const [activeTab, setActiveTab] = useState('unified'); // unified, traffic, travel, route, feedback
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState(null);
-  const [predictionResults, setPredictionResults] = useState({
-    trafficCongestion: null,
-    travelTime: null,
-    route: null,
-    feedback: null
+  
+  // State for location inputs
+  const [locationInputs, setLocationInputs] = useState({
+    startLocation: '',
+    endLocation: ''
   });
   
-  // Traffic congestion prediction inputs
-  const [trafficInputs, setTrafficInputs] = useState({
-    RoadName: 'PIE',
-    RoadCategory: 'Expressway',
-    hour: new Date().getHours(),
-    day_of_week: new Date().getDay(),
-    month: new Date().getMonth() + 1,
-    is_holiday: 0,
-    event_count: 0,
-    incident_count: 0,
-    temperature: 27.0,
-    humidity: 75.0,
-    peak_hour_flag: new Date().getHours() >= 7 && new Date().getHours() <= 9 ? 1 : 
-                   (new Date().getHours() >= 17 && new Date().getHours() <= 20 ? 1 : 0),
-    day_type: new Date().getDay() >= 5 ? 'weekend' : 'weekday',
-    road_type: 'expressway',
-    recent_incident_flag: 0,
-    speed_band_previous_hour: 2,
-    rain_flag: 0,
-    max_event_severity: 0,
-    sum_event_severity: 0,
+  // State for routes from P2PDriver
+  const [routes, setRoutes] = useState([]);
+  const [selectedRoute, setSelectedRoute] = useState(0);
+  
+  // State for prediction results
+  const [predictions, setPredictions] = useState({
+    trafficCongestion: null,
+    travelTime: null
   });
-
-  // Travel time prediction inputs
-  const [travelTimeInputs, setTravelTimeInputs] = useState({
-    Expressway: 'PIE',
-    Direction: 'East',
-    Startpoint: 'Jurong',
-    Endpoint: 'Changi',
-    hour: new Date().getHours(),
-    day_of_week: new Date().getDay(),
-    month: new Date().getMonth() + 1,
-    is_holiday: 0,
-    event_count: 0,
-    incident_count: 0,
-    temperature: 27.0,
-    humidity: 75.0,
-    peak_hour_flag: new Date().getHours() >= 7 && new Date().getHours() <= 9 ? 1 : 
-                   (new Date().getHours() >= 17 && new Date().getHours() <= 20 ? 1 : 0),
-    day_type: new Date().getDay() >= 5 ? 'weekend' : 'weekday',
-    road_type: 'minor',
-    recent_incident_flag: 0,
-    speed_band_previous_hour: 2,
-    rain_flag: 0,
-    max_event_severity: 0,
-    sum_event_severity: 0,
-    mean_incident_severity: 0,
-    max_incident_severity: 0,
-    sum_incident_severity: 0,
-    distance_km: 20.0
+  
+  // State to track if prediction has been made
+  const [predictionsMade, setPredictionsMade] = useState({
+    trafficCongestion: false,
+    travelTime: false
   });
-
-  // Route recommendation inputs
-  const [routeInputs, setRouteInputs] = useState({
-    origin: {
-      lat: 1.3521,
-      lon: 103.8198
+  
+  // State for model input data
+  const [modelInputs, setModelInputs] = useState({
+    traffic: {
+      RoadName: "PIE",
+      RoadCategory: "Expressway",
+      hour: new Date().getHours(),
+      day_of_week: new Date().getDay(),
+      month: new Date().getMonth() + 1,
+      is_holiday: 0,
+      event_count: 0,
+      incident_count: 0,
+      temperature: 27.0,
+      humidity: 75.0,
+      peak_hour_flag: isPeakHour(),
+      day_type: isWeekday() ? 'weekday' : 'weekend',
+      road_type: "expressway",
+      recent_incident_flag: 0,
+      speed_band_previous_hour: 2,
+      rain_flag: 0,
+      max_event_severity: 0,
+      sum_event_severity: 0
     },
-    destination: {
-      lat: 1.3644,
-      lon: 103.9915
-    },
-    preferences: {
-      avoid_toll: false,
-      avoid_expressway: false,
-      priority: 'fastest'
+    travelTime: {
+      Expressway: "PIE",
+      Direction: "East",
+      Startpoint: "",
+      Endpoint: "",
+      hour: new Date().getHours(),
+      day_of_week: new Date().getDay(),
+      month: new Date().getMonth() + 1,
+      is_holiday: 0,
+      event_count: 0,
+      incident_count: 0,
+      temperature: 27.0,
+      humidity: 75.0,
+      peak_hour_flag: isPeakHour(),
+      day_type: isWeekday() ? 'weekday' : 'weekend',
+      road_type: "major",
+      recent_incident_flag: 0,
+      speed_band_previous_hour: 2,
+      rain_flag: 0,
+      max_event_severity: 0,
+      sum_event_severity: 0,
+      mean_incident_severity: 0,
+      max_incident_severity: 0,
+      sum_incident_severity: 0,
+      distance_km: 5.0
     }
   });
 
-  // Feedback inputs
-  const [feedbackInputs, setFeedbackInputs] = useState({
-    prediction_type: 'travel_time',
-    prediction_id: '',
-    actual_value: 0,
-    predicted_value: 0,
-    user_id: 'user123',
-    timestamp: new Date().toISOString()
-  });
+  // Helper functions to determine peak hours and weekday status
+  function isPeakHour() {
+    const hour = new Date().getHours();
+    return (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 20) ? 1 : 0;
+  }
+
+  function isWeekday() {
+    const day = new Date().getDay();
+    return day >= 1 && day <= 5; // Monday to Friday
+  }
 
   // Get user's current location on component mount
   useEffect(() => {
@@ -115,755 +109,433 @@ export default function TrafficPrediction() {
         return;
       }
 
-      let currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation);
-      
-      // Update route origin with current location
-      setRouteInputs(prev => ({
-        ...prev,
-        origin: {
-          lat: currentLocation.coords.latitude,
-          lon: currentLocation.coords.longitude
-        }
-      }));
+      try {
+        let currentLocation = await Location.getCurrentPositionAsync({});
+        setLocation(currentLocation);
+        
+        // Update model inputs with current time values
+        updateModelInputsWithCurrentTime();
+      } catch (error) {
+        console.error("Error getting location:", error);
+        Alert.alert("Could not get current location. Please enter locations manually.");
+      }
     })();
   }, []);
 
-  // Run all predictions together
-  const handleUnifiedPrediction = async () => {
-    setLoading(true);
-    try {
-      // Run all predictions in parallel
-      const [trafficResponse, travelTimeResponse, routeResponse] = await Promise.all([
-        axios.post(`${API_URL}/api/prediction/traffic`, trafficInputs),
-        axios.post(`${API_URL}/api/prediction/travel_time`, travelTimeInputs),
-        axios.post(`${API_URL}/api/prediction/route`, routeInputs)
-      ]);
-
-      // Update prediction results
-      setPredictionResults({
-        trafficCongestion: trafficResponse.data,
-        travelTime: travelTimeResponse.data,
-        route: routeResponse.data,
-        feedback: null
-      });
-
-      // Automatically prepare feedback data from predictions
-      if (travelTimeResponse.data?.predictions?.[0] !== undefined) {
-        setFeedbackInputs(prev => ({
-          ...prev,
-          prediction_id: Date.now().toString(),
-          predicted_value: travelTimeResponse.data.predictions[0],
-          timestamp: new Date().toISOString()
-        }));
+  // Function to update model inputs with current time
+  const updateModelInputsWithCurrentTime = () => {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentDayOfWeek = now.getDay();
+    const currentMonth = now.getMonth() + 1;
+    const currentPeakHourFlag = isPeakHour();
+    const currentDayType = isWeekday() ? 'weekday' : 'weekend';
+    
+    setModelInputs(prev => ({
+      ...prev,
+      traffic: {
+        ...prev.traffic,
+        hour: currentHour,
+        day_of_week: currentDayOfWeek,
+        month: currentMonth,
+        peak_hour_flag: currentPeakHourFlag,
+        day_type: currentDayType
+      },
+      travelTime: {
+        ...prev.travelTime,
+        hour: currentHour,
+        day_of_week: currentDayOfWeek,
+        month: currentMonth,
+        peak_hour_flag: currentPeakHourFlag,
+        day_type: currentDayType
       }
-
-    } catch (error) {
-      Alert.alert('Error', error.response?.data?.detail || 'Prediction failed');
-    }
-    setLoading(false);
+    }));
   };
 
-  // Individual prediction handlers
-  const predictTrafficCongestion = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.post(`${API_URL}/api/prediction/traffic`, trafficInputs);
-      setPredictionResults(prev => ({ ...prev, trafficCongestion: response.data }));
-    } catch (error) {
-      Alert.alert('Error', error.response?.data?.detail || 'Traffic prediction failed');
+  // Function to handle route search using P2PDriver
+  const handleRouteSearch = async () => {
+    if (!locationInputs.startLocation || !locationInputs.endLocation) {
+      Alert.alert("Missing locations", "Please enter both start and destination locations");
+      return;
     }
-    setLoading(false);
-  };
 
-  const predictTravelTime = async () => {
     setLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/api/prediction/travel_time`, travelTimeInputs);
-      setPredictionResults(prev => ({ ...prev, travelTime: response.data }));
+      // Get routes using P2PDriver
+      const routeResults = await P2PDriver(locationInputs.startLocation, locationInputs.endLocation);
       
-      // Prepare feedback with predicted value
-      if (response.data?.predictions?.[0] !== undefined) {
-        setFeedbackInputs(prev => ({
-          ...prev,
-          prediction_id: Date.now().toString(),
-          predicted_value: response.data.predictions[0],
-          timestamp: new Date().toISOString()
-        }));
+      if (routeResults.length > 0) {
+        setRoutes(routeResults);
+        // Select the first route by default
+        setSelectedRoute(0);
+        
+        // Extract route details for predictions
+        extractRouteDetailsForPrediction(routeResults[0]);
+
+        Alert.alert(
+          "Route Found", 
+          `Route from ${locationInputs.startLocation} to ${locationInputs.endLocation} found.\n\nDistance: ${routeResults[0].distance}\nEstimated Time of Travel: ${routeResults[0].duration}`
+        );
+      } else {
+        Alert.alert("No routes found", "Could not find any routes between the specified locations.");
       }
     } catch (error) {
+      console.error('Error in route search:', error);
+      Alert.alert('Error', 'Failed to get route information');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to extract road details from route for prediction
+  const extractRouteDetailsForPrediction = (route) => {
+    // Extract road names from the route steps
+    const roadNames = route.steps
+      .map(step => step.instruction)
+      .join(' ');
+    
+    // Get the main expressway if mentioned in summary or steps
+    const expressways = ['PIE', 'CTE', 'AYE', 'ECP', 'KPE', 'SLE', 'TPE', 'BKE'];
+    let mainExpressway = 'PIE'; // Default
+    
+    // Try to find expressway in the route summary
+    for (const exp of expressways) {
+      if (route.summary && route.summary.includes(exp)) {
+        mainExpressway = exp;
+        break;
+      }
+    }
+    
+    // If no expressway in summary, check steps
+    if (mainExpressway === 'PIE') {
+      for (const step of route.steps) {
+        for (const exp of expressways) {
+          if (step.instruction.includes(exp)) {
+            mainExpressway = exp;
+            break;
+          }
+        }
+        if (mainExpressway !== 'PIE') break;
+      }
+    }
+    
+    // Extract distance in km from the text (e.g., "5.2 km" → 5.2)
+    const distanceText = route.distance;
+    const distanceKm = parseFloat(distanceText.replace(/[^0-9.]/g, ''));
+    
+    // Determine direction based on coordinates
+    const startMarker = route.markers[0];
+    const endMarker = route.markers[1];
+    let direction = 'East';
+    
+    if (endMarker.longitude < startMarker.longitude) {
+      direction = 'West';
+    } else if (endMarker.latitude > startMarker.latitude) {
+      direction = 'North';
+    } else if (endMarker.latitude < startMarker.latitude) {
+      direction = 'South';
+    }
+    
+    // Update model inputs with route data
+    setModelInputs(prev => ({
+      ...prev,
+      traffic: {
+        ...prev.traffic,
+        RoadName: mainExpressway,
+        RoadCategory: 'Expressway'
+      },
+      travelTime: {
+        ...prev.travelTime,
+        Expressway: mainExpressway,
+        Direction: direction,
+        Startpoint: locationInputs.startLocation,
+        Endpoint: locationInputs.endLocation,
+        distance_km: distanceKm || 5.0
+      }
+    }));
+  };
+  
+  // Function to predict traffic congestion
+  const predictTrafficCongestion = async () => {
+    if (routes.length === 0) {
+      Alert.alert("No route selected", "Please find a route first");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Make sure model inputs have latest time data
+      updateModelInputsWithCurrentTime();
+      
+      // Log the request data for debugging
+      console.log('Making traffic congestion prediction request with:', modelInputs.traffic);
+      
+      // Send the prediction request to the backend API
+      const response = await axios.post(`${API_URL}/prediction/traffic`, modelInputs.traffic);
+      
+      // Log the response for debugging
+      console.log('Traffic congestion prediction response:', response.data);
+      
+      // Store the prediction result
+      setPredictions(prev => ({ 
+        ...prev, 
+        trafficCongestion: response.data 
+      }));
+      
+      // Set flag to indicate prediction has been made
+      setPredictionsMade(prev => ({
+        ...prev,
+        trafficCongestion: true
+      }));
+      
+    } catch (error) {
+      console.error('Traffic congestion prediction error:', error);
+      Alert.alert('Error', error.response?.data?.detail || 'Traffic congestion prediction failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to predict travel time
+  const predictTravelTime = async () => {
+    if (routes.length === 0) {
+      Alert.alert("No route selected", "Please find a route first");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Make sure model inputs have latest time data
+      updateModelInputsWithCurrentTime();
+      
+      // Log the request data for debugging
+      console.log('Making travel time prediction request with:', modelInputs.travelTime);
+      
+      // Send the prediction request to the backend API
+      const response = await axios.post(`${API_URL}/prediction/travel_time`, modelInputs.travelTime);
+      
+      // Log the response for debugging
+      console.log('Travel time prediction response:', response.data);
+      
+      // Store the prediction result
+      setPredictions(prev => ({ 
+        ...prev, 
+        travelTime: response.data 
+      }));
+      
+      // Set flag to indicate prediction has been made
+      setPredictionsMade(prev => ({
+        ...prev,
+        travelTime: true
+      }));
+      
+    } catch (error) {
+      console.error('Travel time prediction error:', error);
       Alert.alert('Error', error.response?.data?.detail || 'Travel time prediction failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const getRouteRecommendation = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.post(`${API_URL}/api/prediction/route`, routeInputs);
-      setPredictionResults(prev => ({ ...prev, route: response.data }));
-    } catch (error) {
-      Alert.alert('Error', error.response?.data?.detail || 'Route recommendation failed');
-    }
-    setLoading(false);
-  };
-
-  const submitFeedback = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.post(`${API_URL}/api/prediction/feedback`, feedbackInputs);
-      setPredictionResults(prev => ({ ...prev, feedback: response.data }));
-      Alert.alert('Success', 'Feedback submitted successfully!');
-    } catch (error) {
-      Alert.alert('Error', error.response?.data?.detail || 'Feedback submission failed');
-    }
-    setLoading(false);
+  // Function to reset prediction and unlock route selection
+  const resetPredictions = () => {
+    setPredictions({ 
+      trafficCongestion: null,
+      travelTime: null
+    });
+    setPredictionsMade({
+      trafficCongestion: false,
+      travelTime: false
+    });
   };
 
   // Helper function to interpret traffic congestion prediction
   const interpretTrafficCongestion = (prediction) => {
     if (!prediction) return null;
     
-    const congestionValue = prediction.predictions?.[0];
-    const probabilities = prediction.probabilities?.[0];
+    console.log("Traffic prediction response:", prediction);
     
-    if (congestionValue === undefined) return null;
+    const predictions = prediction.predictions;
+    const probabilities = prediction.probabilities;
+    
+    console.log("Predictions:", predictions);
+    console.log("Probabilities:", probabilities);
+    
+    if (!predictions || predictions.length === 0) return null;
+    
+    const congestionValue = predictions[0];
+    let congestionProbabilities = null;
+    
+    if (probabilities && probabilities.length > 0) {
+      congestionProbabilities = probabilities[0];
+    }
+    
+    console.log("Congestion Value:", congestionValue);
+    console.log("Congestion Probabilities:", congestionProbabilities);
+    
+    // Check if the congestion probabilities exist and have the expected structure
+    // Different handling based on the data structure
+    let congestionProb = null;
+    let freeFlowProb = null;
+    
+    // Handling for different response structures
+    if (congestionProbabilities) {
+      if (Array.isArray(congestionProbabilities) && congestionProbabilities.length >= 2) {
+        // If probabilities is an array with at least 2 values
+        freeFlowProb = congestionProbabilities[0] * 100;
+        congestionProb = congestionProbabilities[1] * 100;
+      } else if (typeof congestionProbabilities === 'object') {
+        // If probabilities is an object with named keys
+        freeFlowProb = (congestionProbabilities[0] || congestionProbabilities['0'] || 0) * 100;
+        congestionProb = (congestionProbabilities[1] || congestionProbabilities['1'] || 0) * 100;
+      } else if (typeof congestionProbabilities === 'number') {
+        // If only one number is provided (confidence score)
+        congestionProb = congestionValue === 1 ? congestionProbabilities * 100 : 0;
+        freeFlowProb = congestionValue === 0 ? congestionProbabilities * 100 : 0;
+      }
+    } else {
+      // Fallback values if no probabilities are available
+      congestionProb = congestionValue === 1 ? 95 : 5;
+      freeFlowProb = congestionValue === 0 ? 95 : 5;
+    }
+    
+    console.log("Calculated congestionProb:", congestionProb);
+    console.log("Calculated freeFlowProb:", freeFlowProb);
+    
+    // Format the status text with proper percentage value
+    const statusText = congestionValue === 1 
+      ? `Congested (${congestionProb !== null ? congestionProb.toFixed(1) : "N/A"}%)` 
+      : `Free Flow (${freeFlowProb !== null ? freeFlowProb.toFixed(1) : "N/A"}%)`;
+    
+    // Determine severity level based on probability
+    let severityLevel = 'low';
+    let warningMessage = '';
+    
+    if (congestionProb !== null) {
+      if (congestionProb >= 80) {
+        severityLevel = 'high';
+        warningMessage = '⚠️ High likelihood of severe delays. Consider an alternative route.';
+      } else if (congestionProb >= 50) {
+        severityLevel = 'medium';
+        warningMessage = '⚠️ Moderate traffic expected. Plan for possible delays.';
+      } else {
+        severityLevel = 'low';
+        warningMessage = '✓ Traffic should be flowing smoothly.';
+      }
+    }
     
     return {
       isCongested: congestionValue === 1,
-      confidence: probabilities ? Math.max(...probabilities) * 100 : null,
-      status: congestionValue === 1 ? 'Congested' : 'Free Flow',
-      color: congestionValue === 1 ? '#e74c3c' : '#2ecc71'
+      confidence: congestionProbabilities ? 
+        (Array.isArray(congestionProbabilities) ? 
+          Math.max(...congestionProbabilities) * 100 : 
+          (typeof congestionProbabilities === 'number' ? congestionProbabilities * 100 : null)
+        ) : null,
+      congestionProb: congestionProb,
+      freeFlowProb: freeFlowProb,
+      status: statusText,
+      color: congestionValue === 1 ? '#e74c3c' : '#2ecc71',
+      severityLevel,
+      warningMessage
     };
   };
 
-  // Helper function to format travel time prediction
-  const formatTravelTime = (prediction) => {
-    if (!prediction || prediction.predictions === undefined || prediction.predictions.length === 0) {
-      return null;
+  // Helper function to interpret travel time prediction
+  const interpretTravelTime = (prediction) => {
+    if (!prediction) return null;
+    
+    console.log("Travel time prediction response:", prediction);
+    
+    const predictions = prediction.predictions;
+    const probabilities = prediction.probabilities;
+    
+    if (!predictions || predictions.length === 0) return null;
+    
+    // Estimated travel time in minutes
+    const predictedMinutes = Math.round(predictions[0]);
+    
+    // Format as minutes or hours and minutes
+    let formattedTime = '';
+    if (predictedMinutes < 60) {
+      formattedTime = `${predictedMinutes} min`;
+    } else {
+      const hours = Math.floor(predictedMinutes / 60);
+      const minutes = predictedMinutes % 60;
+      formattedTime = `${hours} hr ${minutes} min`;
     }
     
-    const minutes = Math.round(prediction.predictions[0]);
+    // Confidence interval if provided in probabilities
+    let confidenceRange = null;
     
-    // Convert to hours and minutes format
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
+    if (probabilities && probabilities.length > 0) {
+      const probArray = probabilities[0];
+      if (Array.isArray(probArray) && probArray.length >= 2) {
+        // Extract low and high values from confidence interval
+        const lowValue = Math.round(probArray[0]);
+        const highValue = Math.round(probArray[probArray.length - 1]);
+        
+        confidenceRange = {
+          low: lowValue,
+          high: highValue,
+          formattedLow: lowValue < 60 ? `${lowValue} min` : `${Math.floor(lowValue / 60)} hr ${lowValue % 60} min`,
+          formattedHigh: highValue < 60 ? `${highValue} min` : `${Math.floor(highValue / 60)} hr ${highValue % 60} min`
+        };
+      }
+    }
+    
+    // Determine if travel time is within Google's estimate
+    const routeDuration = routes[selectedRoute].duration;
+    const googleEstimateMinutes = parseFloat(routeDuration.replace(/[^0-9.]/g, ''));
+    
+    // If Google estimate contains "hr", multiply by 60
+    const hasHour = routeDuration.includes('hr') || routeDuration.includes('hour');
+    let adjustedGoogleEstimate = googleEstimateMinutes;
+    
+    if (hasHour) {
+      // Extract hours and minutes
+      const hourMatch = routeDuration.match(/(\d+)\s*hr/);
+      const minuteMatch = routeDuration.match(/(\d+)\s*min/);
+      
+      const hours = hourMatch ? parseInt(hourMatch[1]) : 0;
+      const minutes = minuteMatch ? parseInt(minuteMatch[1]) : 0;
+      
+      adjustedGoogleEstimate = hours * 60 + minutes;
+    }
+    
+    // Calculate difference from Google estimate
+    const diffFromGoogle = predictedMinutes - adjustedGoogleEstimate;
+    const percentDiff = (diffFromGoogle / adjustedGoogleEstimate) * 100;
+    
+    let comparisonText = '';
+    let severityLevel = 'low';
+    
+    if (Math.abs(percentDiff) < 10) {
+      comparisonText = "Matches navigation app estimate";
+      severityLevel = 'low';
+    } else if (percentDiff > 0) {
+      comparisonText = `${Math.abs(diffFromGoogle).toFixed(0)} min slower than navigation estimate`;
+      severityLevel = percentDiff > 30 ? 'high' : 'medium';
+    } else {
+      comparisonText = `${Math.abs(diffFromGoogle).toFixed(0)} min faster than navigation estimate`;
+      severityLevel = 'low';
+    }
     
     return {
-      minutes: minutes,
-      formatted: hours > 0 
-        ? `${hours} hour${hours !== 1 ? 's' : ''} ${remainingMinutes} minute${remainingMinutes !== 1 ? 's' : ''}` 
-        : `${minutes} minute${minutes !== 1 ? 's' : ''}`,
-      color: minutes > 45 ? '#e74c3c' : minutes > 25 ? '#f39c12' : '#2ecc71'
+      predictedMinutes,
+      formattedTime,
+      confidenceRange,
+      comparisonText,
+      severityLevel,
+      color: 
+        severityLevel === 'high' ? '#e74c3c' : 
+        severityLevel === 'medium' ? '#f39c12' : 
+        '#2ecc71'
     };
   };
 
-  // Render traffic congestion prediction section
-  const renderTrafficCongestionSection = () => {
-    const trafficResult = interpretTrafficCongestion(predictionResults.trafficCongestion);
-    
-    return (
-      <View style={styles.predictionCard}>
-        <Text style={styles.cardTitle}>Traffic Congestion</Text>
-        <View style={styles.row}>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Road</Text>
-            <Picker
-              selectedValue={trafficInputs.RoadName}
-              onValueChange={(value) => setTrafficInputs({...trafficInputs, RoadName: value})}
-              style={styles.picker}
-            >
-              <Picker.Item label="PIE" value="PIE" />
-              <Picker.Item label="CTE" value="CTE" />
-              <Picker.Item label="AYE" value="AYE" />
-              <Picker.Item label="ECP" value="ECP" />
-              <Picker.Item label="KPE" value="KPE" />
-              <Picker.Item label="SLE" value="SLE" />
-              <Picker.Item label="TPE" value="TPE" />
-            </Picker>
-          </View>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Category</Text>
-            <Picker
-              selectedValue={trafficInputs.RoadCategory}
-              onValueChange={(value) => setTrafficInputs({...trafficInputs, RoadCategory: value})}
-              style={styles.picker}
-            >
-              <Picker.Item label="Expressway" value="Expressway" />
-              <Picker.Item label="Major Road" value="Major Road" />
-              <Picker.Item label="Minor Road" value="Minor Road" />
-            </Picker>
-          </View>
-        </View>
-        
-        {activeTab === 'traffic' && (
-          <View style={styles.row}>
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Hour of Day</Text>
-              <TextInput
-                style={styles.input}
-                value={trafficInputs.hour.toString()}
-                onChangeText={(value) => setTrafficInputs({...trafficInputs, hour: parseInt(value) || 0})}
-                keyboardType="numeric"
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Recent Incident?</Text>
-              <Switch
-                value={trafficInputs.recent_incident_flag === 1}
-                onValueChange={(value) => setTrafficInputs({
-                  ...trafficInputs, 
-                  recent_incident_flag: value ? 1 : 0
-                })}
-              />
-            </View>
-          </View>
-        )}
-        
-        {activeTab === 'traffic' && (
-          <TouchableOpacity 
-            style={styles.predictButton} 
-            onPress={predictTrafficCongestion}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>Predict Traffic Congestion</Text>
-          </TouchableOpacity>
-        )}
-        
-        {trafficResult && (
-          <View style={[styles.resultCard, { backgroundColor: trafficResult.color + '20' }]}>
-            <View style={styles.resultHeader}>
-              <Icon 
-                name={trafficResult.isCongested ? 'traffic' : 'directions-car'} 
-                size={24} 
-                color={trafficResult.color} 
-              />
-              <Text style={[styles.resultTitle, { color: trafficResult.color }]}>
-                {trafficResult.status}
-              </Text>
-            </View>
-            
-            {trafficResult.confidence !== null && (
-              <Text style={styles.confidence}>
-                Confidence: {trafficResult.confidence.toFixed(1)}%
-              </Text>
-            )}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  // Render travel time prediction section
-  const renderTravelTimeSection = () => {
-    const travelTimeResult = formatTravelTime(predictionResults.travelTime);
-    
-    return (
-      <View style={styles.predictionCard}>
-        <Text style={styles.cardTitle}>Travel Time</Text>
-        <View style={styles.row}>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Expressway</Text>
-            <Picker
-              selectedValue={travelTimeInputs.Expressway}
-              onValueChange={(value) => setTravelTimeInputs({...travelTimeInputs, Expressway: value})}
-              style={styles.picker}
-            >
-              <Picker.Item label="PIE" value="PIE" />
-              <Picker.Item label="CTE" value="CTE" />
-              <Picker.Item label="AYE" value="AYE" />
-              <Picker.Item label="ECP" value="ECP" />
-              <Picker.Item label="KPE" value="KPE" />
-              <Picker.Item label="SLE" value="SLE" />
-              <Picker.Item label="TPE" value="TPE" />
-            </Picker>
-          </View>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Direction</Text>
-            <Picker
-              selectedValue={travelTimeInputs.Direction}
-              onValueChange={(value) => setTravelTimeInputs({...travelTimeInputs, Direction: value})}
-              style={styles.picker}
-            >
-              <Picker.Item label="East" value="East" />
-              <Picker.Item label="West" value="West" />
-              <Picker.Item label="North" value="North" />
-              <Picker.Item label="South" value="South" />
-            </Picker>
-          </View>
-        </View>
-        
-        <View style={styles.row}>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>From</Text>
-            <Picker
-              selectedValue={travelTimeInputs.Startpoint}
-              onValueChange={(value) => setTravelTimeInputs({...travelTimeInputs, Startpoint: value})}
-              style={styles.picker}
-            >
-              <Picker.Item label="Jurong" value="Jurong" />
-              <Picker.Item label="Woodlands" value="Woodlands" />
-              <Picker.Item label="Changi" value="Changi" />
-              <Picker.Item label="City" value="City" />
-              <Picker.Item label="Tampines" value="Tampines" />
-            </Picker>
-          </View>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>To</Text>
-            <Picker
-              selectedValue={travelTimeInputs.Endpoint}
-              onValueChange={(value) => setTravelTimeInputs({...travelTimeInputs, Endpoint: value})}
-              style={styles.picker}
-            >
-              <Picker.Item label="Changi" value="Changi" />
-              <Picker.Item label="Jurong" value="Jurong" />
-              <Picker.Item label="Woodlands" value="Woodlands" />
-              <Picker.Item label="City" value="City" />
-              <Picker.Item label="Tampines" value="Tampines" />
-            </Picker>
-          </View>
-        </View>
-        
-        {activeTab === 'travel' && (
-          <View style={styles.row}>
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Distance (km)</Text>
-              <TextInput
-                style={styles.input}
-                value={travelTimeInputs.distance_km.toString()}
-                onChangeText={(value) => setTravelTimeInputs({
-                  ...travelTimeInputs, 
-                  distance_km: parseFloat(value) || 0
-                })}
-                keyboardType="numeric"
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Recent Incident?</Text>
-              <Switch
-                value={travelTimeInputs.recent_incident_flag === 1}
-                onValueChange={(value) => setTravelTimeInputs({
-                  ...travelTimeInputs, 
-                  recent_incident_flag: value ? 1 : 0
-                })}
-              />
-            </View>
-          </View>
-        )}
-        
-        {activeTab === 'travel' && (
-          <TouchableOpacity 
-            style={styles.predictButton} 
-            onPress={predictTravelTime}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>Predict Travel Time</Text>
-          </TouchableOpacity>
-        )}
-        
-        {travelTimeResult && (
-          <View style={[styles.resultCard, { backgroundColor: travelTimeResult.color + '20' }]}>
-            <View style={styles.resultHeader}>
-              <Icon 
-                name="access-time" 
-                size={24} 
-                color={travelTimeResult.color} 
-              />
-              <Text style={[styles.resultTitle, { color: travelTimeResult.color }]}>
-                {travelTimeResult.formatted}
-              </Text>
-            </View>
-            
-            <View style={styles.feedback}>
-              <Text style={styles.feedbackLabel}>Was this accurate?</Text>
-              <TextInput
-                style={styles.feedbackInput}
-                placeholder="Enter actual travel time (mins)"
-                keyboardType="numeric"
-                value={feedbackInputs.actual_value.toString()}
-                onChangeText={(value) => setFeedbackInputs({
-                  ...feedbackInputs,
-                  actual_value: parseInt(value) || 0
-                })}
-              />
-              <TouchableOpacity 
-                style={styles.feedbackButton}
-                onPress={submitFeedback}
-                disabled={loading}
-              >
-                <Text style={styles.feedbackButtonText}>Submit Feedback</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  // Render route recommendation section
-  const   renderRouteSection = () => {
-    const routeResult = predictionResults.route;
-    
-    return (
-      <View style={styles.predictionCard}>
-        <Text style={styles.cardTitle}>Route Recommendation</Text>
-        
-        {location && (
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-              latitudeDelta: 0.1,
-              longitudeDelta: 0.1,
-            }}
-          >
-            {/* Origin marker */}
-            <Marker
-              coordinate={{
-                latitude: routeInputs.origin.lat,
-                longitude: routeInputs.origin.lon
-              }}
-              pinColor="green"
-              title="Start"
-            />
-            
-            {/* Destination marker */}
-            <Marker
-              coordinate={{
-                latitude: routeInputs.destination.lat,
-                longitude: routeInputs.destination.lon
-              }}
-              pinColor="red"
-              title="Destination"
-            />
-            
-            {/* Show either API route coordinates or P2PDriver polyline */}
-            {routeResult?.route_coordinates ? (
-              <Polyline
-                coordinates={routeResult.route_coordinates.map(coord => ({
-                  latitude: coord.lat,
-                  longitude: coord.lon
-                }))}
-                strokeWidth={4}
-                strokeColor="#3498db"
-              />
-            ) : routes.length > 0 && (
-              <Polyline
-                coordinates={routes[selectedRoute].polyline}
-                strokeWidth={4}
-                strokeColor="#3498db"
-              />
-            )}
-          </MapView>
-        )}
-        
-        <View style={styles.row}>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Avoid Tolls</Text>
-            <Switch
-              value={routeInputs.preferences.avoid_toll}
-              onValueChange={(value) => setRouteInputs({
-                ...routeInputs, 
-                preferences: {
-                  ...routeInputs.preferences,
-                  avoid_toll: value
-                }
-              })}
-            />
-          </View>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Avoid Expressways</Text>
-            <Switch
-              value={routeInputs.preferences.avoid_expressway}
-              onValueChange={(value) => setRouteInputs({
-                ...routeInputs, 
-                preferences: {
-                  ...routeInputs.preferences,
-                  avoid_expressway: value
-                }
-              })}
-            />
-          </View>
-        </View>
-        
-        <View style={styles.row}>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Route Priority</Text>
-            <Picker
-              selectedValue={routeInputs.preferences.priority}
-              onValueChange={(value) => setRouteInputs({
-                ...routeInputs, 
-                preferences: {
-                  ...routeInputs.preferences,
-                  priority: value
-                }
-              })}
-              style={styles.picker}
-            >
-              <Picker.Item label="Fastest" value="fastest" />
-              <Picker.Item label="Shortest" value="shortest" />
-            </Picker>
-          </View>
-        </View>
-        
-        {activeTab === 'route' && (
-          <TouchableOpacity 
-            style={styles.predictButton} 
-            onPress={getRouteRecommendation}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>Get Route</Text>
-          </TouchableOpacity>
-        )}
-        
-        {routeResult && (
-          <View style={styles.resultCard}>
-            <View style={styles.resultHeader}>
-              <Icon name="directions" size={24} color="#3498db" />
-              <Text style={[styles.resultTitle, { color: '#3498db' }]}>
-                {routeResult.total_time ? `${Math.round(routeResult.total_time)} mins` : 'Route Found'}
-              </Text>
-            </View>
-            
-            <Text style={styles.routeInfo}>
-              Distance: {routeResult.total_distance ? `${routeResult.total_distance.toFixed(1)} km` : 'N/A'}
-            </Text>
-            
-            {routeResult.incidents && routeResult.incidents.length > 0 && (
-              <View style={styles.incidentsContainer}>
-                <Text style={styles.incidentsTitle}>
-                  {routeResult.incidents.length} incident(s) on route
-                </Text>
-                {routeResult.incidents.map((incident, index) => (
-                  <Text key={index} style={styles.incidentItem}>
-                    {incident.type}: {incident.message}
-                  </Text>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  // Render feedback section
-  const renderFeedbackSection = () => {
-    return (
-      <View style={styles.predictionCard}>
-        <Text style={styles.cardTitle}>Submit Feedback</Text>
-        
-        <View style={styles.row}>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Prediction Type</Text>
-            <Picker
-              selectedValue={feedbackInputs.prediction_type}
-              onValueChange={(value) => setFeedbackInputs({...feedbackInputs, prediction_type: value})}
-              style={styles.picker}
-            >
-              <Picker.Item label="Travel Time" value="travel_time" />
-              <Picker.Item label="Traffic Condition" value="traffic_condition" />
-            </Picker>
-          </View>
-        </View>
-        
-        <View style={styles.row}>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Predicted Value</Text>
-            <TextInput
-              style={styles.input}
-              value={feedbackInputs.predicted_value.toString()}
-              onChangeText={(value) => setFeedbackInputs({
-                ...feedbackInputs, 
-                predicted_value: parseFloat(value) || 0
-              })}
-              keyboardType="numeric"
-            />
-          </View>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Actual Value</Text>
-            <TextInput
-              style={styles.input}
-              value={feedbackInputs.actual_value.toString()}
-              onChangeText={(value) => setFeedbackInputs({
-                ...feedbackInputs, 
-                actual_value: parseFloat(value) || 0
-              })}
-              keyboardType="numeric"
-            />
-          </View>
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.predictButton} 
-          onPress={submitFeedback}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Submit Feedback</Text>
-        </TouchableOpacity>
-        
-        {predictionResults.feedback && (
-          <View style={styles.resultCard}>
-            <Text style={styles.resultTitle}>Feedback submitted successfully!</Text>
-            <Text>Feedback ID: {predictionResults.feedback.feedback_id}</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  // Add state for location inputs
-  const [locationInputs, setLocationInputs] = useState({
-    startLocation: '',
-    endLocation: ''
-  });
-  
-  // Add state for routes from P2PDriver
-  const [routes, setRoutes] = useState([]);
-  const [selectedRoute, setSelectedRoute] = useState(0);
-  
-  // Function to handle P2PDriver integration
-  const handleRouteSearch = async () => {
-    setLoading(true);
-    try {
-      // Get routes using P2PDriver
-      const routeResults = await P2PDriver(locationInputs.startLocation, locationInputs.endLocation);
-      setRoutes(routeResults);
-      
-      if (routeResults.length > 0) {
-        // Select the first route by default
-        setSelectedRoute(0);
-        const selectedRouteData = routeResults[0];
-        
-        // Extract road names from the route steps
-        const roadNames = selectedRouteData.steps
-          .map(step => step.road)
-          .filter(road => road !== 'Follow road');
-        
-        // Get the main expressway if mentioned in summary or steps
-        const expressways = ['PIE', 'CTE', 'AYE', 'ECP', 'KPE', 'SLE', 'TPE', 'BKE'];
-        let mainExpressway = 'PIE'; // Default
-        
-        // Try to find expressway in the route summary
-        for (const exp of expressways) {
-          if (selectedRouteData.summary.includes(exp)) {
-            mainExpressway = exp;
-            break;
-          }
-        }
-        
-        // If no expressway in summary, check steps
-        if (mainExpressway === 'PIE') {
-          for (const step of selectedRouteData.steps) {
-            for (const exp of expressways) {
-              if (step.instruction.includes(exp)) {
-                mainExpressway = exp;
-                break;
-              }
-            }
-            if (mainExpressway !== 'PIE') break;
-          }
-        }
-        
-        // Extract distance in km from the text (e.g., "5.2 km" → 5.2)
-        const distanceText = selectedRouteData.distance;
-        const distanceKm = parseFloat(distanceText.replace(/[^0-9.]/g, ''));
-        
-        // Determine direction (very simplified approach)
-        const startMarker = selectedRouteData.markers[0];
-        const endMarker = selectedRouteData.markers[1];
-        let direction = 'East';
-        
-        if (endMarker.longitude < startMarker.longitude) {
-          direction = 'West';
-        } else if (endMarker.latitude > startMarker.latitude) {
-          direction = 'North';
-        } else if (endMarker.latitude < startMarker.latitude) {
-          direction = 'South';
-        }
-        
-        // Update traffic congestion inputs
-        setTrafficInputs(prev => ({
-          ...prev,
-          RoadName: mainExpressway,
-          RoadCategory: 'Expressway',
-        }));
-        
-        // Update travel time inputs
-        setTravelTimeInputs(prev => ({
-          ...prev,
-          Expressway: mainExpressway,
-          Direction: direction,
-          Startpoint: locationInputs.startLocation.split(',')[0],
-          Endpoint: locationInputs.endLocation.split(',')[0],
-          distance_km: distanceKm || 5.0
-        }));
-        
-        // Update route inputs with the exact coordinates
-        setRouteInputs(prev => ({
-          ...prev,
-          origin: {
-            lat: selectedRouteData.markers[0].latitude,
-            lon: selectedRouteData.markers[0].longitude
-          },
-          destination: {
-            lat: selectedRouteData.markers[1].latitude,
-            lon: selectedRouteData.markers[1].longitude
-          }
-        }));
-      }
-    } catch (error) {
-      console.error('Error in route search:', error);
-      Alert.alert('Error', 'Failed to get route information');
-    }
-    setLoading(false);
-  };
-  
-  // Main render
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.tabBar}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'unified' && styles.activeTab]} 
-          onPress={() => setActiveTab('unified')}
-        >
-          <Text style={[styles.tabText, activeTab === 'unified' && styles.activeTabText]}>All</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'traffic' && styles.activeTab]} 
-          onPress={() => setActiveTab('traffic')}
-        >
-          <Text style={[styles.tabText, activeTab === 'traffic' && styles.activeTabText]}>Traffic</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'travel' && styles.activeTab]} 
-          onPress={() => setActiveTab('travel')}
-        >
-          <Text style={[styles.tabText, activeTab === 'travel' && styles.activeTabText]}>Travel Time</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'route' && styles.activeTab]} 
-          onPress={() => setActiveTab('route')}
-        >
-          <Text style={[styles.tabText, activeTab === 'route' && styles.activeTabText]}>Route</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'feedback' && styles.activeTab]} 
-          onPress={() => setActiveTab('feedback')}
-        >
-          <Text style={[styles.tabText, activeTab === 'feedback' && styles.activeTabText]}>Feedback</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <ScrollView>
+      <ScrollView style={styles.scrollContainer}>
         <View style={styles.headerContainer}>
           <Text style={styles.header}>Traffic Prediction</Text>
           <Text style={styles.subheader}>
@@ -876,16 +548,17 @@ export default function TrafficPrediction() {
           </Text>
         </View>
         
-        {/* Add location search section at the top */}
-        <View style={styles.locationSearchCard}>
+        {/* Location Search Section */}
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>Enter Your Route</Text>
           <View style={styles.formGroup}>
             <Text style={styles.label}>Start Location</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g., Jurong East, Singapore"
+              placeholder="e.g., Jurong East"
               value={locationInputs.startLocation}
               onChangeText={(text) => setLocationInputs({...locationInputs, startLocation: text})}
+              placeholderTextColor="#777"
             />
           </View>
           
@@ -893,9 +566,10 @@ export default function TrafficPrediction() {
             <Text style={styles.label}>Destination</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g., Changi Airport, Singapore"
+              placeholder="e.g., Changi Airport"
               value={locationInputs.endLocation}
               onChangeText={(text) => setLocationInputs({...locationInputs, endLocation: text})}
+              placeholderTextColor="#777"
             />
           </View>
           
@@ -904,7 +578,7 @@ export default function TrafficPrediction() {
             onPress={handleRouteSearch}
             disabled={loading}
           >
-            <Text style={styles.buttonText}>Find Route & Prefill Inputs</Text>
+            <Text style={styles.buttonText}>Find Route</Text>
           </TouchableOpacity>
           
           {routes.length > 0 && (
@@ -920,13 +594,24 @@ export default function TrafficPrediction() {
                       key={index}
                       style={[
                         styles.routeButton,
-                        selectedRoute === index && styles.selectedRouteButton
+                        selectedRoute === index && styles.selectedRouteButton,
+                        (predictionsMade.trafficCongestion || predictionsMade.travelTime) && 
+                        index !== selectedRoute && styles.disabledRouteButton
                       ]}
-                      onPress={() => setSelectedRoute(index)}
+                      onPress={() => {
+                        if (!predictionsMade.trafficCongestion && !predictionsMade.travelTime) {
+                          setSelectedRoute(index);
+                          extractRouteDetailsForPrediction(route);
+                        }
+                      }}
+                      disabled={(predictionsMade.trafficCongestion || predictionsMade.travelTime) && 
+                               index !== selectedRoute}
                     >
                       <Text style={[
                         styles.routeButtonText,
-                        selectedRoute === index && styles.selectedRouteButtonText
+                        selectedRoute === index && styles.selectedRouteButtonText,
+                        (predictionsMade.trafficCongestion || predictionsMade.travelTime) && 
+                        index !== selectedRoute && styles.disabledRouteButtonText
                       ]}>
                         Route {index + 1}
                       </Text>
@@ -938,42 +623,268 @@ export default function TrafficPrediction() {
           )}
         </View>
         
-        {/* Show loading indicator during API calls */}
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#0000ff" />
-            <Text style={styles.loadingText}>Processing prediction...</Text>
+        {/* Prediction Action Buttons */}
+        {routes.length > 0 && (
+          <View style={styles.actionButtonsContainer}>
+            {!predictionsMade.trafficCongestion && !predictionsMade.travelTime ? (
+              <>
+                <TouchableOpacity 
+                  style={styles.predictionButton} 
+                  onPress={predictTrafficCongestion}
+                  disabled={loading}
+                >
+                  <Icon name="traffic" size={24} color="#fff" />
+                  <Text style={styles.buttonText}>Predict Traffic Congestion</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.predictionButton} 
+                  onPress={predictTravelTime}
+                  disabled={loading}
+                >
+                  <Icon name="timer" size={24} color="#fff" />
+                  <Text style={styles.buttonText}>Predict Travel Time</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity 
+                style={styles.resetButton} 
+                onPress={resetPredictions}
+              >
+                <Icon name="refresh" size={24} color="#fff" />
+                <Text style={styles.buttonText}>Reset Predictions</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
         
-        {/* Unified View (All Models) */}
-        {activeTab === 'unified' && (
-          <>
-            {renderTrafficCongestionSection()}
-            {renderTravelTimeSection()}
-            {renderRouteSection()}
-            
-            <TouchableOpacity 
-              style={styles.unifiedPredictButton} 
-              onPress={handleUnifiedPrediction}
-              disabled={loading}
-            >
-              <Text style={styles.buttonText}>Run All Predictions</Text>
-            </TouchableOpacity>
-          </>
+        {/* Loading Indicator */}
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#3498db" />
+            <Text style={styles.loadingText}>Processing request...</Text>
+          </View>
         )}
         
-        {/* Traffic Model View */}
-        {activeTab === 'traffic' && renderTrafficCongestionSection()}
-        
-        {/* Travel Time Model View */}
-        {activeTab === 'travel' && renderTravelTimeSection()}
-        
-        {/* Route Model View */}
-        {activeTab === 'route' && renderRouteSection()}
-        
-        {/* Feedback Model View */}
-        {activeTab === 'feedback' && renderFeedbackSection()}
+        {/* Results Section */}
+        <View style={styles.resultsContainer}>
+          {/* Traffic Congestion Result */}
+          {predictions.trafficCongestion && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Traffic Congestion Prediction</Text>
+              
+              {(() => {
+                const trafficResult = interpretTrafficCongestion(predictions.trafficCongestion);
+                if (!trafficResult) return null;
+                
+                return (
+                  <View style={[
+                    styles.resultBox, 
+                    { backgroundColor: trafficResult.color + '20' },
+                    trafficResult.severityLevel === 'high' && styles.highSeverityBox,
+                    trafficResult.severityLevel === 'medium' && styles.mediumSeverityBox,
+                    trafficResult.severityLevel === 'low' && styles.lowSeverityBox
+                  ]}>
+                    <View style={styles.resultHeader}>
+                      <Icon 
+                        name={trafficResult.isCongested ? 'traffic' : 'directions-car'} 
+                        size={32} 
+                        color={trafficResult.color} 
+                      />
+                      <Text style={[styles.resultTitle, { color: trafficResult.color }]}>
+                        {trafficResult.status || "Status Unavailable"}
+                      </Text>
+                    </View>
+                    
+                    {/* Warning Message */}
+                    <View style={styles.warningContainer}>
+                      <Text style={[
+                        styles.warningText,
+                        trafficResult.severityLevel === 'high' && styles.highSeverityText,
+                        trafficResult.severityLevel === 'medium' && styles.mediumSeverityText,
+                        trafficResult.severityLevel === 'low' && styles.lowSeverityText
+                      ]}>
+                        {trafficResult.warningMessage || "No traffic information available."}
+                      </Text>
+                    </View>
+                    
+                    {/* Show probabilities */}
+                    {trafficResult.congestionProb !== null && (
+                      <View style={styles.probabilityContainer}>
+                        <Text style={styles.probabilityTitle}>Prediction Probabilities:</Text>
+                        <View style={styles.probabilityBar}>
+                          <View 
+                            style={[
+                              styles.probabilityFill, 
+                              { 
+                                width: `${trafficResult.congestionProb}%`,
+                                backgroundColor: '#e74c3c' 
+                              }
+                            ]} 
+                          />
+                          <Text style={styles.probabilityLabel}>
+                            Congested: {trafficResult.congestionProb.toFixed(1)}%
+                          </Text>
+                        </View>
+                        <View style={styles.probabilityBar}>
+                          <View 
+                            style={[
+                              styles.probabilityFill, 
+                              { 
+                                width: `${trafficResult.freeFlowProb}%`,
+                                backgroundColor: '#2ecc71' 
+                              }
+                            ]} 
+                          />
+                          <Text style={styles.probabilityLabel}>
+                            Free Flow: {trafficResult.freeFlowProb.toFixed(1)}%
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                    
+                    <Text style={styles.resultDetail}>
+                      Road: {modelInputs.traffic.RoadName} ({modelInputs.traffic.RoadCategory})
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
+          )}
+          
+          {/* Travel Time Prediction Result */}
+          {predictions.travelTime && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Travel Time Prediction</Text>
+              
+              {(() => {
+                const travelTimeResult = interpretTravelTime(predictions.travelTime);
+                if (!travelTimeResult) return null;
+                
+                return (
+                  <View style={[
+                    styles.resultBox, 
+                    { backgroundColor: travelTimeResult.color + '20' },
+                    travelTimeResult.severityLevel === 'high' && styles.highSeverityBox,
+                    travelTimeResult.severityLevel === 'medium' && styles.mediumSeverityBox,
+                    travelTimeResult.severityLevel === 'low' && styles.lowSeverityBox
+                  ]}>
+                    <View style={styles.resultHeader}>
+                      <Icon 
+                        name="timer" 
+                        size={32} 
+                        color={travelTimeResult.color} 
+                      />
+                      <Text style={[styles.resultTitle, { color: travelTimeResult.color }]}>
+                        {travelTimeResult.formattedTime}
+                      </Text>
+                    </View>
+                    
+                    {/* Comparison Message */}
+                    <View style={styles.warningContainer}>
+                      <Text style={[
+                        styles.warningText,
+                        travelTimeResult.severityLevel === 'high' && styles.highSeverityText,
+                        travelTimeResult.severityLevel === 'medium' && styles.mediumSeverityText,
+                        travelTimeResult.severityLevel === 'low' && styles.lowSeverityText
+                      ]}>
+                        {travelTimeResult.comparisonText || "No travel time comparison available."}
+                      </Text>
+                    </View>
+                    
+                    {/* Confidence range if available */}
+                    {travelTimeResult.confidenceRange && (
+                      <View style={styles.probabilityContainer}>
+                        <Text style={styles.probabilityTitle}>Prediction Range:</Text>
+                        <View style={styles.rangeContainer}>
+                          <Text style={styles.rangeText}>
+                            <Icon name="arrow-downward" size={16} color="#3498db" /> {travelTimeResult.confidenceRange.formattedLow}
+                          </Text>
+                          <Text style={styles.rangeSeparator}>to</Text>
+                          <Text style={styles.rangeText}>
+                            <Icon name="arrow-upward" size={16} color="#e74c3c" /> {travelTimeResult.confidenceRange.formattedHigh}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                    
+                    <Text style={styles.resultDetail}>
+                      Route: {modelInputs.travelTime.Startpoint} to {modelInputs.travelTime.Endpoint}
+                    </Text>
+                    <Text style={styles.resultDetail}>
+                      Road: {modelInputs.travelTime.Expressway} ({modelInputs.travelTime.Direction})
+                    </Text>
+                    <Text style={styles.resultDetail}>
+                      Distance: {modelInputs.travelTime.distance_km.toFixed(1)} km
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
+          )}
+          
+          {/* Route Map Display */}
+          {routes.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Route Map</Text>
+              
+              {location && (
+                <MapView
+                  style={styles.map}
+                  initialRegion={{
+                    latitude: routes[selectedRoute].markers[0].latitude,
+                    longitude: routes[selectedRoute].markers[0].longitude,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                  }}
+                >
+                  {/* Origin marker */}
+                  <Marker
+                    coordinate={{
+                      latitude: routes[selectedRoute].markers[0].latitude,
+                      longitude: routes[selectedRoute].markers[0].longitude
+                    }}
+                    pinColor="green"
+                    title="Start"
+                    description={locationInputs.startLocation}
+                  />
+                  
+                  {/* Destination marker */}
+                  <Marker
+                    coordinate={{
+                      latitude: routes[selectedRoute].markers[1].latitude,
+                      longitude: routes[selectedRoute].markers[1].longitude
+                    }}
+                    pinColor="red"
+                    title="Destination"
+                    description={locationInputs.endLocation}
+                  />
+                  
+                  {/* Route polyline */}
+                  <Polyline
+                    coordinates={routes[selectedRoute].polyline}
+                    strokeWidth={4}
+                    strokeColor={predictions.trafficCongestion ? 
+                      (interpretTrafficCongestion(predictions.trafficCongestion).color) : 
+                      "#3498db"}
+                  />
+                </MapView>
+              )}
+              
+              <View style={styles.routeDetails}>
+                <Text style={styles.routeDetail}>
+                  Distance: {routes[selectedRoute].distance}
+                </Text>
+                <Text style={styles.routeDetail}>
+                  Estimated Time of Travel: {routes[selectedRoute].duration}
+                </Text>
+                <Text style={styles.routeDetail}>
+                  Via: {modelInputs.traffic.RoadName}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
       </ScrollView>
       
       <View style={styles.footer}>
@@ -988,49 +899,30 @@ export default function TrafficPrediction() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#000', // Black background
+  },
+  scrollContainer: {
+    flex: 1,
+    backgroundColor: '#000', // Black background for ScrollView
   },
   headerContainer: {
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: '#111', // Dark background for header
     borderBottomWidth: 1,
-    borderBottomColor: '#eaeaea',
+    borderBottomColor: '#222',
   },
   header: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#fff', // White text for dark background
   },
   subheader: {
     fontSize: 16,
-    color: '#666',
+    color: '#aaa', // Light gray text for dark background
     marginTop: 5,
   },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eaeaea',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  activeTab: {
-    borderBottomWidth: 3,
-    borderBottomColor: '#3498db',
-  },
-  tabText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  activeTabText: {
-    color: '#3498db',
-    fontWeight: 'bold',
-  },
-  predictionCard: {
-    backgroundColor: '#fff',
+  card: {
+    backgroundColor: '#111', // Dark card background
     borderRadius: 10,
     padding: 16,
     margin: 16,
@@ -1039,194 +931,114 @@ const styles = StyleSheet.create({
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#222', // Subtle border for cards
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 12,
-    color: '#333',
-  },
-  row: {
-    flexDirection: 'row',
-    marginBottom: 16,
+    color: '#fff', // White text for card titles
   },
   formGroup: {
-    flex: 1,
-    marginRight: 8,
+    marginBottom: 16,
   },
   label: {
-    fontSize: 14,
-    marginBottom: 4,
-    color: '#666',
-  },
-  picker: {
-    height: 40,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 5,
+    fontSize: 16,
+    marginBottom: 8,
+    color: '#ccc', // Light gray labels
   },
   input: {
-    height: 40,
+    height: 50,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 5,
-    paddingHorizontal: 10,
-    backgroundColor: '#f5f5f5',
-  },
-  predictButton: {
-    backgroundColor: '#3498db',
-    padding: 12,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  unifiedPredictButton: {
-    backgroundColor: '#2c3e50',
-    padding: 16,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 20,
+    borderColor: '#333', // Darker border for inputs
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    backgroundColor: '#222', // Dark input background
+    color: '#fff', // White text in inputs
   },
   searchButton: {
-    backgroundColor: '#16a085',
-    padding: 12,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  locationSearchCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: '#16a085', // Teal button
     padding: 16,
-    margin: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 8,
   },
   routeSelectionContainer: {
     marginTop: 12,
-    padding: 8,
-    backgroundColor: '#f5f5f5',
+    padding: 12,
+    backgroundColor: '#222', // Dark background for route selection
     borderRadius: 8,
   },
   routeSelectionTitle: {
     fontSize: 14,
     fontWeight: 'bold',
     marginBottom: 8,
-    color: '#333',
+    color: '#fff', // White text for route title
   },
   routeButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
   },
   routeButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: '#333', // Dark button background
   },
   selectedRouteButton: {
-    backgroundColor: '#3498db',
+    backgroundColor: '#3498db', // Blue for selected route
+  },
+  disabledRouteButton: {
+    backgroundColor: '#333',
+    opacity: 0.6,
   },
   routeButtonText: {
-    fontSize: 12,
-    color: '#333',
+    fontSize: 14,
+    color: '#ccc', // Light gray text
   },
   selectedRouteButtonText: {
     color: '#fff',
     fontWeight: 'bold',
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+  disabledRouteButtonText: {
+    color: '#555', // Dark gray for disabled
   },
-  resultCard: {
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: '#f5f5f5',
-    borderLeftWidth: 4,
-    borderLeftColor: '#3498db',
-  },
-  resultHeader: {
-    flexDirection: 'row',
+  actionButtonsContainer: {
+    flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  resultTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  confidence: {
-    fontSize: 14,
-    color: '#666',
-  },
-  map: {
-    height: 200,
+    paddingHorizontal: 16,
     marginBottom: 16,
+    gap: 12,
+  },
+  predictionButton: {
+    backgroundColor: '#3498db', // Same blue color for both prediction buttons
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 8,
-  },
-  routeInfo: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
-  },
-  incidentsContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#eaeaea',
-  },
-  incidentsTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#e74c3c',
-    marginBottom: 8,
-  },
-  incidentItem: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  feedback: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eaeaea',
-  },
-  feedbackLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  feedbackInput: {
-    height: 40,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 5,
-    paddingHorizontal: 10,
-    backgroundColor: '#fff',
-    marginBottom: 8,
-  },
-  feedbackButton: {
-    backgroundColor: '#27ae60',
-    padding: 10,
-    borderRadius: 5,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    width: '90%',
   },
-  feedbackButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  resetButton: {
+    backgroundColor: '#7f8c8d', // Gray reset button
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    width: '90%',
   },
   loadingContainer: {
     padding: 20,
@@ -1234,17 +1046,150 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 10,
-    color: '#666',
+    color: '#ccc', // Light gray loading text
+    fontSize: 16,
+  },
+  resultsContainer: {
+    marginBottom: 20,
+  },
+  resultBox: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: '#222', // Dark background for result boxes
+    borderLeftWidth: 4,
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  resultTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginLeft: 12,
+  },
+  resultDetail: {
+    fontSize: 16,
+    color: '#ccc', // Light gray for details
+    marginTop: 6,
+  },
+  probabilityContainer: {
+    marginVertical: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#333', // Darker border
+  },
+  probabilityTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#fff', // White title text
+  },
+  probabilityBar: {
+    height: 30,
+    backgroundColor: '#333', // Dark background for bars
+    borderRadius: 4,
+    marginBottom: 8,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  probabilityFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    opacity: 0.7,
+  },
+  probabilityLabel: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    right: 0,
+    bottom: 0,
+    textAlignVertical: 'center',
+    color: '#fff', // White text for probability labels
+    fontWeight: 'bold',
+  },
+  rangeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#333', // Dark background for range container
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  rangeText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff', // White text for range
+  },
+  rangeSeparator: {
+    fontSize: 14,
+    color: '#777', // Gray separator text
+  },
+  map: {
+    height: 220,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  routeDetails: {
+    backgroundColor: '#222', // Dark background for route details
+    padding: 12,
+    borderRadius: 8,
+  },
+  routeDetail: {
+    fontSize: 16,
+    color: '#ccc', // Light gray text for route details
+    marginBottom: 6,
   },
   footer: {
     padding: 16,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#111', // Dark background for footer
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#eaeaea',
+    borderTopColor: '#222',
   },
   footerText: {
     fontSize: 12,
-    color: '#999',
+    color: '#777', // Gray text for footer
+  },
+  
+  // Styles for severity indicators
+  highSeverityBox: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#e74c3c', // Red for high severity
+  },
+  mediumSeverityBox: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#f39c12', // Orange for medium severity
+  },
+  lowSeverityBox: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#2ecc71', // Green for low severity
+  },
+  
+  // Warning container and text
+  warningContainer: {
+    backgroundColor: 'rgba(40, 40, 40, 0.7)', // Dark semi-transparent
+    padding: 12,
+    borderRadius: 6,
+    marginVertical: 10,
+  },
+  warningText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#ccc', // Light gray text
+  },
+  highSeverityText: {
+    color: '#e74c3c', // Red for high severity
+  },
+  mediumSeverityText: {
+    color: '#f39c12', // Orange for medium severity
+  },
+  lowSeverityText: {
+    color: '#2ecc71', // Green for low severity
   },
 });

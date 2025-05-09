@@ -10,10 +10,15 @@ COPY backend/app /app/app
 
 EXPOSE 8080
 
+# Common environment variables
 ENV PORT=8080
-# ENV GOOGLE_APPLICATION_CREDENTIALS="/app/service-account-key.json"
-# ENV USE_LOCAL_FIREBASE_CREDENTIALS=1
-# ENV FIREBASE_CREDENTIALS_PATH="/app/service-account-key.json"
 ENV GCP_PROJECT_ID=goanywhere-c55c8
+ENV VERTEX_ENDPOINT_TRAFFIC=6098309302064250880
+ENV VERTEX_ENDPOINT_TRAVEL_TIME=7332295599963766784
+ENV REGION=asia-southeast1
+ENV GCP_REGION=asia-southeast1
+ENV USE_LOCAL_FIREBASE_CREDENTIALS=0
+ENV FIREBASE_SECRET_NAME=firebase-service-account-key
+ENV GMAPS_API_KEY=AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

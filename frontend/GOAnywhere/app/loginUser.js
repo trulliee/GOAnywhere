@@ -39,11 +39,19 @@ export default function LoginUser() {
       return;
     }
     
-    // Test account for quick login
+    // Test accounts for quick login
     if (emailOrPhone === 'ben@gmail.com' && password === '1234') {
-      console.log('Logged in with test account');
-      // Navigate to your main/home screen
+      console.log('Logged in with regular user test account');
+      // Navigate to user home screen
       router.replace('./homeScreen');
+      return;
+    }
+    
+    // Admin test account
+    if (emailOrPhone === 'admin@gmail.com' && password === '1234') {
+      console.log('Logged in with admin test account');
+      // Navigate to admin home screen
+      router.replace('./AdminHomeScreen');
       return;
     }
     
@@ -52,8 +60,9 @@ export default function LoginUser() {
       const userData = await AuthService.login(emailOrPhone, password);
       console.log('Logged in:', userData);
       
+      // Route based on user type from server
       if (userData.user_type === 'admin') {
-        router.replace('./homeScreen');
+        router.replace('./AdminHomeScreen');
       }
       else {
         router.replace('./homeScreen');
@@ -115,6 +124,29 @@ export default function LoginUser() {
           >
             <Text style={styles.signupText}>Don't have an account? Sign up</Text>
           </TouchableOpacity>
+          
+          {/* Quick login buttons - Only visible in development */}
+          <View style={styles.devLoginContainer}>
+            <TouchableOpacity 
+              style={styles.devLoginButton}
+              onPress={() => {
+                setEmailOrPhone('ben@gmail.com');
+                setPassword('1234');
+              }}
+            >
+              <Text style={styles.devLoginText}>Quick User Login</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.devLoginButton, styles.adminLoginButton]}
+              onPress={() => {
+                setEmailOrPhone('admin@gmail.com');
+                setPassword('1234');
+              }}
+            >
+              <Text style={styles.devLoginText}>Quick Admin Login</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         
         {/* Sign in button */}
@@ -245,5 +277,25 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     backgroundColor: '#888',
+  },
+  // Development quick login buttons
+  devLoginContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  devLoginButton: {
+    backgroundColor: '#f0f0f0',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    marginHorizontal: 5,
+  },
+  adminLoginButton: {
+    backgroundColor: '#ffe0e0',
+  },
+  devLoginText: {
+    fontSize: 12,
+    color: '#666',
   },
 });

@@ -181,6 +181,13 @@ class AuthService {
   // Sign up a new user
   static async signUp(email, password, name = '', phoneNumber = '') {
     try {
+      console.log('📦 Sending payload:', {
+        email,
+        password,
+        name,
+        phone_number: phoneNumber,
+      });
+      
       const response = await fetch(`${API_URL}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -188,6 +195,7 @@ class AuthService {
           email,
           password,
           name,
+<<<<<<< HEAD
           phoneNumber,
         }),
       });
@@ -199,6 +207,20 @@ class AuthService {
       }
 
       const data = JSON.parse(text); // Now safe to parse
+=======
+          phone_number: phoneNumber,
+        }),
+      });
+      
+      const data = await response.json();
+      console.log('📩 Signup response data:', data);
+      console.log('📡 Response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(data.detail || 'Signup failed. Please check your input.');
+      }
+      
+>>>>>>> 0d9375f6fc8a9b441e0c7bfc872f24a0cfe45df1
       const userData = {
         uid: data.uid,
         email: data.email,

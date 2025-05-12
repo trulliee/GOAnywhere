@@ -437,10 +437,7 @@ export default function HomeScreen() {
         <TouchableWithoutFeedback onPress={() => setIsModalVisible(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.modalContainer}
-              >
+              <View style={styles.modalContainer}>
                 <ScrollView style={{ flex: 1 }}>
                   {/* Search Input */}
                   <View style={styles.modalSearchRow}>
@@ -450,7 +447,7 @@ export default function HomeScreen() {
                       value={searchInput}
                       onChangeText={setSearchInput}
                     />
-                    <TouchableOpacity onPress={handleSearch}>
+                    <TouchableOpacity onPress={() => handleSearch()}>
                       <Ionicons name="search" size={24} color="#333" />
                     </TouchableOpacity>
                   </View>
@@ -490,7 +487,7 @@ export default function HomeScreen() {
                     ))}
                   </View>
                 </ScrollView>
-              </KeyboardAvoidingView>
+              </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>

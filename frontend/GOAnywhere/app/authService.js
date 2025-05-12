@@ -195,19 +195,6 @@ class AuthService {
           email,
           password,
           name,
-<<<<<<< HEAD
-          phoneNumber,
-        }),
-      });
-
-      const text = await response.text();
-      if (!response.ok) {
-        console.error('Signup raw error:', text);
-        throw new Error('Signup failed. Server error or invalid response.');
-      }
-
-      const data = JSON.parse(text); // Now safe to parse
-=======
           phone_number: phoneNumber,
         }),
       });
@@ -220,7 +207,6 @@ class AuthService {
         throw new Error(data.detail || 'Signup failed. Please check your input.');
       }
       
->>>>>>> 0d9375f6fc8a9b441e0c7bfc872f24a0cfe45df1
       const userData = {
         uid: data.uid,
         email: data.email,
@@ -344,6 +330,31 @@ class AuthService {
       return 'User';
     }
   }
+
+    static async updateProfile(payload, token) {
+    try {
+      const response = await fetch(`${API_URL}/auth/update_profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Profile update failed.');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Update profile error:', error);
+      throw error;
+    }
+  }
+
+
 }
 
 export default AuthService;

@@ -53,17 +53,27 @@ export default function EditProfile() {
   };
 
   const handleSave = async () => {
-    try {
-      // Here you would update user profile info
-      // await AuthService.updateProfile({ name: username, email, phone });
-      
-      Alert.alert("Success", "Profile updated successfully.");
-      router.back();
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
-    }
-  };
+  try {
+    const userInfo = await AuthService.getCurrentUser();
+    const { uid, token } = userInfo;
+
+    const payload = {
+      user_id: uid,
+      name: username,
+      email: email,
+      phone_number: phone,
+      password: password
+    };
+
+    await AuthService.updateProfile(payload, token);
+    Alert.alert("Success", "Profile updated successfully.");
+    router.back();
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    Alert.alert("Error", "Failed to update profile. Please try again.");
+  }
+};
+
 
   const handleLogout = async () => {
     Alert.alert(
@@ -181,6 +191,15 @@ export default function EditProfile() {
                 />
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity 
+              style={[styles.logoutButton, { backgroundColor: '#4CAF50', marginBottom: 10 }]}
+              onPress={handleSave}
+            >
+              <Ionicons name="save-outline" size={20} color="#fff" style={styles.logoutIcon} />
+              <Text style={[styles.logoutButtonText, { color: '#fff' }]}>Save Changes</Text>
+            </TouchableOpacity>
+
             
             {/* Logout Button */}
             <TouchableOpacity 

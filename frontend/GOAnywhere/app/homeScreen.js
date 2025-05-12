@@ -26,6 +26,7 @@ import { TextInput, Button } from 'react-native';
 import AuthService from './authService';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
+import { useNavigation } from '@react-navigation/native';
 // Commented out Firebase imports until configured
 // import { db } from './firebaseConfig';
 // import { collection, addDoc } from 'firebase/firestore';
@@ -40,6 +41,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.8; // 80% of screen width
 
 export default function HomeScreen() {
+  const navigation = useNavigation();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [userName, setUserName] = useState('USER');
@@ -177,52 +179,57 @@ export default function HomeScreen() {
   
   // Add missing handler functions
   const handleSavedPress = (location) => {
-    // Implement functionality for saved location press
-    console.log("Saved location pressed:", location);
+    const q = location.name;
+    setSearchInput(q);
     setIsModalVisible(false);
+    navigation.navigate('P2PNavigation', { endLocation: q });
   };
   
   const handleHistoryPress = (entry) => {
-    // Implement functionality for history press
-    console.log("History entry pressed:", entry);
-    setSearchInput(entry.address);
+    const q = entry.name;
+    setSearchInput(q);
     setIsModalVisible(false);
+    handleSearch(q);
   };
   
-  const handleSearch = async () => {
-    if (!searchInput.trim()) {
+  const handleSearch = async (query) => {
+    const toSearch = (query !== undefined ? query : searchInput).trim();
+    if (!toSearch) {
       alert('Please enter a location.');
       return;
     }
-  
+
     try {
+      // 1) Geocode
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(searchInput)}&key=${GOOGLE_MAPS_API_KEY}`
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(toSearch)}&key=${GOOGLE_MAPS_API_KEY}`
       );
+      setIsModalVisible(false);
       const data = await response.json();
-  
-      if (data.results.length > 0) {
-        const result = data.results[0];
-        const { lat, lng } = result.geometry.location;
-        setMapRegion({ latitude: lat, longitude: lng, latitudeDelta: 0.05, longitudeDelta: 0.05 });
-        setMarker({ latitude: lat, longitude: lng });
 
-        const detailedAddress = result.formatted_address;
-
-        const newEntry = {
-          name: searchInput,
-          address: detailedAddress
-        };
-
-        // dedupe & cap at 20 entries
-        const updatedHistory = [newEntry, ...locationHistory.filter(e => e.address !== detailedAddress)];
-        const trimmed = updatedHistory.slice(0, 20);
-
-        setLocationHistory(trimmed);
-        await AsyncStorage.setItem('locationHistory', JSON.stringify(trimmed));
-      } else {
+      if (data.results.length === 0) {
         alert('Location not found.');
+        return;
       }
+
+      const result = data.results[0];
+      const detailedAddress = result.formatted_address;
+
+      // 2) Persist to your history
+      const newEntry = { name: toSearch, address: detailedAddress };
+      const updatedHistory = [
+        newEntry,
+        ...locationHistory.filter(e => e.address !== detailedAddress)
+      ];
+      const trimmed = updatedHistory.slice(0, 20);
+      setLocationHistory(trimmed);
+      await AsyncStorage.setItem('locationHistory', JSON.stringify(trimmed));
+
+      // 3) Hand off to your Navigation screen instead of dropping a marker
+      navigation.navigate('P2PNavigation', {
+        endLocation: detailedAddress
+      });
+
     } catch (error) {
       console.error('Error fetching location:', error);
       alert('Could not fetch location.');
@@ -474,8 +481,8 @@ export default function HomeScreen() {
                         onPress={() => handleHistoryPress(entry)}
                         style={styles.historyEntry}
                       >
-                        <Ionicons name="time-outline" size={28} style={{ marginRight: 5 }}/>
-                        <View>
+                        <Ionicons name="time-outline" size={28} style={{ marginRight: 5 }} />
+                        <View style={styles.historyTextContainer}>
                           <Text style={styles.historyTitle}>{entry.name}</Text>
                           <Text style={styles.historySubtitle}>{entry.address}</Text>
                         </View>
@@ -985,8 +992,11 @@ const styles = StyleSheet.create({
   },
   historyEntry: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 15,
+  },
+  historyTextContainer: {
+    flex: 1,                    // take up remaining width
   },
   historyTitle: {
     fontWeight: 'bold',
@@ -995,6 +1005,8 @@ const styles = StyleSheet.create({
   historySubtitle: {
     fontSize: 16,
     color: '#888',
+    flexWrap: 'wrap',           // allow wrapping
+    flexShrink: 1,
   },
   overlayTouchable: {
     flex: 1, 

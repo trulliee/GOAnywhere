@@ -19,7 +19,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import P2PDriver from './P2PDriver';
 import P2PPublicTrans from './P2PPublicTrans';
 import { cleanInstruction, shortenText, getManeuverIcon, getLineColor } from './P2PHelper';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 const DEFAULT_REGION = {
@@ -28,6 +28,8 @@ const DEFAULT_REGION = {
 };
 
 export default function P2PNavigation() {
+  const { params } = useRoute();
+  const paramDest = params?.endLocation; 
   const navigation = useNavigation();
   const mapRef = useRef(null);
 
@@ -35,11 +37,13 @@ export default function P2PNavigation() {
   const [startLocation, setStartLocation] = useState('');
   const [endLocation, setEndLocation] = useState('');
   const [originLoading, setOriginLoading] = useState(true);
+  const autoSearched = useRef(false);
 
   const [routes, setRoutes] = useState({ driver: [], public: [] });
   const [activeTab, setActiveTab] = useState('driver');
   const [publicFilter, setPublicFilter] = useState('Any');
   const [bottomVisible, setBottomVisible] = useState(false);
+  const [loadingRoutes, setLoadingRoutes] = useState(false);
 
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [showRoutePreview, setShowRoutePreview] = useState(false);
@@ -56,14 +60,33 @@ export default function P2PNavigation() {
         );
         const json = await res.json();
         const addr = json.results?.[0]?.formatted_address;
-        setStartLocation(addr || 'My Location');
+        setStartLocation(addr || '');
       } catch {
-        setStartLocation('My Location');
+        setStartLocation('');
       }
       setOriginLoading(false);
     })();
   }, []);
 
+    // once origin loaded, copy over the incoming home‐screen destination
+    useEffect(() => {
+      if (!originLoading && paramDest) {
+        setEndLocation(paramDest);
+      }
+    }, [originLoading, paramDest]);
+
+
+    useEffect(() => {
+      if (
+        !originLoading           && 
+        paramDest                && 
+        endLocation === paramDest &&
+        !autoSearched.current
+      ) {
+        autoSearched.current = true;
+        handleSearch();
+      }
+    }, [originLoading, endLocation, paramDest]);
 
   useEffect(() => {
   const showSub = Keyboard.addListener('keyboardDidShow', () => {
@@ -71,7 +94,6 @@ export default function P2PNavigation() {
   });
   return () => showSub.remove();
   }, []);
-
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -86,23 +108,28 @@ export default function P2PNavigation() {
   
   const handleSearch = async () => {
     Keyboard.dismiss();
-    if (!startLocation || !endLocation)
+    if (!startLocation || !endLocation) {
       return Alert.alert('Missing Info', 'Please fill both fields.');
-    if (startLocation.trim().toLowerCase() === endLocation.trim().toLowerCase())
+    }
+    if (startLocation.trim().toLowerCase() === endLocation.trim().toLowerCase()) {
       return Alert.alert('Invalid', 'Origin and destination must differ.');
+    }
 
+    setLoadingRoutes(true);
     try {
       const [d, p] = await Promise.all([
         P2PDriver(startLocation, endLocation),
         P2PPublicTrans(startLocation, endLocation)
       ]);
-      d.sort((a,b)=>a.durationValue-b.durationValue);
-      p.sort((a,b)=>a.durationValue-b.durationValue);
+      d.sort((a, b) => a.durationValue - b.durationValue);
+      p.sort((a, b) => a.durationValue - b.durationValue);
       setRoutes({ driver: d, public: p });
       setSelectedRoute(null);
       setBottomVisible(true);
-    } catch(e) {
+    } catch (e) {
       Alert.alert('Routing Error', e.message);
+    } finally {
+      setLoadingRoutes(false);
     }
   };
 
@@ -387,12 +414,14 @@ export default function P2PNavigation() {
                 />
               </View>
               
-              <TouchableOpacity 
-                style={[styles.searchButton, (originLoading) && styles.disabledButton]}
+              <TouchableOpacity
+                style={[styles.searchButton, (originLoading || loadingRoutes) && styles.disabledButton]}
                 onPress={handleSearch}
-                disabled={originLoading}
+                disabled={originLoading || loadingRoutes}
               >
-                <Text style={styles.searchButtonText}>Find Routes</Text>
+                <Text style={styles.searchButtonText}>
+                  {(originLoading || loadingRoutes) ? 'Loading…' : 'Find Routes'}
+                </Text>
               </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>

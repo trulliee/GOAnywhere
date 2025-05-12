@@ -1,4 +1,3 @@
-# app/services/auth_service.py
 from firebase_admin import auth
 
 print("auth_services.py LOADED")

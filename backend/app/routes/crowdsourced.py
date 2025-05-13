@@ -45,11 +45,19 @@ def is_registered_user(user_id: str) -> bool:
 @router.post("/submit-crowd-data")
 def submit_crowdsourced_data(data: CrowdData):
     try:
+        ALLOWED_TYPES = {
+            "Accident", "Road Works", "Transit Works", "High Crowd", "Weather",
+            "Hazard", "Traffic Police", "Delays", "Map Issue"
+        }
+
+        if data.reportType not in ALLOWED_TYPES:
+            raise HTTPException(status_code=400, detail=f"Invalid reportType: {data.reportType}")
+
         if not data.userId:
             raise HTTPException(status_code=400, detail="Missing user_id.")
 
-        #if not is_registered_user(data.userId):
-        #    raise HTTPException(status_code=403, detail="Unauthorized: Only registered users can submit reports.")
+        if not is_registered_user(data.userId):
+            raise HTTPException(status_code=403, detail="Unauthorized: Only registered users can submit reports.")
 
         timestamp_value = (
             datetime.utcfromtimestamp(data.timestamp / 1000).isoformat()

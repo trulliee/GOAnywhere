@@ -232,3 +232,19 @@ async def update_profile(update_data: UpdateProfileRequest):
             "message": "No changes detected",
             "updated_fields": []
         }
+    
+@router.post("/auth/change_password")
+async def change_password(data: dict, current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        new_password = data.get("new_password")
+        if not new_password or len(new_password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+        auth.update_user(current_user["uid"], password=new_password)
+
+        add_user_notification(current_user["uid"], "Password Changed", "Your password has been successfully updated.")
+        return {"message": "Password updated successfully."}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

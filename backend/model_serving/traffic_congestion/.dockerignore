@@ -1,0 +1,49 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Virtual environments
+.venv/
+env/
+ENV/
+venv/
+
+# Git files
+.git/
+.gitignore
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.bak
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Model training outputs not needed for serving
+notebooks/
+tests/
+data/
+raw_data/
+checkpoints/
+
+# Large model training artifacts (if any)
+*.csv
+*.tsv
+*.xlsx
+*.jsonl
+*.joblib  # Only exclude if you are *not* serving it directly in Docker
+
+# If model.joblib is needed by FastAPI for inference, make sure it's NOT excluded
+!model.joblib

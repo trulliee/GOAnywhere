@@ -1,11 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-import time
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database.firestore_utils import store_events_data
 
-def scrape_visit_singapore_events():
+def scrape_visit_singapore_events(max_pages=None):  # Safe default
     url = "https://www.visitsingapore.com/whats-happening/all-happenings/"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
@@ -20,14 +19,10 @@ def scrape_visit_singapore_events():
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Accept cookies if the button exists
-        try:
-            cookies_button = soup.select_one("button#onetrust-accept-btn-handler")
-            if cookies_button:
-                print("(Simulating) Accepting cookies...")
-                # Cannot actually click using requests, but usually cookies auto-accepted in raw HTML
-        except Exception as e:
-            print(f"Cookie accept error (ignored): {e}")
+        # Fake accept cookies (no effect in requests)
+        cookies_button = soup.select_one("button#onetrust-accept-btn-handler")
+        if cookies_button:
+            print("(Simulating) Accepting cookies...")
 
         events_tag = soup.find("stb-event-and-festivals")
         if not events_tag or not events_tag.has_attr("aem-data"):
@@ -46,7 +41,7 @@ def scrape_visit_singapore_events():
                 "event_url": card.get("ctaUrl", ""),
                 "image_url": card.get("cardImageDesktop", "") or card.get("cardImageMobile", ""),
                 "source": "Visit Singapore",
-                "scraped_at": datetime.now().isoformat()
+                "scraped_at": datetime.now(timezone.utc).isoformat()
             }
             events.append(event)
 
@@ -55,7 +50,7 @@ def scrape_visit_singapore_events():
         if events:
             store_events_data(events)
 
-        return events
+        return f"Stored {len(events)} Visit Singapore events"
 
     except requests.exceptions.RequestException as req_err:
         print(f"Request error: {req_err}")
@@ -74,5 +69,5 @@ def parse_event_date(date_str):
 
 if __name__ == "__main__":
     print("Starting Visit Singapore events scraper...")
-    events = scrape_visit_singapore_events()
-    print(f"Scraped {len(events)} events.")
+    result = scrape_visit_singapore_events()
+    print(result)

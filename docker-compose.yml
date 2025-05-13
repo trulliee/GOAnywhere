@@ -10,6 +10,8 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/backend/service-account-key.json
+    GCP_PROJECT_ID: "541900038032"
+    FIREBASE_SECRET_NAME: "firebase-service-account-key"
     PYTHONPATH: /opt/airflow:/opt/airflow/backend
     ONEMAP_EMAIL: 'trulli.uow@gmail.com'
     ONEMAP_PASSWORD: 'Deeznuts101!'

@@ -69,6 +69,7 @@ weather_tasks = [
 events_task = PythonOperator(
     task_id='scrape_visit_singapore_events',
     python_callable=scrape_visit_singapore_events,
+    do_xcom_push=False,
     dag=dag
 )
 

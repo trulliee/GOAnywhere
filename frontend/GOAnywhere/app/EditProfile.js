@@ -66,6 +66,19 @@ export default function EditProfile() {
     };
 
     await AuthService.updateProfile(payload, token);
+    if (password.trim().length > 0) {
+      const res = await fetch(`${API_URL}/auth/change_password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ new_password: password })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+    }
     Alert.alert("Success", "Profile updated successfully.");
     router.back();
   } catch (error) {
@@ -179,9 +192,11 @@ export default function EditProfile() {
             <View style={styles.passwordInputContainer}>
               <TextInput
                 style={styles.passwordInput}
-                value={showPassword ? password : maskedPassword}
-                secureTextEntry={false}
-                editable={false}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter new password"
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
               />
               <TouchableOpacity onPress={togglePasswordVisibility} style={styles.eyeIcon}>
                 <Ionicons 

@@ -32,6 +32,9 @@ import * as Location from 'expo-location';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 
 import ENV from './env';
+import { API_URL } from './utils/apiConfig';
+
+
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
 
@@ -145,22 +148,21 @@ export default function HomeScreen() {
         longitude: location.longitude,
         reportType: reportType,
         username: userName,
-        userId: user?.id,
+        userId: user?.uid,
         timestamp: Date.now()
       };
       
       console.log('Sending report to backend:', reportData);
-      
-      // When you connect to backend, you'll send the data something like this:
-      // await fetch('your-api-endpoint', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(reportData),
-      // });
-      
-      // For now, just show a success message
+      console.log("Using URL:", `${API_URL}/crowd/submit-crowd-data`);
+
+      await fetch(`${API_URL}/crowd/submit-crowd-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(reportData),   
+      });
+
       Alert.alert("Report Submitted", `You reported: ${reportType} at coordinates (${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})`);
     } catch (error) {
       console.error("Error submitting report: ", error);

@@ -1,10 +1,10 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import TimeSeriesSplit, train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from sklearn.preprocessing import FunctionTransformer
@@ -340,7 +340,7 @@ class TravelTimePredictionModel:
         
         # Create preprocessing steps for both feature types
         categorical_transformer = Pipeline(steps=[
-            ('onehot', OneHotEncoder(handle_unknown='ignore'))
+            ('onehot', OneHotEncoder(handle_unknown='ignore', sparse=False))
         ])
         
         numerical_transformer = Pipeline(steps=[
@@ -357,11 +357,13 @@ class TravelTimePredictionModel:
         # Create the modeling pipeline
         self.model = Pipeline(steps=[
             ('preprocessor', self.preprocessor),
-            ('regressor', RandomForestRegressor(
-                n_estimators=100, 
+            ('regressor', HistGradientBoostingRegressor(
+                max_iter=300,                  # Higher value to allow early stopping to work
                 max_depth=15,
+                early_stopping=True,              # Enable early stopping
+                n_iter_no_change=5,               # Stop after 5 rounds without improvement
+                validation_fraction=0.3,          # Use 10% of training data for validation
                 random_state=42,
-                n_jobs=-1
             ))
         ])
         
@@ -369,27 +371,23 @@ class TravelTimePredictionModel:
     
     def train(self, X, y, n_splits=5, n_iter=30):
         """
-        Train the model using TimeSeriesSplit cross-validation and Hyperparameter Tuning
+        Train the model using TimeSeriesSplit cross-validation and hyperparameter tuning.
+        Final training is done on a held-out train set, and model is evaluated on a test set.
         """
         if self.model is None:
             self.build_model()
-        
+
         print("\n🔵 Starting Cross-Validation and Hyperparameter Tuning...")
 
-        # Define TimeSeriesSplit cross-validation
+        # TimeSeriesSplit for time-aware cross-validation
         tscv = TimeSeriesSplit(n_splits=n_splits)
 
-        # Define hyperparameter search space
         param_distributions = {
-            'regressor__n_estimators': randint(100, 500),
-            'regressor__max_depth': randint(5, 30),
-            'regressor__min_samples_split': randint(2, 10),
+            'regressor__max_iter': randint(100, 300),
+            'regressor__max_depth': randint(5, 25),
             'regressor__min_samples_leaf': randint(1, 10),
-            'regressor__max_features': ['sqrt', 'log2'],
-            'regressor__bootstrap': [True, False]
         }
 
-        # Setup RandomizedSearchCV
         random_search = RandomizedSearchCV(
             self.model,
             param_distributions=param_distributions,
@@ -397,58 +395,73 @@ class TravelTimePredictionModel:
             cv=tscv,
             verbose=2,
             random_state=42,
-            n_jobs=-1,
-            scoring='neg_root_mean_squared_error'  # Negative RMSE
+            scoring='neg_root_mean_squared_error'
         )
 
-        # Perform hyperparameter search
         random_search.fit(X, y)
 
         print("\n✅ Best Hyperparameters Found:")
         print(random_search.best_params_)
 
-        # Set the best model
-        self.model = random_search.best_estimator_
+        # Rebuild the model with early stopping enabled
+        best_params = random_search.best_params_
+        self.model = Pipeline(steps=[
+            ('preprocessor', self.preprocessor),
+            ('regressor', HistGradientBoostingRegressor(
+                max_iter=best_params['regressor__max_iter'],
+                max_depth=best_params['regressor__max_depth'],
+                min_samples_leaf=best_params['regressor__min_samples_leaf'],
+                early_stopping=True,
+                n_iter_no_change=5,
+                validation_fraction=0.1,
+                random_state=42
+            ))
+        ])
 
-        # Retrain best model on FULL data
-        print("\n🔵 Retraining on FULL data with best parameters...")
-        self.model.fit(X, y)
+        print("\n🔁 Splitting data into train/test and retraining best model...")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, shuffle=False  # keep temporal order
+        )
 
-        # Final evaluation on FULL data
-        y_pred = self.model.predict(X)
-        rmse = np.sqrt(mean_squared_error(y, y_pred))
-        mae = mean_absolute_error(y, y_pred)
-        r2 = r2_score(y, y_pred)
+        self.model.fit(X_train, y_train)
 
-        print("\n✅ Final Model Metrics (on Full Data):")
-        print(f"RMSE: {rmse:.2f}")
-        print(f"MAE: {mae:.2f}")
-        print(f"R²: {r2:.2f}")
+        print("\n📊 Evaluating model on test set...")
+        y_pred_test = self.model.predict(X_test)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
+        mae = mean_absolute_error(y_test, y_pred_test)
+        r2 = r2_score(y_test, y_pred_test)
 
-        # Get final feature importances
-        feature_importances = None
+        print(f"✅ Test RMSE: {rmse:.2f}")
+        print(f"✅ Test MAE: {mae:.2f}")
+        print(f"✅ Test R²: {r2:.2f}")
+
+        feature_importance_df = None
         if hasattr(self.model['regressor'], 'feature_importances_'):
             feature_names = self.model['preprocessor'].get_feature_names_out()
-            feature_importances = self.model['regressor'].feature_importances_
-
+            importances = self.model['regressor'].feature_importances_
             feature_importance_df = pd.DataFrame({
                 'Feature': feature_names,
-                'Importance': feature_importances
+                'Importance': importances
             }).sort_values('Importance', ascending=False)
 
-            print("\nTop 15 Most Important Features:")
+            print("\n📈 Top 15 Most Important Features:")
             print(feature_importance_df.head(15))
-        else:
-            feature_importance_df = None
+
+        # ✅ Save final model trained on training data
+        self.save_model()
 
         return {
-            'rmse': rmse,
-            'mae': mae,
-            'r2': r2,
-            'best_params': random_search.best_params_,
+            'train_rmse': np.sqrt(mean_squared_error(y_train, self.model.predict(X_train))),
+            'train_mae': mean_absolute_error(y_train, self.model.predict(X_train)),
+            'train_r2': r2_score(y_train, self.model.predict(X_train)),
+            'test_rmse': rmse,
+            'test_mae': mae,
+            'test_r2': r2,
+            'best_params': best_params,
             'feature_importances': feature_importance_df
         }
-    
+
+
     def save_model(self, 
                trained_local_path="models/trained/travel_time", 
                serving_local_path="model_serving/travel_time"):
@@ -491,30 +504,22 @@ class TravelTimePredictionModel:
         return self
 
     def predict(self, json_input):
-        """Predict travel time from JSON input."""
-        if self.model is None:
-            raise ValueError("Model has not been trained yet")
-        X = self.process_inputs(json_input)
-        return self.model.predict(X).tolist()
-
-    def predict_proba(self, json_input):
-        """
-        Dummy probability-style method for regression.
-        Returns a mock probability distribution centered around the prediction.
-        Only for interface compatibility with traffic model.
-        """
+        """Predict travel time and return prediction + mock confidence interval."""
         if self.model is None:
             raise ValueError("Model has not been trained yet")
 
         X = self.process_inputs(json_input)
         preds = self.model.predict(X)
 
-        # Mock "confidence intervals" (±10% range normalized to 0–1 scale)
-        probs = []
+        # Mock "confidence intervals" (±10%)
+        intervals = []
         for pred in preds:
-            # Normalized pseudo-probability: [low_conf, mid_conf, high_conf]
-            low = max(0, pred * 0.9)
-            high = pred * 1.1
-            probs.append([low, pred, high])
+            low = round(pred * 0.9, 2)
+            high = round(pred * 1.1, 2)
+            intervals.append([low, round(pred, 2), high])
 
-        return probs
+        return {
+            "predictions": preds.tolist(),
+            "probabilities": intervals,
+            "classes": ["low_estimate", "point_estimate", "high_estimate"]
+        }

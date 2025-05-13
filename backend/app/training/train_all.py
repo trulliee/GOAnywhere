@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def train_travel_time_model(data_loader):
     logger.info("Training Travel Time Prediction Model")
-    lookback_days = 30
+    lookback_days = None
 
     # Load all necessary data using the FirestoreDataLoader with correct method names
     # Check available methods in the data_loader
@@ -72,7 +72,7 @@ def train_travel_time_model(data_loader):
         events_df = pd.DataFrame()
         if 'get_events_data' in available_methods:
             try:
-                events_df = data_loader.get_events_data(days_ahead=30)
+                events_df = data_loader.get_events_data(days_ahead=None)
             except Exception as e:
                 logger.warning(f"Error getting events data: {e}")
                 
@@ -82,7 +82,7 @@ def train_travel_time_model(data_loader):
             try:
                 scrape_visit_singapore_events(max_pages=2)
                 if 'get_events_data' in available_methods:
-                    events_df = data_loader.get_events_data(days_ahead=30)
+                    events_df = data_loader.get_events_data(days_ahead=None)
             except Exception as e:
                 logger.warning(f"Error scraping events: {e}")
                 
@@ -109,13 +109,13 @@ def train_travel_time_model(data_loader):
     )
 
     logger.info(f"Travel Time Model saved at {local_path}")
-    logger.info(f"Model metrics: RMSE: {results['rmse']:.2f}, MAE: {results['mae']:.2f}, R²: {results['r2']:.2f}")
+    logger.info(f"Model metrics: RMSE: {results['test_rmse']:.2f}, MAE: {results['test_mae']:.2f}, R²: {results['test_r2']:.2f}")
 
     return True
 
 def train_congestion_model(data_loader):
     logger.info("Training Traffic Congestion Prediction Model")
-    lookback_days = 30
+    lookback_days = None
 
     # Available methods were already logged in the travel time model function
     
@@ -157,7 +157,7 @@ def train_congestion_model(data_loader):
         events_df = pd.DataFrame()
         if 'get_events_data' in available_methods:
             try:
-                events_df = data_loader.get_events_data(days_ahead=30)
+                events_df = data_loader.get_events_data(days_ahead=None)
             except Exception as e:
                 logger.warning(f"Error getting events data: {e}")
                 
@@ -183,7 +183,7 @@ def train_congestion_model(data_loader):
     )
 
     logger.info(f"Traffic Congestion Model saved at {local_path}")
-    logger.info(f"Model metrics: Accuracy: {results['accuracy']:.4f}, F1 Score: {results['f1_score']:.4f}")
+    logger.info(f"Model metrics: Test Accuracy: {results['test_accuracy']:.4f}, Test F1 Score: {results['test_f1_score']:.4f}")
 
     return True
 

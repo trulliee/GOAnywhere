@@ -2,12 +2,13 @@ import pandas as pd
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
-from scipy.stats import randint
+from scipy.stats import randint, uniform
 import joblib
 import os
 
@@ -51,11 +52,11 @@ class TrafficCongestionModel:
         }
 
         for col in self.feature_names:
+            default = default_values.get(col, np.nan)
             if col not in df.columns:
-                default = default_values.get(col, np.nan)
                 df[col] = default
             else:
-                df[col] = df[col].fillna(default_values.get(col, df[col].mean() if df[col].dtype in [np.float64, np.int64] else ''))
+                df[col] = df[col].fillna(default)
 
         # Enforce correct column order
         df = df[self.feature_names]
@@ -274,7 +275,7 @@ class TrafficCongestionModel:
         numerical_features = [f for f in base_numerical_features + new_numerical_features if f in self.feature_names]
 
         categorical_transformer = Pipeline([
-            ('onehot', OneHotEncoder(handle_unknown='ignore'))
+            ('onehot', OneHotEncoder(handle_unknown='ignore', sparse=False))
         ])
         numerical_transformer = Pipeline([
             ('scaler', StandardScaler())
@@ -290,46 +291,98 @@ class TrafficCongestionModel:
 
         self.model = Pipeline([
             ('preprocessor', self.preprocessor),
-            ('classifier', RandomForestClassifier(
-                n_estimators=100, max_depth=5, random_state=42, n_jobs=-1
+            ('classifier', HistGradientBoostingClassifier(
+                max_iter=100,
+                max_depth=8,
+                early_stopping=True,
+                random_state=42
             ))
         ])
 
         return self.model
 
-    def train(self, X, y, n_splits=5, n_iter=30):
+    def train(self, X, y, n_splits=3, n_iter=10):
+        """
+        Train classifier using hyperparameter tuning (with Stratified K-Fold CV),
+        followed by evaluation on a held-out test set. The final model is trained
+        on the training split and saved for deployment.
+        """
         self.feature_names = X.columns.tolist()
         self.build_model()
 
+        print("\n🔵 Starting Cross-Validation and Hyperparameter Tuning...")
+
         skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+
         param_distributions = {
-            'classifier__n_estimators': randint(100, 500),
-            'classifier__max_depth': randint(5, 20),
-            'classifier__min_samples_split': randint(2, 10),
-            'classifier__min_samples_leaf': randint(1, 10),
-            'classifier__max_features': ['sqrt', 'log2'],
-            'classifier__bootstrap': [True, False]
+            'classifier__max_iter': randint(50, 200),
+            'classifier__max_depth': randint(3, 10),
+            'classifier__min_samples_leaf': randint(1, 20),
+            'classifier__l2_regularization': uniform(0.0, 1.0),
+            'classifier__learning_rate': uniform(0.01, 0.2)
+        }
+
+        scoring = {
+            'f1': 'f1',
+            'recall': 'recall',
+            'precision': 'precision',
+            'accuracy': 'accuracy'
         }
 
         random_search = RandomizedSearchCV(
-            self.model, param_distributions=param_distributions,
-            n_iter=n_iter, cv=skf, scoring='f1', verbose=2, n_jobs=-1, random_state=42
+            self.model,
+            param_distributions=param_distributions,
+            n_iter=n_iter,
+            cv=skf,
+            verbose=2,
+            n_jobs=1,
+            scoring=scoring,
+            refit='f1'
         )
 
         random_search.fit(X, y)
 
+        print("\n✅ Best Hyperparameters Found:")
+        print(random_search.best_params_)
+
         self.model = random_search.best_estimator_
 
-        y_pred = self.model.predict(X)
-        accuracy = accuracy_score(y, y_pred)
-        f1 = f1_score(y, y_pred)
-        cm = confusion_matrix(y, y_pred)
+        print("\n🔁 Splitting data into train/test and retraining best model...")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, stratify=y, random_state=42
+        )
+
+        self.model.fit(X_train, y_train)
+
+        print("\n📊 Evaluating model on test set...")
+        y_pred_test = self.model.predict(X_test)
+        test_accuracy = accuracy_score(y_test, y_pred_test)
+        test_f1 = f1_score(y_test, y_pred_test)
+        cm = confusion_matrix(y_test, y_pred_test)
+        print(f"✅ Test Accuracy: {test_accuracy:.4f}")
+        print(f"✅ Test F1 Score: {test_f1:.4f}")
+        print(f"Confusion Matrix:\n{cm}")
+
+        feature_importance_df = None
+        if hasattr(self.model['classifier'], 'feature_importances_'):
+            feature_names = self.model['preprocessor'].get_feature_names_out()
+            importances = self.model['classifier'].feature_importances_
+            feature_importance_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Importance': importances
+            }).sort_values('Importance', ascending=False)
+
+            print("\n📈 Top 15 Most Important Features:")
+            print(feature_importance_df.head(15))
 
         return {
-            'accuracy': accuracy,
-            'f1_score': f1,
-            'confusion_matrix': cm,
-            'best_params': random_search.best_params_
+            'train_accuracy': accuracy_score(y_train, self.model.predict(X_train)),
+            'train_f1_score': f1_score(y_train, self.model.predict(X_train)),
+            'test_accuracy': test_accuracy,
+            'test_f1_score': test_f1,
+            'confusion_matrix': confusion_matrix(y_test, y_pred_test),
+            'best_params': random_search.best_params_,
+            'feature_importances': feature_importance_df
         }
 
     def save_model(self, 
@@ -356,34 +409,45 @@ class TrafficCongestionModel:
         return trained_model_path, serving_model_path
 
     def load_model(self, model_path):
-        """Load a trained model from disk."""
+        """Load a trained model from disk and restore feature names."""
         self.model = joblib.load(model_path)
-        
-        # Extract feature names from the preprocessor if available
+
+        # Try to extract feature names from the preprocessor
         try:
-            # Try to access the feature names from the column transformer
             if hasattr(self.model, 'named_steps') and 'preprocessor' in self.model.named_steps:
                 transformers = self.model.named_steps['preprocessor'].transformers_
                 self.feature_names = []
-                for _, _, columns in transformers:
-                    self.feature_names.extend(columns)
+                for name, _, columns in transformers:
+                    if isinstance(columns, list):
+                        self.feature_names.extend(columns)
+                    elif isinstance(columns, str):
+                        self.feature_names.append(columns)
+                    elif isinstance(columns, slice):
+                        print(f"⚠️ Skipping unsupported slice column selector in transformer '{name}'")
+                    elif callable(columns):
+                        print(f"⚠️ Skipping dynamic callable column selector in transformer '{name}'")
+                    else:
+                        print(f"⚠️ Unknown column selector in transformer '{name}':", columns)
             else:
-                print("Warning: Could not extract feature names from model.")
+                print("⚠️ Warning: Preprocessor not found in pipeline. Feature names not restored.")
         except Exception as e:
-            print(f"Error extracting feature names: {str(e)}")
-            
-        return self
-    
-    def predict(self, json_input):
-        """Predict congestion from JSON input."""
-        if self.model is None:
-            raise ValueError("Model has not been trained yet")
-        X = self.process_inputs(json_input)
-        return self.model.predict(X).tolist()
+            print(f"❌ Error extracting feature names: {str(e)}")
 
-    def predict_proba(self, json_input):
-        """Predict congestion probabilities from JSON input."""
+        print("✅ Feature names loaded:", self.feature_names)
+        return self
+
+    def predict(self, json_input):
+        """Return class prediction, probabilities, and class labels."""
         if self.model is None:
             raise ValueError("Model has not been trained yet")
+        
         X = self.process_inputs(json_input)
-        return self.model.predict_proba(X).tolist()
+        predictions = self.model.predict(X).tolist()
+        probabilities = self.model.predict_proba(X).tolist()
+        classes = self.model.classes_.tolist()
+
+        return {
+            "predictions": predictions,
+            "probabilities": probabilities,
+            "classes": classes
+        }

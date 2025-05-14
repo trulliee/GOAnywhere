@@ -1,17 +1,20 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from firebase_admin import firestore
-from google.cloud import storage
-from google.cloud.firestore_v1.base_query import FieldFilter
-import tempfile
+import firebase_admin
 import os
+from datetime import datetime, timedelta
+from firebase_admin import credentials, firestore
+from google.cloud import storage
+from google.oauth2 import service_account
+from dotenv import load_dotenv
+import tempfile
 import logging
 import json
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+from pathlib import Path
+env_path = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(dotenv_path=env_path)
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -30,25 +33,21 @@ class FirestoreDataLoader:
         Args:
             gcs_bucket_name (str, optional): Name of the GCS bucket for auxiliary data.
         """
-        # Initialize the Firestore client
-        self.db = firestore.client()
-        
-        # Initialize the Storage client with the same credentials
-        firebase_creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-        if firebase_creds_path and os.path.exists(firebase_creds_path):
-            # Set the credentials for storage client
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = firebase_creds_path
-        
-        self.gcs_bucket_name = gcs_bucket_name or "goanywhere-traffic-data-history"
-        
-        try:
-            self.storage_client = storage.Client()
-            logger.info("Successfully initialized Storage client")
-        except Exception as e:
-            logger.error(f"Error initializing Storage client: {e}")
-            # Create a mock storage client that logs errors but doesn't fail
-            self.storage_client = None
-    
+
+        if not firebase_admin._apps:
+            creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+            if not creds_path:
+                raise RuntimeError("FIREBASE_CREDENTIALS_PATH is not set.")
+            print(f"Initializiong Firebase using: {creds_path}")
+            firebase_cred = credentials.Certificate(creds_path)
+            firebase_admin.initialize_app(firebase_cred)
+
+            gcs_cred = service_account.Credentials.from_service_account_file(creds_path)
+            self.storage_client = storage.Client(credentials=gcs_cred)
+            self.db = firestore.client()
+            self.gcs_bucket_name = gcs_bucket_name or "goanywhere-traffic-data-history"
+            #self.storage_client = storage.Client()
+            
     # LTA DataMall 2.1: Bus Arrival
     def get_bus_arrivals(self, bus_stop_code=None, limit=10):
         """

@@ -2,65 +2,38 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { fetchAPI } from './utils/apiConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Notification = () => {
   const router = useRouter();
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
-    const accountNotifications = [
-      {
-        id: 1,
-        icon: 'person-circle',
-        iconColor: '#4CD964', // Green
-        title: 'Username Updated',
-        message: 'Your username has been successfully updated.',
-        timeCategory: 'today',
-      },
-      {
-        id: 2,
-        icon: 'mail',
-        iconColor: '#4CD964', // Green
-        title: 'Email Updated',
-        message: 'Your email address has been successfully changed.',
-        timeCategory: 'today',
-      },
-      {
-        id: 3,
-        icon: 'lock-closed',
-        iconColor: '#4CD964', // Green
-        title: 'Password Changed',
-        message: 'Your password has been successfully updated.',
-        timeCategory: 'yesterday',
-      },
-      {
-        id: 4,
-        icon: 'call',
-        iconColor: '#4CD964', // Green
-        title: 'Mobile Number Updated',
-        message: 'Your mobile number has been successfully updated.',
-        timeCategory: 'yesterday',
-      },
-      {
-        id: 5,
-        icon: 'warning',
-        iconColor: '#FF3B30', // Red
-        title: 'Account Warning',
-        message: 'Your account has received a warning for violating our terms of service.',
-        timeCategory: '2days',
-      },
-      {
-        id: 6,
-        icon: 'notifications',
-        iconColor: '#FF9500', // Orange
-        title: 'Notification Settings Updated',
-        message: 'Your notification preferences have been updated.',
-        timeCategory: '2days',
-      },
-    ];
-    setNotifications(accountNotifications);
-  }, []);
+    const loadNotifications = async () => {
+      try {
+        const userInfo = await AsyncStorage.getItem('user_info');
+        const { uid } = JSON.parse(userInfo);  // ✅ gets correct UID
+        const backendData = await fetchAPI(`/notifications/account/${uid}`);
 
+        const mapped = backendData.map((item, index) => ({
+          id: index + 1,
+          icon: 'notifications',
+          iconColor: '#4CD964',
+          title: item.title,
+          message: item.message,
+          timeCategory: 'today',
+        }));
+
+        setNotifications(mapped);
+      } catch (error) {
+        console.error("Error loading notifications:", error);
+      }
+    };
+
+    loadNotifications();
+  }, []);
+  
   const handleGoBack = () => {
     router.back();
   };

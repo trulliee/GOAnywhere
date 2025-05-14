@@ -1,301 +1,617 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
 
-const styles = StyleSheet.create({
+const { width, height } = Dimensions.get('window');
+
+export default StyleSheet.create({
+  // Main container
   container: {
     flex: 1,
-    backgroundColor: '#000', // Black background
+    backgroundColor: '#121212',
   },
   scrollContainer: {
-    flex: 1,
-    backgroundColor: '#000', // Black background for ScrollView
+    paddingBottom: 90,
   },
-  headerContainer: {
-    padding: 20,
-    backgroundColor: '#111', // Dark background for header
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
-  },
+  
+  // Header
   header: {
-    fontSize: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#222',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: 40, // Additional padding for status bar
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    color: '#FFF',
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff', // White text for dark background
   },
-  subheader: {
-    fontSize: 16,
-    color: '#aaa', // Light gray text for dark background
-    marginTop: 5,
-  },
-  card: {
-    backgroundColor: '#111', // Dark card background
-    borderRadius: 10,
+  
+  // Date banner
+  dateBanner: {
+    backgroundColor: '#222',
     padding: 16,
+    paddingTop: 8,
+  },
+  titleText: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  dateSubtitle: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  dateSelector: {
+    flexDirection: 'column',
+  },
+  dateText: {
+    color: '#CCC',
+    fontSize: 14,
+  },
+  dateBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  dateBadge: {
+    backgroundColor: '#444',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  dateBadgeText: {
+    color: '#CCC',
+    fontSize: 12,
+  },
+  calendarIcon: {
+    marginLeft: 4,
+  },
+  
+  // Date picker modal
+  datePickerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  datePickerContainer: {
+    backgroundColor: '#333',
+    width: width * 0.8,
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  datePickerTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  datePicker: {
+    width: '100%',
+    height: 200,
+  },
+  datePickerDoneButton: {
+    backgroundColor: '#0066FF',
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  datePickerDoneText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  // Input section
+  inputContainer: {
+    backgroundColor: '#2A2A2A',
     margin: 16,
+    padding: 16,
+    borderRadius: 12,
+  },
+  sectionTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  inputLabel: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#3A3A3A',
+    color: '#FFF',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    fontSize: 16,
+  },
+  findButton: {
+    backgroundColor: '#00a884',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  // Route Map
+  mapContainer: {
+    backgroundColor: '#2A2A2A',
+    margin: 16,
+    padding: 16,
+    borderRadius: 12,
+  },
+  routeCountText: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  mapImageContainer: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#333',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  mapImage: {
+    width: '100%',
+    height: '100%',
+  },
+  mapDistanceText: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  mapTimeText: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  mapRouteText: {
+    color: '#CCC',
+    fontSize: 14,
+  },
+  
+  // Route tabs
+  routeTabsContainer: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+  },
+  routeTabsContent: {
+    paddingVertical: 8,
+  },
+  routeTab: {
+    backgroundColor: '#3A3A3A',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  selectedRouteTab: {
+    backgroundColor: '#0066FF',
+  },
+  routeTabText: {
+    color: '#CCC',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  selectedRouteTabText: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  
+  // Prediction buttons
+  predictionButtonsContainer: {
+    marginHorizontal: 16,
+    marginVertical: 16,
+  },
+  predictionButtonsRow: {
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+  },
+  predictionButton: {
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    flexDirection: 'row',
+  },
+  congestionButton: {
+    backgroundColor: '#FF3B30',
+  },
+  timeButton: {
+    backgroundColor: '#FFB300',
+  },
+  bothButton: {
+    backgroundColor: '#0066FF',
+  },
+  resetButton: {
+    backgroundColor: '#555',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  buttonIcon: {
+    marginRight: 8,
+  },
+  
+  // Prediction containers
+  predictionContainer: {
+    backgroundColor: '#2A2A2A',
+    margin: 16,
+    padding: 16,
+    borderRadius: 12,
+  },
+  predictionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  predictionTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  editButton: {
+    padding: 6,
+  },
+  
+  // Congestion prediction
+  congestionResultBox: {
+    backgroundColor: '#333',
+    borderRadius: 12,
+    padding: 16,
+  },
+  congestionIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  congestionWarningText: {
+    color: '#FF3B30',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginLeft: 12,
+  },
+  congestionClearText: {
+    color: '#4CD964',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginLeft: 12,
+  },
+  congestionWarningBox: {
+    backgroundColor: 'rgba(255, 59, 48, 0.15)',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  congestionWarningMessage: {
+    color: '#FFD700',
+    fontSize: 14,
+    marginLeft: 8,
+    flex: 1,
+  },
+  congestionClearBox: {
+    backgroundColor: 'rgba(76, 217, 100, 0.15)',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  congestionClearMessage: {
+    color: '#4CD964',
+    fontSize: 14,
+    marginLeft: 8,
+    flex: 1,
+  },
+  roadInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  roadInfoText: {
+    color: '#CCC',
+    fontSize: 14,
+  },
+  
+  // Probability display
+  probabilityContainer: {
+    marginBottom: 16,
+  },
+  probabilityTitle: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  probabilityRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#444',
+    borderRadius: 8,
+    padding: 12,
+  },
+  probabilityItem: {
+    alignItems: 'center',
+  },
+  probabilityLabel: {
+    color: '#CCC',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  probabilityValue: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  
+  // Travel time prediction
+  travelTimeResultBox: {
+    backgroundColor: '#333',
+    borderRadius: 12,
+    padding: 16,
+  },
+  timeIconContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  timeValue: {
+    color: '#FFB300',
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginLeft: 12,
+  },
+  timeComparisonText: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  timePredictionRange: {
+    marginBottom: 16,
+  },
+  timePredictionRangeTitle: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  timeRangeValues: {
+    backgroundColor: '#444',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timeRangeValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timeRangeMinText: {
+    color: '#4CD964',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  timeRangeToText: {
+    color: '#CCC',
+    fontSize: 14,
+  },
+  timeRangeMaxText: {
+    color: '#FF3B30',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  
+  // Time estimates
+  timeEstimatesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#444',
+    borderRadius: 8,
+    padding: 12,
+  },
+  timeEstimateItem: {
+    alignItems: 'center',
+  },
+  timeEstimateLabel: {
+    color: '#CCC',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  timeEstimateValue: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  optimisticValue: {
+    color: '#4CD964',
+  },
+  pessimisticValue: {
+    color: '#FF3B30',
+  },
+  
+  routeDetails: {
+    marginTop: 16,
+  },
+  routeDetailsText: {
+    color: '#CCC',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  
+  // Edit form
+  editFormContainer: {
+    backgroundColor: '#2A2A2A',
+    margin: 16,
+    padding: 16,
+    borderRadius: 12,
+  },
+  editFormTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  inputRowLabel: {
+    color: '#CCC',
+    fontSize: 14,
+    width: 100,
+  },
+  inputOption: {
+    backgroundColor: '#444',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  inputOptionSelected: {
+    backgroundColor: '#0066FF',
+  },
+  inputOptionText: {
+    color: '#FFF',
+    fontSize: 14,
+  },
+  applyButton: {
+    backgroundColor: '#4CD964',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  applyButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cancelButton: {
+    backgroundColor: '#666',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  cancelButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+  },
+  
+  // Start journey button
+  startJourneyButton: {
+    backgroundColor: '#4CD964',
+    position: 'absolute',
+    bottom: 20,
+    left: 16,
+    right: 16,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startJourneyText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  
+  // Loading indicator
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#FFF',
+    fontSize: 16,
+    marginTop: 12,
+  },
+  
+  // Route found modal
+  centeredModalView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalView: {
+    width: width * 0.8,
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
     elevation: 5,
-    borderWidth: 1,
-    borderColor: '#222', // Subtle border for cards
   },
-  cardTitle: {
-    fontSize: 20,
+  modalTitle: {
+    color: '#FFF',
+    fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 12,
-    color: '#fff', // White text for card titles
   },
-  formGroup: {
+  modalText: {
+    color: '#CCC',
+    fontSize: 16,
     marginBottom: 16,
+    textAlign: 'center',
   },
-  label: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: '#ccc', // Light gray labels
-  },
-  input: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#333', // Darker border for inputs
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 16,
-    backgroundColor: '#222', // Dark input background
-    color: '#fff', // White text in inputs
-  },
-  searchButton: {
-    backgroundColor: '#16a085', // Teal button
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginLeft: 8,
-  },
-  routeSelectionContainer: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#222', // Dark background for route selection
-    borderRadius: 8,
-  },
-  routeSelectionTitle: {
+  modalDetail: {
+    color: '#CCC',
     fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#fff', // White text for route title
+    marginBottom: 4,
   },
-  routeButtonsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  routeButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: '#333', // Dark button background
-  },
-  selectedRouteButton: {
-    backgroundColor: '#3498db', // Blue for selected route
-  },
-  disabledRouteButton: {
-    backgroundColor: '#333',
-    opacity: 0.6,
-  },
-  routeButtonText: {
-    fontSize: 14,
-    color: '#ccc', // Light gray text
-  },
-  selectedRouteButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  disabledRouteButtonText: {
-    color: '#555', // Dark gray for disabled
-  },
-  actionButtonsContainer: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    gap: 12,
-  },
-  predictionButton: {
-    backgroundColor: '#3498db', // Same blue color for both prediction buttons
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  modalButton: {
+    backgroundColor: '#0066FF',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     borderRadius: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    width: '90%',
-  },
-  resetButton: {
-    backgroundColor: '#7f8c8d', // Gray reset button
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    width: '90%',
-  },
-  loadingContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#ccc', // Light gray loading text
-    fontSize: 16,
-  },
-  resultsContainer: {
-    marginBottom: 20,
-  },
-  resultBox: {
     marginTop: 16,
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: '#222', // Dark background for result boxes
-    borderLeftWidth: 4,
   },
-  resultHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  resultTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginLeft: 12,
-  },
-  resultDetail: {
+  modalButtonText: {
+    color: '#FFF',
     fontSize: 16,
-    color: '#ccc', // Light gray for details
-    marginTop: 6,
-  },
-  probabilityContainer: {
-    marginVertical: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#333', // Darker border
-  },
-  probabilityTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#fff', // White title text
-  },
-  probabilityBar: {
-    height: 30,
-    backgroundColor: '#333', // Dark background for bars
-    borderRadius: 4,
-    marginBottom: 8,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  probabilityFill: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    opacity: 0.7,
-  },
-  probabilityLabel: {
-    position: 'absolute',
-    top: 0,
-    left: 8,
-    right: 0,
-    bottom: 0,
-    textAlignVertical: 'center',
-    color: '#fff', // White text for probability labels
-    fontWeight: 'bold',
-  },
-  rangeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#333', // Dark background for range container
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  rangeText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff', // White text for range
-  },
-  rangeSeparator: {
-    fontSize: 14,
-    color: '#777', // Gray separator text
-  },
-  map: {
-    height: 220,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  routeDetails: {
-    backgroundColor: '#222', // Dark background for route details
-    padding: 12,
-    borderRadius: 8,
-  },
-  routeDetail: {
-    fontSize: 16,
-    color: '#ccc', // Light gray text for route details
-    marginBottom: 6,
-  },
-  footer: {
-    padding: 16,
-    backgroundColor: '#111', // Dark background for footer
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#222',
-  },
-  footerText: {
-    fontSize: 12,
-    color: '#777', // Gray text for footer
-  },
-  
-  // Styles for severity indicators
-  highSeverityBox: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#e74c3c', // Red for high severity
-  },
-  mediumSeverityBox: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#f39c12', // Orange for medium severity
-  },
-  lowSeverityBox: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#2ecc71', // Green for low severity
-  },
-  
-  // Warning container and text
-  warningContainer: {
-    backgroundColor: 'rgba(40, 40, 40, 0.7)', // Dark semi-transparent
-    padding: 12,
-    borderRadius: 6,
-    marginVertical: 10,
-  },
-  warningText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#ccc', // Light gray text
-  },
-  highSeverityText: {
-    color: '#e74c3c', // Red for high severity
-  },
-  mediumSeverityText: {
-    color: '#f39c12', // Orange for medium severity
-  },
-  lowSeverityText: {
-    color: '#2ecc71', // Green for low severity
+    fontWeight: '600',
   },
 });
-
-export default styles;

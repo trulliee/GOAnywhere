@@ -12,8 +12,6 @@ import {
   Animated,
   Modal,
   TouchableWithoutFeedback,
-  KeyboardAvoidingView,
-  Platform,
   PanResponder,
   Dimensions
 } from 'react-native';
@@ -22,7 +20,7 @@ import MapView, { Marker } from 'react-native-maps';
 import Collapsible from 'react-native-collapsible';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { TextInput, Button } from 'react-native';
+import { TextInput } from 'react-native';
 import AuthService from './authService';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
@@ -60,6 +58,7 @@ export default function HomeScreen() {
   // State for collapsible menu sections
   const [trafficExpanded, setTrafficExpanded] = useState(false);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
 
   
   // Crowdsourced Menu
@@ -85,13 +84,50 @@ export default function HomeScreen() {
     "Delays": { name: "time", library: "Ionicons" },                        
     "Map Issue": { name: "map", library: "FontAwesome" }                    
   };
-  const savedLocations = [
-    { name: 'Home', icon: 'home' },
-    { name: 'Work', icon: 'briefcase' },
-    { name: 'Add', icon: 'add' },
-    { name: 'Saved 1', icon: 'star'},
-    { name: 'Saved 2', icon: 'star'},
+
+  const fixedLocations = [
+    { name: 'Home',  address: '' },
+    { name: 'Work',  address: '' },
   ];
+  // start empty; we'll load (or init) from AsyncStorage in useEffect
+  const [savedLocations, setSavedLocations] = useState([]);
+
+  const getNextSavedName = () => {
+    const others = savedLocations.slice(2).map(l => l.name);
+    const nums = others
+      .map(n => parseInt(n.replace('Saved ', ''), 10))
+      .filter(n => !isNaN(n))
+      .sort((a, b) => a - b);
+    let i = 1;
+    for (const n of nums) {
+      if (n === i) i++;
+      else break;
+    }
+    return `Saved ${i}`;
+  };
+
+
+  useEffect(() => {
+    AsyncStorage.getItem('mySavedLocations')
+      .then(json => {
+        let list = json ? JSON.parse(json) : [];
+
+        // ensure Home exists at index 0
+        if (!list.find(l => l.name === 'Home')) {
+          list.unshift({ name: 'Home', address: '' });
+        }
+        // ensure Work exists at index 1
+        if (!list.find(l => l.name === 'Work')) {
+          // if Home is at 0, insert Work at 1
+          list.splice(1, 0, { name: 'Work', address: '' });
+        }
+
+        // save back (so next time it's already there)
+        AsyncStorage.setItem('mySavedLocations', JSON.stringify(list));
+        setSavedLocations(list);
+      })
+      .catch(console.warn);
+  }, []);
   
   const showCrowdModal = () => {
     setReportMode(null);
@@ -102,6 +138,13 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   }
+
+  const persistSaved = fullList => {
+    // update state
+    setSavedLocations(fullList);
+    // persist *all* slots, so Home/Work edits stick
+    AsyncStorage.setItem('mySavedLocations', JSON.stringify(fullList));
+  };
 
   const hideCrowdModal = () => {
     Animated.timing(slideAnim, {
@@ -181,7 +224,7 @@ export default function HomeScreen() {
   
   // Add missing handler functions
   const handleSavedPress = (location) => {
-    const q = location.name;
+    const q = location.address;
     setSearchInput(q);
     setIsModalVisible(false);
     navigation.navigate('P2PNavigation', { endLocation: q });
@@ -460,16 +503,37 @@ export default function HomeScreen() {
                     style={styles.savedLocationRow}
                     showsHorizontalScrollIndicator={false}
                   >
-                    {savedLocations.map((loc, index) => (
+                  {savedLocations.map((loc, index) => {
+                    // pick icon: home/work stay fixed, others get a star
+                    const iconName =
+                      loc.name === 'Home'
+                        ? 'home'
+                        : loc.name === 'Work'
+                          ? 'briefcase'
+                          : 'star';
+                    return (
                       <TouchableOpacity
                         key={index}
                         style={styles.savedLocationButton}
                         onPress={() => handleSavedPress(loc)}
                       >
-                        <Ionicons name={loc.icon} size={24} />
+                        <Ionicons name={iconName} size={24} />
                         <Text>{loc.name}</Text>
+                        {loc.address ? (
+                          <Text style={styles.savedAddressText} numberOfLines={1}>
+                            {loc.address}
+                          </Text>
+                        ) : null}
                       </TouchableOpacity>
-                    ))}
+                    );
+                  })}
+                    <TouchableOpacity
+                      style={[styles.savedLocationButton, styles.editSavedButton]}
+                      onPress={() => setEditModalVisible(true)}
+                    >
+                      <FontAwesome name="edit" size={24} />
+                      <Text>Edit</Text>
+                    </TouchableOpacity>
                   </ScrollView>
 
                   {/* Location History */}
@@ -601,7 +665,61 @@ export default function HomeScreen() {
           </View>
         </TouchableWithoutFeedback>
       )}
-
+        {editModalVisible && (
+          <Modal
+            transparent
+            animationType="slide"
+            onRequestClose={() => setEditModalVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.editModalContainer}>
+                <Text style={styles.sheetTitle}>Manage Saved Locations</Text>
+                <ScrollView>
+                  {savedLocations.map((loc, i) => (
+                    <View key={i} style={styles.editRow}>
+                      <Text style={styles.editLabel}>{loc.name}:</Text>
+                      <TextInput
+                        style={styles.editInput}
+                        placeholder="Enter Address"
+                        value={loc.address}
+                        onChangeText={addr => {
+                          const copy = [...savedLocations];
+                          copy[i].address = addr;
+                          persistSaved(copy);
+                        }}
+                      />
+                      {i >= 2 && (
+                        <TouchableOpacity onPress={() => {
+                          const copy = savedLocations.filter((_, idx) => idx !== i);
+                          persistSaved(copy);
+                        }}>
+                          <Ionicons name="trash" size={24} color="red" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => {
+                    const nextName = getNextSavedName();
+                    const copy = [...savedLocations, { name: nextName, address: ''  }];
+                    persistSaved(copy);
+                  }}
+                >
+                  <Text style={styles.editButtonText}>Add New</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => setEditModalVisible(false)}
+                >
+                  <Text style={styles.editButtonText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
       {/* Sidebar */}
       <Animated.View style={[styles.sidebar, { transform: [{ translateX: sidebarPosition }] }]}>
         {/* User Profile Section */}
@@ -945,11 +1063,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
   modalContainer: {
     height: '50%',
     backgroundColor: '#fff',
@@ -1090,5 +1203,55 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
     elevation: 3,
-  }
+  },
+  savedAddressText: {
+    fontSize: 12,
+    color: '#666',
+    width: 70,
+    textAlign: 'center'
+  },
+  editInput: {
+    backgroundColor: '#fff',
+    borderRadius: 10,      
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    flex: 1,
+    marginVertical: 0,
+  },
+  editModalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  editLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 8,
+    alignSelf: 'center',
+  },
+  editRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 12,
+  },
+  editButton: {
+    backgroundColor: '#ccc',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  editButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  editSavedButton: {
+    backgroundColor: '#ddd',
+    borderColor: '#999',
+  },
 });

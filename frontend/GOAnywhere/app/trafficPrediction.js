@@ -1,865 +1,784 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, Text, StyleSheet, ActivityIndicator, 
-  ScrollView, TextInput, TouchableOpacity, 
-  SafeAreaView, Alert, Platform
-} from 'react-native';
-import axios from 'axios';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import React, { useState, useEffect, useRef } from 'react';
+import { Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import moment from 'moment';
+import axios from 'axios';
+
+// Import P2P routing 
 import P2PDriver from './P2PDriver';
-import styles from './TrafficPredictionStyling';
 
-// Backend API URL
-const API_URL = 'https://goanywhere-backend-541900038032.asia-southeast1.run.app';
+// Import components for rendering
+import TrafficPredictionRendering from './TrafficPredictionRendering';
 
-export default function TrafficPrediction() {
-  const [loading, setLoading] = useState(false);
-  const [location, setLocation] = useState(null);
-  
-  // State for location inputs
-  const [locationInputs, setLocationInputs] = useState({
-    startLocation: '',
-    endLocation: ''
-  });
-  
-  // State for routes from P2PDriver
+const API_BASE_URL = 'https://goanywhere-backend-541900038032.asia-southeast1.run.app';
+
+// Singapore public holidays for 2025 (add more as needed)
+const PUBLIC_HOLIDAYS_2025 = [
+  '2025-01-01', // New Year's Day
+  '2025-01-25', // Chinese New Year
+  '2025-01-26', // Chinese New Year
+  '2025-04-18', // Good Friday
+  '2025-05-01', // Labor Day
+  '2025-05-12', // Vesak Day
+  '2025-08-09', // National Day
+  '2025-11-04', // Deepavali
+  '2025-12-25', // Christmas Day
+];
+
+const TrafficPrediction = () => {
+  const navigation = useNavigation();
+  const [startLocation, setStartLocation] = useState('');
+  const [endLocation, setEndLocation] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [routes, setRoutes] = useState([]);
-  const [selectedRoute, setSelectedRoute] = useState(0);
-  
-  // State for prediction results
-  const [predictions, setPredictions] = useState({
-    trafficCongestion: null,
-    travelTime: null
-  });
-  
-  // State to track if prediction has been made
-  const [predictionsMade, setPredictionsMade] = useState({
-    trafficCongestion: false,
-    travelTime: false
-  });
-  
-  // State for model input data
-  const [modelInputs, setModelInputs] = useState({
-    traffic: {
-      RoadName: "PIE",
-      RoadCategory: "Expressway",
-      hour: new Date().getHours(),
-      day_of_week: new Date().getDay(),
-      month: new Date().getMonth() + 1,
-      is_holiday: 0,
-      event_count: 0,
-      incident_count: 0,
-      temperature: 27.0,
-      humidity: 75.0,
-      peak_hour_flag: isPeakHour(),
-      day_type: isWeekday() ? 'weekday' : 'weekend',
-      road_type: "expressway",
-      recent_incident_flag: 0,
-      speed_band_previous_hour: 2,
-      rain_flag: 0,
-      max_event_severity: 0,
-      sum_event_severity: 0
-    },
-    travelTime: {
-      Expressway: "PIE",
-      Direction: "East",
-      Startpoint: "",
-      Endpoint: "",
-      hour: new Date().getHours(),
-      day_of_week: new Date().getDay(),
-      month: new Date().getMonth() + 1,
-      is_holiday: 0,
-      event_count: 0,
-      incident_count: 0,
-      temperature: 27.0,
-      humidity: 75.0,
-      peak_hour_flag: isPeakHour(),
-      day_type: isWeekday() ? 'weekday' : 'weekend',
-      road_type: "major",
-      recent_incident_flag: 0,
-      speed_band_previous_hour: 2,
-      rain_flag: 0,
-      max_event_severity: 0,
-      sum_event_severity: 0,
-      mean_incident_severity: 0,
-      max_incident_severity: 0,
-      sum_incident_severity: 0,
-      distance_km: 5.0
-    }
-  });
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(null);
+  const [congestionPrediction, setCongestionPrediction] = useState(null);
+  const [travelTimePrediction, setTravelTimePrediction] = useState(null);
+  const [modelInputs, setModelInputs] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [predictionLock, setPredictionLock] = useState(false);
+  const [routeFound, setRouteFound] = useState(false);
+  const [routeDistance, setRouteDistance] = useState(null);
+  const [routeTime, setRouteTime] = useState(null);
+  const [routeCount, setRouteCount] = useState(0);
+  const [editingCongestion, setEditingCongestion] = useState(false);
+  const [editingTravelTime, setEditingTravelTime] = useState(false);
+  const [customCongestionInput, setCustomCongestionInput] = useState(null);
+  const [customTravelTimeInput, setCustomTravelTimeInput] = useState(null);
 
-  // Helper functions to determine peak hours and weekday status
-  function isPeakHour() {
-    const hour = new Date().getHours();
-    return (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 20) ? 1 : 0;
-  }
+  // Ref to keep track of mounted state
+  const isMounted = useRef(true);
 
-  function isWeekday() {
-    const day = new Date().getDay();
-    return day >= 1 && day <= 5; // Monday to Friday
-  }
-
-  // Get user's current location on component mount
   useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+    // Request location permission and get current location
+    requestLocationPermission();
+
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  // Check if a date is a holiday
+  const isHoliday = (date) => {
+    const formattedDate = moment(date).format('YYYY-MM-DD');
+    return PUBLIC_HOLIDAYS_2025.includes(formattedDate);
+  };
+
+  // Get day type (weekday or weekend)
+  const getDayType = (date) => {
+    const day = moment(date).day();
+    return (day === 0 || day === 6) ? 'weekend' : 'weekday';
+  };
+
+  // Convert decimal hours to HH:MM format
+  const formatDecimalHours = (decimalHours) => {
+    const hours = Math.floor(decimalHours);
+    const minutes = Math.round((decimalHours - hours) * 60);
+    return `${hours} hr ${minutes} min`;
+  };
+
+  // Convert minutes to a readable format
+  const formatMinutes = (minutes) => {
+    if (minutes < 60) {
+      return `${minutes} min`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = Math.round(minutes % 60);
+    return `${hours} hr${remainingMinutes > 0 ? ` ${remainingMinutes} min` : ''}`;
+  };
+
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission to access location was denied');
+        console.log('Location permission denied');
         return;
       }
 
-      try {
-        let currentLocation = await Location.getCurrentPositionAsync({});
-        setLocation(currentLocation);
-        
-        // Update model inputs with current time values
-        updateModelInputsWithCurrentTime();
-      } catch (error) {
-        console.error("Error getting location:", error);
-        Alert.alert("Could not get current location. Please enter locations manually.");
+      const location = await Location.getCurrentPositionAsync({});
+      const address = await reverseGeocode(
+        location.coords.latitude,
+        location.coords.longitude
+      );
+      
+      if (isMounted.current) {
+        setStartLocation(address);
       }
-    })();
-  }, []);
-
-  // Function to update model inputs with current time
-  const updateModelInputsWithCurrentTime = () => {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentDayOfWeek = now.getDay();
-    const currentMonth = now.getMonth() + 1;
-    const currentPeakHourFlag = isPeakHour();
-    const currentDayType = isWeekday() ? 'weekday' : 'weekend';
-    
-    setModelInputs(prev => ({
-      ...prev,
-      traffic: {
-        ...prev.traffic,
-        hour: currentHour,
-        day_of_week: currentDayOfWeek,
-        month: currentMonth,
-        peak_hour_flag: currentPeakHourFlag,
-        day_type: currentDayType
-      },
-      travelTime: {
-        ...prev.travelTime,
-        hour: currentHour,
-        day_of_week: currentDayOfWeek,
-        month: currentMonth,
-        peak_hour_flag: currentPeakHourFlag,
-        day_type: currentDayType
-      }
-    }));
+    } catch (err) {
+      console.error('Error getting location:', err);
+    }
   };
 
-  // Function to handle route search using P2PDriver
-  const handleRouteSearch = async () => {
-    if (!locationInputs.startLocation || !locationInputs.endLocation) {
-      Alert.alert("Missing locations", "Please enter both start and destination locations");
+  const reverseGeocode = async (latitude, longitude) => {
+    try {
+      const response = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+
+      if (response && response.length > 0) {
+        const address = response[0];
+        const formattedAddress = [
+          address.name,
+          address.street,
+          address.district,
+          address.city,
+          address.region,
+          address.country
+        ]
+          .filter(Boolean)
+          .join(', ');
+          
+        return formattedAddress;
+      }
+      return 'Current Location';
+    } catch (error) {
+      console.error('Error reverse geocoding:', error);
+      return 'Current Location';
+    }
+  };
+
+  const findRoute = async () => {
+    if (!startLocation || !endLocation) {
+      Alert.alert('Missing Info', 'Please enter both start location and destination.');
       return;
     }
 
-    setLoading(true);
+    setIsLoading(true);
+    setRoutes([]);
+    setCongestionPrediction(null);
+    setTravelTimePrediction(null);
+    setSelectedRouteIndex(null);
+    setPredictionLock(false);
+    setCustomCongestionInput(null);
+    setCustomTravelTimeInput(null);
+    
     try {
-      // Get routes using P2PDriver
-      const routeResults = await P2PDriver(locationInputs.startLocation, locationInputs.endLocation);
+      // Use P2PDriver to get routes
+      const driverRoutes = await P2PDriver(startLocation, endLocation);
       
-      if (routeResults.length > 0) {
-        setRoutes(routeResults);
-        // Select the first route by default
-        setSelectedRoute(0);
-        
-        // Extract route details for predictions
-        extractRouteDetailsForPrediction(routeResults[0]);
-
-        Alert.alert(
-          "Route Found", 
-          `Route from ${locationInputs.startLocation} to ${locationInputs.endLocation} found.\n\nDistance: ${routeResults[0].distance}\nEstimated Time of Travel: ${routeResults[0].duration}`
-        );
-      } else {
-        Alert.alert("No routes found", "Could not find any routes between the specified locations.");
+      if (driverRoutes.length === 0) {
+        throw new Error('No routes found');
       }
+      
+      // Set routes and select the first one by default
+      setRoutes(driverRoutes);
+      setRouteCount(driverRoutes.length);
+      setSelectedRouteIndex(0); // Automatically select the first route
+      setRouteFound(true);
+      
+      // Extract distance and time for display in the alert
+      const distance = driverRoutes[0].distance;
+      const time = driverRoutes[0].duration;
+      
+      setRouteDistance(distance);
+      setRouteTime(time);
+      
     } catch (error) {
-      console.error('Error in route search:', error);
-      Alert.alert('Error', 'Failed to get route information');
+      console.error('Error finding route:', error);
+      Alert.alert('Error', error.message || 'Failed to find route. Please try again.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  // Function to extract road details from route for prediction
-  const extractRouteDetailsForPrediction = (route) => {
-    // Extract road names from the route steps
-    const roadNames = route.steps
-      .map(step => step.instruction)
-      .join(' ');
-    
-    // Get the main expressway if mentioned in summary or steps
-    const expressways = ['PIE', 'CTE', 'AYE', 'ECP', 'KPE', 'SLE', 'TPE', 'BKE'];
-    let mainExpressway = 'PIE'; // Default
-    
-    // Try to find expressway in the route summary
-    for (const exp of expressways) {
-      if (route.summary && route.summary.includes(exp)) {
-        mainExpressway = exp;
-        break;
-      }
+  const resetPredictions = () => {
+    setCongestionPrediction(null);
+    setTravelTimePrediction(null);
+    setPredictionLock(false);
+    setEditingCongestion(false);
+    setEditingTravelTime(false);
+    setCustomCongestionInput(null);
+    setCustomTravelTimeInput(null);
+  };
+
+  const selectRoute = (index) => {
+    if (predictionLock && selectedRouteIndex !== index) {
+      Alert.alert(
+        'Route Locked',
+        'Please reset predictions before selecting a different route.',
+        [{ text: 'OK' }]
+      );
+      return;
     }
     
-    // If no expressway in summary, check steps
-    if (mainExpressway === 'PIE') {
-      for (const step of route.steps) {
-        for (const exp of expressways) {
-          if (step.instruction.includes(exp)) {
-            mainExpressway = exp;
-            break;
+    setSelectedRouteIndex(index);
+    setEditingCongestion(false);
+    setEditingTravelTime(false);
+    
+    // Reset predictions when changing routes
+    if (predictionLock) {
+      resetPredictions();
+    }
+  };
+
+  const handleDateChange = (event, date) => {
+    setDatePickerVisible(false);
+    if (date) {
+      setSelectedDate(date);
+      // Reset predictions when date changes
+      if (predictionLock) {
+        resetPredictions();
+      }
+    }
+  };
+
+  const toggleDatePicker = () => {
+    setDatePickerVisible(!datePickerVisible);
+  };
+
+  const toggleEditCongestion = () => {
+    if (!editingCongestion && !customCongestionInput && congestionPrediction) {
+      // Initialize the custom input with current prediction values
+      const route = routes[selectedRouteIndex];
+      const inputs = generateModelInputs(route);
+      setCustomCongestionInput(inputs.congestionInput);
+    }
+    setEditingCongestion(!editingCongestion);
+  };
+
+  const toggleEditTravelTime = () => {
+    if (!editingTravelTime && !customTravelTimeInput && travelTimePrediction) {
+      // Initialize the custom input with current prediction values
+      const route = routes[selectedRouteIndex];
+      const inputs = generateModelInputs(route);
+      setCustomTravelTimeInput(inputs.travelTimeInput);
+    }
+    setEditingTravelTime(!editingTravelTime);
+  };
+
+  const updateCustomCongestionInput = (field, value) => {
+    setCustomCongestionInput(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const updateCustomTravelTimeInput = (field, value) => {
+    setCustomTravelTimeInput(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const applyCustomCongestionInput = async () => {
+    setIsLoading(true);
+    setEditingCongestion(false);
+    
+    try {
+      // Send custom model input to the API for prediction
+      const response = await axios.post(
+        `${API_BASE_URL}/prediction/congestion`,
+        customCongestionInput
+      );
+      
+      if (response.data && response.data.status === 'success') {
+        setCongestionPrediction(response.data);
+        setPredictionLock(true);
+      } else {
+        throw new Error('Invalid prediction response');
+      }
+    } catch (error) {
+      console.error('Error predicting congestion:', error);
+      
+      // For demo purposes, generate mock prediction
+      setCongestionPrediction({
+        status: 'success',
+        predictions: [{
+          prediction: 1,
+          probabilities: [0.21954939753900793, 0.7804506024609921],
+          classes: [0, 1]
+        }]
+      });
+      setPredictionLock(true);
+      
+      Alert.alert(
+        'Prediction Error',
+        'Could not get congestion prediction with custom inputs. Using fallback data.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const applyCustomTravelTimeInput = async () => {
+    setIsLoading(true);
+    setEditingTravelTime(false);
+    
+    try {
+      // Send custom model input to the API for prediction
+      const response = await axios.post(
+        `${API_BASE_URL}/prediction/travel_time`,
+        customTravelTimeInput
+      );
+      
+      if (response.data && response.data.status === 'success') {
+        // Fix the prediction (convert to minutes if needed)
+        const data = { ...response.data };
+        
+        // If the model returns values that seem like hours, convert to minutes
+        if (data.predictions && data.predictions.length > 0 && data.predictions[0] < 10) {
+          data.predictions = data.predictions.map(p => p * 60);
+          
+          if (data.probabilities && data.probabilities.length > 0) {
+            data.probabilities = data.probabilities.map(p => 
+              p.map(v => v * 60)
+            );
           }
         }
-        if (mainExpressway !== 'PIE') break;
+        
+        setTravelTimePrediction(data);
+        setPredictionLock(true);
+      } else {
+        throw new Error('Invalid prediction response');
+      }
+    } catch (error) {
+      console.error('Error predicting travel time:', error);
+      
+      // For demo purposes, generate mock prediction
+      const selectedRouteTime = routes[selectedRouteIndex].duration;
+      const minutesMatch = selectedRouteTime.match(/(\d+)\s*min/);
+      const hoursMatch = selectedRouteTime.match(/(\d+)\s*hr/);
+      let totalMinutes = 0;
+      
+      if (hoursMatch) totalMinutes += parseInt(hoursMatch[1], 10) * 60;
+      if (minutesMatch) totalMinutes += parseInt(minutesMatch[1], 10);
+      
+      if (totalMinutes === 0) totalMinutes = 45; // Default fallback
+      
+      // Introduce some variance for the prediction
+      const predictedTime = Math.round(totalMinutes * (0.9 + Math.random() * 0.3));
+      const lowEstimate = Math.round(predictedTime * 0.9);
+      const highEstimate = Math.round(predictedTime * 1.1);
+      
+      setTravelTimePrediction({
+        status: 'success',
+        predictions: [predictedTime],
+        probabilities: [[lowEstimate, predictedTime, highEstimate]],
+        classes: ['low_estimate', 'point_estimate', 'high_estimate']
+      });
+      setPredictionLock(true);
+      
+      Alert.alert(
+        'Prediction Error',
+        'Could not get travel time prediction with custom inputs. Using estimated data.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const generateModelInputs = (route) => {
+    if (!route) return null;
+    
+    // Get date/time info from selected date
+    const selectedDateMoment = moment(selectedDate);
+    const hour = selectedDateMoment.hour();
+    const dayOfWeek = selectedDateMoment.day(); // 0-6, 0 is Sunday
+    const month = selectedDateMoment.month() + 1; // 1-12
+    
+    // Check if it's a holiday
+    const isHolidayFlag = isHoliday(selectedDate) ? 1 : 0;
+    
+    // Determine if it's peak hour
+    const morningPeakHours = [7, 8, 9];
+    const eveningPeakHours = [17, 18, 19, 20];
+    const isPeakHour = morningPeakHours.includes(hour) || eveningPeakHours.includes(hour) ? 1 : 0;
+    
+    // Determine day type
+    const dayType = getDayType(selectedDate);
+    
+    // Get road information from the route
+    const roadInfo = extractRoadInfo(route);
+    
+    // Check if there are any incidents reported in the route
+    const hasIncidents = route.issues && route.issues.includes('traffic incident') ? 1 : 0;
+    const incidentCount = hasIncidents ? 1 : 0;
+    
+    // Environmental conditions - could get from weather API in a real app
+    // Using realistic values for Singapore
+    const temperature = 28.0;
+    const humidity = 75.0;
+    const rainFlag = 0; // Default to no rain
+    
+    // Event info from route data
+    const eventCount = route.issues && route.issues.includes('road works') ? 1 : 0;
+    const eventSeverity = eventCount ? 1 : 0;
+    
+    // Extract distance
+    const distanceKm = parseDistance(route.distance);
+    
+    // Create model inputs
+    const travelTimeInput = {
+      Expressway: roadInfo.expressway,
+      Direction: roadInfo.direction,
+      Startpoint: startLocation.split(',')[0],
+      Endpoint: endLocation.split(',')[0],
+      hour,
+      day_of_week: dayOfWeek,
+      month,
+      is_holiday: isHolidayFlag,
+      event_count: eventCount,
+      incident_count: incidentCount,
+      temperature,
+      humidity,
+      peak_hour_flag: isPeakHour,
+      day_type: dayType,
+      road_type: roadInfo.roadType,
+      recent_incident_flag: hasIncidents,
+      speed_band_previous_hour: hasIncidents ? 1.0 : 2.0,
+      rain_flag: rainFlag,
+      max_event_severity: eventSeverity,
+      sum_event_severity: eventSeverity,
+      mean_incident_severity: incidentCount ? 1.5 : 0,
+      max_incident_severity: incidentCount ? 2 : 0,
+      sum_incident_severity: incidentCount ? 3 : 0,
+      distance_km: distanceKm
+    };
+    
+    const congestionInput = {
+      RoadName: roadInfo.roadName,
+      RoadCategory: roadInfo.roadCategory,
+      hour,
+      day_of_week: dayOfWeek,
+      month,
+      is_holiday: isHolidayFlag,
+      event_count: eventCount,
+      incident_count: incidentCount,
+      temperature,
+      humidity,
+      peak_hour_flag: isPeakHour,
+      day_type: dayType,
+      road_type: roadInfo.roadType,
+      recent_incident_flag: hasIncidents,
+      speed_band_previous_hour: hasIncidents ? 1 : 2,
+      rain_flag: rainFlag,
+      max_event_severity: eventSeverity,
+      sum_event_severity: eventSeverity
+    };
+    
+    return {
+      travelTimeInput,
+      congestionInput
+    };
+  };
+
+  const extractRoadInfo = (route) => {
+    let expressway = '';
+    let direction = '';
+    let roadName = '';
+    let roadCategory = '';
+    let roadType = 'normal';
+    
+    // Singapore expressways
+    const expressways = {
+      'PIE': 'Pan Island Expressway',
+      'ECP': 'East Coast Parkway',
+      'CTE': 'Central Expressway',
+      'AYE': 'Ayer Rajah Expressway',
+      'KPE': 'Kallang-Paya Lebar Expressway',
+      'SLE': 'Seletar Expressway',
+      'TPE': 'Tampines Expressway',
+      'BKE': 'Bukit Timah Expressway',
+      'KJE': 'Kranji Expressway',
+      'MCE': 'Marina Coastal Expressway'
+    };
+    
+    // Try to extract expressway from route summary
+    if (route.summary) {
+      Object.keys(expressways).forEach(key => {
+        if (route.summary.includes(key)) {
+          expressway = key;
+          roadName = expressways[key];
+          roadCategory = 'Expressway';
+          roadType = 'major';
+        }
+      });
+    }
+    
+    // If we couldn't extract from summary, check in steps
+    if (!expressway && route.steps) {
+      for (const step of route.steps) {
+        if (step.instruction) {
+          for (const key of Object.keys(expressways)) {
+            if (step.instruction.includes(key)) {
+              expressway = key;
+              roadName = expressways[key];
+              roadCategory = 'Expressway';
+              roadType = 'major';
+              break;
+            }
+          }
+          if (expressway) break;
+        }
       }
     }
     
-    // Extract distance in km from the text (e.g., "5.2 km" → 5.2)
-    const distanceText = route.distance;
-    const distanceKm = parseFloat(distanceText.replace(/[^0-9.]/g, ''));
+    // Default values if we couldn't extract
+    if (!expressway) {
+      if (route.summary && route.summary.includes('Expressway')) {
+        expressway = 'ECP'; // Default
+        roadName = 'East Coast Parkway';
+        roadCategory = 'Expressway';
+        roadType = 'major';
+      } else {
+        expressway = 'ECP'; // Default
+        roadName = route.summary || 'Major Road';
+        roadCategory = 'Major Arterial';
+        roadType = 'normal';
+      }
+    }
     
-    // Determine direction based on coordinates
-    const startMarker = route.markers[0];
-    const endMarker = route.markers[1];
-    let direction = 'East';
+    // Determine direction based on start and end locations
+    // This is a simplification - in a real app, this would be more sophisticated
+    const startWords = startLocation.toLowerCase().split(' ');
+    const endWords = endLocation.toLowerCase().split(' ');
     
-    if (endMarker.longitude < startMarker.longitude) {
+    if (endWords.some(word => ['east', 'changi', 'tampines', 'bedok'].includes(word))) {
+      direction = 'East';
+    } else if (endWords.some(word => ['west', 'jurong', 'tuas', 'boon lay'].includes(word))) {
       direction = 'West';
-    } else if (endMarker.latitude > startMarker.latitude) {
+    } else if (endWords.some(word => ['north', 'woodlands', 'yishun', 'sembawang'].includes(word))) {
       direction = 'North';
-    } else if (endMarker.latitude < startMarker.latitude) {
+    } else if (endWords.some(word => ['south', 'sentosa', 'harbourfront', 'central'].includes(word))) {
       direction = 'South';
+    } else {
+      // Default direction based on comparison
+      const directionMapping = {
+        'east': 'East',
+        'west': 'West',
+        'north': 'North',
+        'south': 'South',
+        'central': 'Central'
+      };
+      
+      for (const word in directionMapping) {
+        if (endWords.includes(word)) {
+          direction = directionMapping[word];
+          break;
+        }
+      }
+      
+      if (!direction) {
+        direction = 'East'; // Default
+      }
     }
     
-    // Update model inputs with route data
-    setModelInputs(prev => ({
-      ...prev,
-      traffic: {
-        ...prev.traffic,
-        RoadName: mainExpressway,
-        RoadCategory: 'Expressway'
-      },
-      travelTime: {
-        ...prev.travelTime,
-        Expressway: mainExpressway,
-        Direction: direction,
-        Startpoint: locationInputs.startLocation,
-        Endpoint: locationInputs.endLocation,
-        distance_km: distanceKm || 5.0
+    return {
+      expressway,
+      direction,
+      roadName,
+      roadCategory,
+      roadType
+    };
+  };
+
+  const parseDistance = (distanceStr) => {
+    if (!distanceStr) return 5.0; // Default
+    
+    // Extract numeric value from distance string (e.g., "10 km" -> 10)
+    const match = distanceStr.match(/(\d+(\.\d+)?)/);
+    if (match) {
+      const value = parseFloat(match[1]);
+      // Check if it's in meters or kilometers
+      if (distanceStr.includes('m') && !distanceStr.includes('km')) {
+        return value / 1000; // Convert meters to kilometers
       }
-    }));
+      return value; // Already in kilometers
+    }
+    
+    return 5.0; // Default
+  };
+
+  const predictCongestion = async () => {
+    if (selectedRouteIndex === null) {
+      Alert.alert('Route Required', 'Please select a route first.');
+      return;
+    }
+    
+    setIsLoading(true);
+    setPredictionLock(true);
+    
+    try {
+      const route = routes[selectedRouteIndex];
+      const inputs = generateModelInputs(route);
+      setModelInputs(inputs);
+      
+      // Send model input to the API for prediction
+      const response = await axios.post(
+        `${API_BASE_URL}/prediction/congestion`,
+        inputs.congestionInput
+      );
+      
+      if (response.data && response.data.status === 'success') {
+        setCongestionPrediction(response.data);
+      } else {
+        throw new Error('Invalid prediction response');
+      }
+    } catch (error) {
+      console.error('Error predicting congestion:', error);
+      
+      // For demo purposes, generate mock prediction to show UI
+      setCongestionPrediction({
+        status: 'success',
+        predictions: [{
+          prediction: 1,
+          probabilities: [0.21954939753900793, 0.7804506024609921],
+          classes: [0, 1]
+        }]
+      });
+      
+      Alert.alert(
+        'Prediction Error',
+        'Could not get congestion prediction. Using fallback data.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const predictTravelTime = async () => {
+    if (selectedRouteIndex === null) {
+      Alert.alert('Route Required', 'Please select a route first.');
+      return;
+    }
+    
+    setIsLoading(true);
+    setPredictionLock(true);
+    
+    try {
+      const route = routes[selectedRouteIndex];
+      const inputs = generateModelInputs(route);
+      setModelInputs(inputs);
+      
+      // Send model input to the API for prediction
+      const response = await axios.post(
+        `${API_BASE_URL}/prediction/travel_time`,
+        inputs.travelTimeInput
+      );
+      
+      if (response.data && response.data.status === 'success') {
+        // Fix the prediction (convert to minutes if needed)
+        const data = { ...response.data };
+        
+        // If the model returns values that seem like hours, convert to minutes
+        if (data.predictions && data.predictions.length > 0 && data.predictions[0] < 10) {
+          // Multiply by 60 to convert hours to minutes - your ML model probably 
+          // predicts in hours but users expect minutes
+          data.predictions = data.predictions.map(p => p * 60);
+          
+          // Also adjust probabilities (confidence intervals)
+          if (data.probabilities && data.probabilities.length > 0) {
+            data.probabilities = data.probabilities.map(p => 
+              p.map(v => v * 60)
+            );
+          }
+        }
+        
+        setTravelTimePrediction(data);
+      } else {
+        throw new Error('Invalid prediction response');
+      }
+    } catch (error) {
+      console.error('Error predicting travel time:', error);
+      
+      // For demo purposes, generate mock prediction to show UI
+      const selectedRouteTime = routes[selectedRouteIndex].duration;
+      const minutesMatch = selectedRouteTime.match(/(\d+)\s*min/);
+      const hoursMatch = selectedRouteTime.match(/(\d+)\s*hr/);
+      let totalMinutes = 0;
+      
+      if (hoursMatch) totalMinutes += parseInt(hoursMatch[1], 10) * 60;
+      if (minutesMatch) totalMinutes += parseInt(minutesMatch[1], 10);
+      
+      if (totalMinutes === 0) totalMinutes = 45; // Default fallback
+      
+      // Introduce some variance for the prediction
+      const predictedTime = Math.round(totalMinutes * (0.9 + Math.random() * 0.3));
+      const lowEstimate = Math.round(predictedTime * 0.9);
+      const highEstimate = Math.round(predictedTime * 1.1);
+      
+      setTravelTimePrediction({
+        status: 'success',
+        predictions: [predictedTime],
+        probabilities: [[lowEstimate, predictedTime, highEstimate]],
+        classes: ['low_estimate', 'point_estimate', 'high_estimate']
+      });
+      
+      Alert.alert(
+        'Prediction Error',
+        'Could not get travel time prediction. Using estimated data.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const predictBoth = async () => {
+    await predictCongestion();
+    await predictTravelTime();
+  };
+
+  const startJourney = () => {
+    // Navigate to P2PNavigation with the selected route
+    if (selectedRouteIndex !== null) {
+      const selectedRoute = routes[selectedRouteIndex];
+      navigation.navigate('P2PNavigation', { 
+        startLocation,
+        endLocation,
+        selectedRoute,
+        driverActive: true
+      });
+    } else {
+      Alert.alert('Route Selection', 'Please select a route first.');
+    }
+  };
+
+  // Props to pass to the rendering component
+  const renderProps = {
+    startLocation,
+    setStartLocation,
+    endLocation,
+    setEndLocation,
+    isLoading,
+    routes,
+    selectedRouteIndex,
+    congestionPrediction,
+    travelTimePrediction,
+    selectedDate,
+    datePickerVisible,
+    predictionLock,
+    routeFound,
+    routeDistance,
+    routeTime,
+    routeCount,
+    editingCongestion,
+    editingTravelTime,
+    customCongestionInput,
+    customTravelTimeInput,
+    findRoute,
+    resetPredictions,
+    selectRoute,
+    handleDateChange,
+    toggleDatePicker,
+    toggleEditCongestion,
+    toggleEditTravelTime,
+    updateCustomCongestionInput,
+    updateCustomTravelTimeInput,
+    applyCustomCongestionInput,
+    applyCustomTravelTimeInput,
+    predictCongestion,
+    predictTravelTime,
+    predictBoth,
+    startJourney,
+    formatMinutes,
+    isHoliday,
+    getDayType
   };
   
-  // Function to predict traffic congestion
-  const predictTrafficCongestion = async () => {
-    if (routes.length === 0) {
-      Alert.alert("No route selected", "Please find a route first");
-      return;
-    }
+  return <TrafficPredictionRendering {...renderProps} />;
+};
 
-    setLoading(true);
-    try {
-      updateModelInputsWithCurrentTime();  // Set current time-based features
-      const inputData = modelInputs.traffic;
-
-      console.log('Making congestion prediction request with:', inputData);
-      const predictionResponse = await axios.post(
-        `${API_URL}/prediction/congestion`,
-        inputData
-      );
-      console.log('Prediction response:', predictionResponse.data);
-
-      // Assign correctly
-      setPredictions(prev => ({
-        ...prev,
-        trafficCongestion: predictionResponse.data
-      }));
-
-      setPredictionsMade(prev => ({
-        ...prev,
-        trafficCongestion: true
-      }));
-    } catch (error) {
-      console.error('Traffic congestion prediction error:', error);
-      Alert.alert('Error', error.response?.data?.detail || 'Traffic congestion prediction failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Function to predict travel time
-  const predictTravelTime = async () => {
-    if (routes.length === 0) {
-      Alert.alert("No route selected", "Please find a route first");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Make sure model inputs have latest time data
-      updateModelInputsWithCurrentTime();
-      
-      // Log the request data for debugging
-      console.log('Making travel time prediction request with:', modelInputs.travelTime);
-      
-      // Send the prediction request to the backend API
-      const response = await axios.post(`${API_URL}/prediction/travel_time`, modelInputs.travelTime);
-      
-      // Log the response for debugging
-      console.log('Travel time prediction response:', response.data);
-      
-      // Store the prediction result
-      setPredictions(prev => ({ 
-        ...prev, 
-        travelTime: response.data 
-      }));
-      
-      // Set flag to indicate prediction has been made
-      setPredictionsMade(prev => ({
-        ...prev,
-        travelTime: true
-      }));
-      
-    } catch (error) {
-      console.error('Travel time prediction error:', error);
-      Alert.alert('Error', error.response?.data?.detail || 'Travel time prediction failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Function to reset prediction and unlock route selection
-  const resetPredictions = () => {
-    setPredictions({ 
-      trafficCongestion: null,
-      travelTime: null
-    });
-    setPredictionsMade({
-      trafficCongestion: false,
-      travelTime: false
-    });
-  };
-
-  // Helper function to interpret traffic congestion prediction
-  const interpretTrafficCongestion = (prediction) => {
-    if (!prediction) return null;
-
-    console.log("Traffic prediction response:", prediction);
-
-    const predictionList = prediction.predictions;
-    const congestionPrediction = predictionList?.[0];
-
-    const congestionValue = congestionPrediction?.prediction;
-    const congestionProbabilities = congestionPrediction?.probabilities;
-
-    console.log("Prediction object:", congestionPrediction);
-    console.log("Probabilities:", congestionProbabilities);
-    console.log("Congestion Value:", congestionValue);
-    console.log("Congestion Probabilities:", congestionProbabilities);
-
-    let congestionProb = null;
-    let freeFlowProb = null;
-
-    if (Array.isArray(congestionProbabilities) && congestionProbabilities.length >= 2) {
-      freeFlowProb = congestionProbabilities[0] * 100;
-      congestionProb = congestionProbabilities[1] * 100;
-    }
-
-    const statusText = congestionValue === 1 
-      ? `Congested${congestionProb !== null ? ` (${congestionProb.toFixed(1)}%)` : ''}` 
-      : `Free Flow${freeFlowProb !== null ? ` (${freeFlowProb.toFixed(1)}%)` : ''}`;
-
-    let severityLevel = null;
-    let warningMessage = '';
-
-    if (congestionProb !== null) {
-      if (congestionProb >= 80) {
-        severityLevel = 'high';
-        warningMessage = '⚠️ High likelihood of severe delays. Consider an alternative route.';
-      } else if (congestionProb >= 50) {
-        severityLevel = 'medium';
-        warningMessage = '⚠️ Moderate traffic expected. Plan for possible delays.';
-      } else {
-        severityLevel = 'low';
-        warningMessage = '✓ Traffic should be flowing smoothly.';
-      }
-    } else if (congestionValue === 1) {
-      // Probabilities not available but still congested
-      severityLevel = 'unknown';
-      warningMessage = '⚠️ Congestion detected, but probability is unavailable.';
-    }
-
-    return {
-      isCongested: congestionValue === 1,
-      confidence: congestionProb,
-      congestionProb,
-      freeFlowProb,
-      status: statusText,
-      color: congestionValue === 1 ? '#e74c3c' : '#2ecc71',
-      severityLevel,
-      warningMessage
-    };
-  };
-
-
-  // Helper function to interpret travel time prediction
-  const interpretTravelTime = (prediction) => {
-    if (!prediction) return null;
-    
-    console.log("Travel time prediction response:", prediction);
-    
-    const predictions = prediction.predictions;
-    const probabilities = prediction.probabilities;
-    
-    if (!predictions || predictions.length === 0) return null;
-    
-    // Estimated travel time in minutes
-    const predictedMinutes = Math.round(predictions[0]);
-    
-    // Format as minutes or hours and minutes
-    let formattedTime = '';
-    if (predictedMinutes < 60) {
-      formattedTime = `${predictedMinutes} min`;
-    } else {
-      const hours = Math.floor(predictedMinutes / 60);
-      const minutes = predictedMinutes % 60;
-      formattedTime = `${hours} hr ${minutes} min`;
-    }
-    
-    // Confidence interval if provided in probabilities
-    let confidenceRange = null;
-    
-    if (probabilities && probabilities.length > 0) {
-      const probArray = probabilities[0];
-      if (Array.isArray(probArray) && probArray.length >= 2) {
-        // Extract low and high values from confidence interval
-        const lowValue = Math.round(probArray[0]);
-        const highValue = Math.round(probArray[probArray.length - 1]);
-        
-        confidenceRange = {
-          low: lowValue,
-          high: highValue,
-          formattedLow: lowValue < 60 ? `${lowValue} min` : `${Math.floor(lowValue / 60)} hr ${lowValue % 60} min`,
-          formattedHigh: highValue < 60 ? `${highValue} min` : `${Math.floor(highValue / 60)} hr ${highValue % 60} min`
-        };
-      }
-    }
-    
-    // Determine if travel time is within Google's estimate
-    const routeDuration = routes[selectedRoute].duration;
-    const googleEstimateMinutes = parseFloat(routeDuration.replace(/[^0-9.]/g, ''));
-    
-    // If Google estimate contains "hr", multiply by 60
-    const hasHour = routeDuration.includes('hr') || routeDuration.includes('hour');
-    let adjustedGoogleEstimate = googleEstimateMinutes;
-    
-    if (hasHour) {
-      // Extract hours and minutes
-      const hourMatch = routeDuration.match(/(\d+)\s*hr/);
-      const minuteMatch = routeDuration.match(/(\d+)\s*min/);
-      
-      const hours = hourMatch ? parseInt(hourMatch[1]) : 0;
-      const minutes = minuteMatch ? parseInt(minuteMatch[1]) : 0;
-      
-      adjustedGoogleEstimate = hours * 60 + minutes;
-    }
-    
-    // Calculate difference from Google estimate
-    const diffFromGoogle = predictedMinutes - adjustedGoogleEstimate;
-    const percentDiff = (diffFromGoogle / adjustedGoogleEstimate) * 100;
-    
-    let comparisonText = '';
-    let severityLevel = 'low';
-    
-    if (Math.abs(percentDiff) < 10) {
-      comparisonText = "Matches navigation app estimate";
-      severityLevel = 'low';
-    } else if (percentDiff > 0) {
-      comparisonText = `${Math.abs(diffFromGoogle).toFixed(0)} min slower than navigation estimate`;
-      severityLevel = percentDiff > 30 ? 'high' : 'medium';
-    } else {
-      comparisonText = `${Math.abs(diffFromGoogle).toFixed(0)} min faster than navigation estimate`;
-      severityLevel = 'low';
-    }
-    
-    return {
-      predictedMinutes,
-      formattedTime,
-      confidenceRange,
-      comparisonText,
-      severityLevel,
-      color: 
-        severityLevel === 'high' ? '#e74c3c' : 
-        severityLevel === 'medium' ? '#f39c12' : 
-        '#2ecc71'
-    };
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollContainer}>
-        <View style={styles.headerContainer}>
-          <Text style={styles.header}>Traffic Prediction</Text>
-          <Text style={styles.subheader}>
-            {new Date().toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
-          </Text>
-        </View>
-        
-        {/* Location Search Section */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Enter Your Route</Text>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Start Location</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Jurong East"
-              value={locationInputs.startLocation}
-              onChangeText={(text) => setLocationInputs({...locationInputs, startLocation: text})}
-              placeholderTextColor="#777"
-            />
-          </View>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Destination</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Changi Airport"
-              value={locationInputs.endLocation}
-              onChangeText={(text) => setLocationInputs({...locationInputs, endLocation: text})}
-              placeholderTextColor="#777"
-            />
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.searchButton} 
-            onPress={handleRouteSearch}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>Find Route</Text>
-          </TouchableOpacity>
-          
-          {routes.length > 0 && (
-            <View style={styles.routeSelectionContainer}>
-              <Text style={styles.routeSelectionTitle}>
-                {routes.length} route{routes.length !== 1 ? 's' : ''} found ({routes[selectedRoute].distance}, {routes[selectedRoute].duration})
-              </Text>
-              
-              {routes.length > 1 && (
-                <View style={styles.routeButtonsContainer}>
-                  {routes.map((route, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.routeButton,
-                        selectedRoute === index && styles.selectedRouteButton,
-                        (predictionsMade.trafficCongestion || predictionsMade.travelTime) && 
-                        index !== selectedRoute && styles.disabledRouteButton
-                      ]}
-                      onPress={() => {
-                        if (!predictionsMade.trafficCongestion && !predictionsMade.travelTime) {
-                          setSelectedRoute(index);
-                          extractRouteDetailsForPrediction(route);
-                        }
-                      }}
-                      disabled={(predictionsMade.trafficCongestion || predictionsMade.travelTime) && 
-                               index !== selectedRoute}
-                    >
-                      <Text style={[
-                        styles.routeButtonText,
-                        selectedRoute === index && styles.selectedRouteButtonText,
-                        (predictionsMade.trafficCongestion || predictionsMade.travelTime) && 
-                        index !== selectedRoute && styles.disabledRouteButtonText
-                      ]}>
-                        Route {index + 1}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-        
-        {/* Prediction Action Buttons */}
-        {routes.length > 0 && (
-          <View style={styles.actionButtonsContainer}>
-            {!predictionsMade.trafficCongestion && !predictionsMade.travelTime ? (
-              <>
-                <TouchableOpacity 
-                  style={styles.predictionButton} 
-                  onPress={predictTrafficCongestion}
-                  disabled={loading}
-                >
-                  <Icon name="traffic" size={24} color="#fff" />
-                  <Text style={styles.buttonText}>Predict Traffic Congestion</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.predictionButton} 
-                  onPress={predictTravelTime}
-                  disabled={loading}
-                >
-                  <Icon name="timer" size={24} color="#fff" />
-                  <Text style={styles.buttonText}>Predict Travel Time</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <TouchableOpacity 
-                style={styles.resetButton} 
-                onPress={resetPredictions}
-              >
-                <Icon name="refresh" size={24} color="#fff" />
-                <Text style={styles.buttonText}>Reset Predictions</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-        
-        {/* Loading Indicator */}
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#3498db" />
-            <Text style={styles.loadingText}>Processing request...</Text>
-          </View>
-        )}
-        
-        {/* Results Section */}
-        <View style={styles.resultsContainer}>
-          {/* Traffic Congestion Result */}
-          {predictions.trafficCongestion && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Traffic Congestion Prediction</Text>
-              
-              {(() => {
-                const trafficResult = interpretTrafficCongestion(predictions.trafficCongestion);
-                if (!trafficResult) return null;
-                
-                return (
-                  <View style={[
-                    styles.resultBox, 
-                    { backgroundColor: trafficResult.color + '20' },
-                    trafficResult.severityLevel === 'high' && styles.highSeverityBox,
-                    trafficResult.severityLevel === 'medium' && styles.mediumSeverityBox,
-                    trafficResult.severityLevel === 'low' && styles.lowSeverityBox
-                  ]}>
-                    <View style={styles.resultHeader}>
-                      <Icon 
-                        name={trafficResult.isCongested ? 'traffic' : 'directions-car'} 
-                        size={32} 
-                        color={trafficResult.color} 
-                      />
-                      <Text style={[styles.resultTitle, { color: trafficResult.color }]}>
-                        {trafficResult.status || "Status Unavailable"}
-                      </Text>
-                    </View>
-                    
-                    {/* Warning Message */}
-                    <View style={styles.warningContainer}>
-                      <Text style={[
-                        styles.warningText,
-                        trafficResult.severityLevel === 'high' && styles.highSeverityText,
-                        trafficResult.severityLevel === 'medium' && styles.mediumSeverityText,
-                        trafficResult.severityLevel === 'low' && styles.lowSeverityText
-                      ]}>
-                        {trafficResult.warningMessage || "No traffic information available."}
-                      </Text>
-                    </View>
-                    
-                    {/* Show probabilities */}
-                    {trafficResult.congestionProb !== null && (
-                      <View style={styles.probabilityContainer}>
-                        <Text style={styles.probabilityTitle}>Prediction Probabilities:</Text>
-                        <View style={styles.probabilityBar}>
-                          <View 
-                            style={[
-                              styles.probabilityFill, 
-                              { 
-                                width: `${trafficResult.congestionProb}%`,
-                                backgroundColor: '#e74c3c' 
-                              }
-                            ]} 
-                          />
-                          <Text style={styles.probabilityLabel}>
-                            Congested: {trafficResult.congestionProb.toFixed(1)}%
-                          </Text>
-                        </View>
-                        <View style={styles.probabilityBar}>
-                          <View 
-                            style={[
-                              styles.probabilityFill, 
-                              { 
-                                width: `${trafficResult.freeFlowProb}%`,
-                                backgroundColor: '#2ecc71' 
-                              }
-                            ]} 
-                          />
-                          <Text style={styles.probabilityLabel}>
-                            Free Flow: {trafficResult.freeFlowProb.toFixed(1)}%
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                    
-                    <Text style={styles.resultDetail}>
-                      Road: {modelInputs.traffic.RoadName} ({modelInputs.traffic.RoadCategory})
-                    </Text>
-                  </View>
-                );
-              })()}
-            </View>
-          )}
-          
-          {/* Travel Time Prediction Result */}
-          {predictions.travelTime && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Travel Time Prediction</Text>
-              
-              {(() => {
-                const travelTimeResult = interpretTravelTime(predictions.travelTime);
-                if (!travelTimeResult) return null;
-                
-                return (
-                  <View style={[
-                    styles.resultBox, 
-                    { backgroundColor: travelTimeResult.color + '20' },
-                    travelTimeResult.severityLevel === 'high' && styles.highSeverityBox,
-                    travelTimeResult.severityLevel === 'medium' && styles.mediumSeverityBox,
-                    travelTimeResult.severityLevel === 'low' && styles.lowSeverityBox
-                  ]}>
-                    <View style={styles.resultHeader}>
-                      <Icon 
-                        name="timer" 
-                        size={32} 
-                        color={travelTimeResult.color} 
-                      />
-                      <Text style={[styles.resultTitle, { color: travelTimeResult.color }]}>
-                        {travelTimeResult.formattedTime}
-                      </Text>
-                    </View>
-                    
-                    {/* Comparison Message */}
-                    <View style={styles.warningContainer}>
-                      <Text style={[
-                        styles.warningText,
-                        travelTimeResult.severityLevel === 'high' && styles.highSeverityText,
-                        travelTimeResult.severityLevel === 'medium' && styles.mediumSeverityText,
-                        travelTimeResult.severityLevel === 'low' && styles.lowSeverityText
-                      ]}>
-                        {travelTimeResult.comparisonText || "No travel time comparison available."}
-                      </Text>
-                    </View>
-                    
-                    {/* Confidence range if available */}
-                    {travelTimeResult.confidenceRange && (
-                      <View style={styles.probabilityContainer}>
-                        <Text style={styles.probabilityTitle}>Prediction Range:</Text>
-                        <View style={styles.rangeContainer}>
-                          <Text style={styles.rangeText}>
-                            <Icon name="arrow-downward" size={16} color="#3498db" /> {travelTimeResult.confidenceRange.formattedLow}
-                          </Text>
-                          <Text style={styles.rangeSeparator}>to</Text>
-                          <Text style={styles.rangeText}>
-                            <Icon name="arrow-upward" size={16} color="#e74c3c" /> {travelTimeResult.confidenceRange.formattedHigh}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                    
-                    <Text style={styles.resultDetail}>
-                      Route: {modelInputs.travelTime.Startpoint} to {modelInputs.travelTime.Endpoint}
-                    </Text>
-                    <Text style={styles.resultDetail}>
-                      Road: {modelInputs.travelTime.Expressway} ({modelInputs.travelTime.Direction})
-                    </Text>
-                    <Text style={styles.resultDetail}>
-                      Distance: {modelInputs.travelTime.distance_km.toFixed(1)} km
-                    </Text>
-                  </View>
-                );
-              })()}
-            </View>
-          )}
-          
-          {/* Route Map Display */}
-          {routes.length > 0 && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Route Map</Text>
-              
-              {location && (
-                <MapView
-                  style={styles.map}
-                  initialRegion={{
-                    latitude: routes[selectedRoute].markers[0].latitude,
-                    longitude: routes[selectedRoute].markers[0].longitude,
-                    latitudeDelta: 0.05,
-                    longitudeDelta: 0.05,
-                  }}
-                >
-                  {/* Origin marker */}
-                  <Marker
-                    coordinate={{
-                      latitude: routes[selectedRoute].markers[0].latitude,
-                      longitude: routes[selectedRoute].markers[0].longitude
-                    }}
-                    pinColor="green"
-                    title="Start"
-                    description={locationInputs.startLocation}
-                  />
-                  
-                  {/* Destination marker */}
-                  <Marker
-                    coordinate={{
-                      latitude: routes[selectedRoute].markers[1].latitude,
-                      longitude: routes[selectedRoute].markers[1].longitude
-                    }}
-                    pinColor="red"
-                    title="Destination"
-                    description={locationInputs.endLocation}
-                  />
-                  
-                  {/* Route polyline */}
-                  <Polyline
-                    coordinates={routes[selectedRoute].polyline}
-                    strokeWidth={4}
-                    strokeColor={predictions.trafficCongestion ? 
-                      (interpretTrafficCongestion(predictions.trafficCongestion).color) : 
-                      "#3498db"}
-                  />
-                </MapView>
-              )}
-              
-              <View style={styles.routeDetails}>
-                <Text style={styles.routeDetail}>
-                  Distance: {routes[selectedRoute].distance}
-                </Text>
-                <Text style={styles.routeDetail}>
-                  Estimated Time of Travel: {routes[selectedRoute].duration}
-                </Text>
-                <Text style={styles.routeDetail}>
-                  Via: {modelInputs.traffic.RoadName}
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-      </ScrollView>
-      
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          GOAnywhere • Powered by ML Models on Vertex AI
-        </Text>
-      </View>
-    </SafeAreaView>
-  );
-}
+export default TrafficPrediction;

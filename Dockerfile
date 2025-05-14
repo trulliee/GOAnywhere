@@ -6,7 +6,8 @@ COPY backend/requirements3-9-0.txt ./requirements.txt
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY backend/app /app/app
+# Copy the application code
+COPY backend /app/
 
 EXPOSE 8080
 

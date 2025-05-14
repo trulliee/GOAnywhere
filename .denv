@@ -1,0 +1,5 @@
+GMAPS_API_KEY="AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g"
+GCP_PROJECT_ID=goanywhere-c55c8
+USE_LOCAL_FIREBASE_CREDENTIALS=1
+# FIREBASE_CREDENTIALS_PATH=/app/service-account-key.json # will use when deploy
+FIREBASE_CREDENTIALS_PATH=/app/storage/service-account-key.json

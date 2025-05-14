@@ -5,67 +5,59 @@ from firebase_admin import credentials, firestore, initialize_app
 from google.cloud import secretmanager
 from google.protobuf.timestamp_pb2 import Timestamp
 from datetime import datetime
+from dotenv import load_dotenv
+import json
+import os
+
+# Create the Secret Manager client
+# client = secretmanager.SecretManagerServiceClient()
+
+#if os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS") == "1":
+#    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("FIREBASE_CREDENTIALS_PATH")
 
 def get_firebase_credentials():
-    use_local = os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS")
-    
-    if use_local == "1":
+    """
+    Gets Firebase credentials based on environment settings.
+    Supports both local (.env) and production (Secret Manager) setups.
+    """
+# Access the secret version
+# response = client.access_secret_version(name=secret_name)
+
+# The secret payload is in 'response.payload.data'
+# service_account_key = response.payload.data.decode("UTF-8")
+
+# Load the service account key as a JSON object
+# service_account_key_json = json.loads(service_account_key)
+
+# Initialize Firebase with the service account key
+# cred = credentials.Certificate(service_account_key_json)
+# firebase_admin.initialize_app(cred)
+
+# Firestore database client
+# db = firestore.client()
+    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    load_dotenv(dotenv_path=env_path)
+
+    if os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS") == "1":
         creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-        if not creds_path:
-            raise ValueError("FIREBASE_CREDENTIALS_PATH environment variable is not set")
-        if not os.path.exists(creds_path):
-            raise FileNotFoundError(f"Firebase credentials file not found: {creds_path}")
-        return credentials.Certificate(creds_path)
+        print(f"Using local Firebase credentials: {creds_path}")
+        return credentials.Certificate(creds_path)   
     else:
-        # Production: Load secret from Secret Manager
+        print("Using GCP Secret Manager credentials")
         client = secretmanager.SecretManagerServiceClient()
-        project_id = os.getenv("GCP_PROJECT_ID")
-        secret_name = os.getenv("FIREBASE_SECRET_NAME")  # <-- Must not be hardcoded
-        if not secret_name:
-            raise ValueError("FIREBASE_SECRET_NAME is not set in the environment.")
-        
-        name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-        response = client.access_secret_version(request={"name": name})
-        service_account_info = json.loads(response.payload.data.decode("UTF-8"))
-        return credentials.Certificate(service_account_info)
+        secret_name = os.getenv("SECRET_NAME")  # e.g., "projects/.../secrets/.../versions/latest"
+        response = client.access_secret_version(name=secret_name)
+        service_account_key = response.payload.data.decode("UTF-8")
+        service_account_key_json = json.loads(service_account_key)
+        return credentials.Certificate(service_account_key_json)
 
-def initialize_firestore():
-    if not firebase_admin._apps:
-        cred = get_firebase_credentials()
-        initialize_app(cred)
-    return firestore.client()
+cred = get_firebase_credentials()
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
+db = firestore.client()
 
-# Create a global Firestore client
-db = initialize_firestore()
 
-def convert_to_timestamp(date_string, format_string=None):
-    """
-    Convert a string date to a Firestore-compatible protobuf Timestamp.
-    
-    Args:
-        date_string (str): The date string to convert
-        format_string (str, optional): Format string for datetime.strptime
-        
-    Returns:
-        Timestamp or None: Firestore-compatible Timestamp or None if conversion fails
-    """
-    if not date_string:
-        return None
 
-    try:
-        from datetime import datetime
-
-        if format_string:
-            dt = datetime.strptime(date_string, format_string)
-        else:
-            dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
-
-        ts = Timestamp()
-        ts.FromDatetime(dt)
-        return ts
-    except Exception as e:
-        print(f"Error converting timestamp {date_string}: {e}")
-        return None
 
 def store_bus_arrival_data(bus_stop_code, services, store_history=True):
     """
@@ -2781,7 +2773,7 @@ def store_events_data(events):
     except Exception as e:
         print(f"Error storing events data: {e}")
 
-async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered"):
+async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered", created_at=None, last_login=None, settings=None):
     """
     Stores user data in Firestore
     
@@ -2803,8 +2795,12 @@ async def store_user_data(user_id, name=None, email=None, phone_number=None, use
         user_data = {
             'user_id': user_id,
             'user_type': user_type,
-            'created_at': firestore.SERVER_TIMESTAMP,
-            'last_login': firestore.SERVER_TIMESTAMP
+            'created_at': created_at or firestore.SERVER_TIMESTAMP,
+            'last_login': last_login or firestore.SERVER_TIMESTAMP,
+            'settings' : {
+                'locationSharing': False,
+                'notifications': True
+            }
         }
         
         # Add optional fields if provided

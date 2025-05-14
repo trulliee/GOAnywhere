@@ -175,7 +175,7 @@ export default AuthService;
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
-import { API_URL } from './utils/apiConfig'; // Make sure this points correctly to your backend
+import { API_URL } from './utils/apiConfig';
 
 class AuthService {
   // Sign up a new user
@@ -233,16 +233,20 @@ class AuthService {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
+      const text = await response.text(); // get raw response first
       if (!response.ok) {
-        throw new Error(data.detail || 'Login failed.');
+        console.error('Login raw error:', text);
+        throw new Error('Login failed. Server error or invalid credentials.');
       }
+
+      const data = JSON.parse(text); // safely parse now
 
       const userData = {
         uid: data.uid,
         email: data.email,
-        name: data.name || email.split('@')[0],
+        name: data.name || (email ? email.split('@')[0] : ''),
         token: data.token,
+        user_type: data.user_type,
       };
 
       await AsyncStorage.setItem('user_info', JSON.stringify(userData));
@@ -326,6 +330,31 @@ class AuthService {
       return 'User';
     }
   }
+
+    static async updateProfile(payload, token) {
+    try {
+      const response = await fetch(`${API_URL}/auth/update_profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Profile update failed.');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Update profile error:', error);
+      throw error;
+    }
+  }
+
+
 }
 
 export default AuthService;

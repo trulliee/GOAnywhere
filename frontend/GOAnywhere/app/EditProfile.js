@@ -53,17 +53,40 @@ export default function EditProfile() {
   };
 
   const handleSave = async () => {
-    try {
-      // Here you would update user profile info
-      // await AuthService.updateProfile({ name: username, email, phone });
-      
-      Alert.alert("Success", "Profile updated successfully.");
-      router.back();
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
+  try {
+    const userInfo = await AuthService.getCurrentUser();
+    const { uid, token } = userInfo;
+
+    const payload = {
+      user_id: uid,
+      name: username,
+      email: email,
+      phone_number: phone,
+      password: password
+    };
+
+    await AuthService.updateProfile(payload, token);
+    if (password.trim().length > 0) {
+      const res = await fetch(`${API_URL}/auth/change_password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ new_password: password })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
     }
-  };
+    Alert.alert("Success", "Profile updated successfully.");
+    router.back();
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    Alert.alert("Error", "Failed to update profile. Please try again.");
+  }
+};
+
 
   const handleLogout = async () => {
     Alert.alert(
@@ -169,9 +192,11 @@ export default function EditProfile() {
             <View style={styles.passwordInputContainer}>
               <TextInput
                 style={styles.passwordInput}
-                value={showPassword ? password : maskedPassword}
-                secureTextEntry={false}
-                editable={false}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter new password"
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
               />
               <TouchableOpacity onPress={togglePasswordVisibility} style={styles.eyeIcon}>
                 <Ionicons 
@@ -181,6 +206,15 @@ export default function EditProfile() {
                 />
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity 
+              style={[styles.logoutButton, { backgroundColor: '#4CAF50', marginBottom: 10 }]}
+              onPress={handleSave}
+            >
+              <Ionicons name="save-outline" size={20} color="#fff" style={styles.logoutIcon} />
+              <Text style={[styles.logoutButtonText, { color: '#fff' }]}>Save Changes</Text>
+            </TouchableOpacity>
+
             
             {/* Logout Button */}
             <TouchableOpacity 

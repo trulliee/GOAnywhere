@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // OpenWeatherMap API Key
 const API_KEY = "1c6a0489337511175419c64f0fbba7d1";
@@ -123,6 +124,14 @@ const WeatherApp = () => {
           humidity,
           windSpeed
         });
+        await addLocalNotification({
+         id: Date.now().toString(),
+         icon: rainIcon,
+         iconColor: '#9de3d2',
+         title: `Weather Update: ${currentData.name}`,
+         message: `${rainCondition}, ${rainVolume} mm`,
+         timeCategory: 'today',
+       });
       } else {
         console.error("API Error:", currentData.message || "Unknown error");
         alert("Failed to fetch weather data. Please try again later.");
@@ -169,6 +178,17 @@ const WeatherApp = () => {
       <Text style={styles.areaItemText}>{item.name}</Text>
     </TouchableOpacity>
   );
+
+  const addLocalNotification = async (notification) => {
+    try {
+      const stored = await AsyncStorage.getItem('local_notifications');
+      const list = stored ? JSON.parse(stored) : [];
+      list.unshift(notification);
+      await AsyncStorage.setItem('local_notifications', JSON.stringify(list));
+    } catch (e) {
+      console.error("Error saving local notification", e);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>

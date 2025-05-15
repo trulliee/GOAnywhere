@@ -2,7 +2,7 @@
   <application>
     <meta-data
       android:name="com.google.android.geo.API_KEY"
-      android:value="AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g"/>
+      android:value="AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0"/>
   </application>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>

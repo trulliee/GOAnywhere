@@ -25,9 +25,9 @@ import {
   cleanInstruction,
   calculateWalkingMinutes
 } from './P2PHelper';
+import { API_URL } from './utils/apiConfig';
 
-const GOOGLE_MAPS_API_KEY = 'AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g';
-const LTA_ACCOUNT_KEY        = 'CetOCVT4SmqDrAHkHLrf5g==';
+const GOOGLE_MAPS_API_KEY = 'AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0';
 
 const { width, height } = Dimensions.get('window');
 
@@ -165,85 +165,32 @@ export default function Navigation() {
 	}
 
 	// 2) your unified submitCrowdsourcedReport
-	const submitCrowdsourcedReport = async (reportType) => {
-		const loc = await getCurrentLocation();
-		if (!loc) return;
+  const submitCrowdsourcedReport = async (reportType) => {
+    const loc = await getCurrentLocation();
+    if (!loc) return;
 
-		let reportData = {
-			reportType,
-			username: userName,
-			userId:   'anonymous',
-			timestamp: Date.now()
-		};
+    const reportData = {
+      reportType,
+      username: userName,
+      userId: 'anonymous',
+      timestamp: Date.now(),
+      latitude: loc.latitude,
+      longitude: loc.longitude
+    };
 
-		if (mode === 'driver') {
-			// DRIVER FLOW
-			const roadName = await fetchStreetName(loc.latitude, loc.longitude);
-			reportData = {
-				...reportData,
-				latitude:  loc.latitude,
-				longitude: loc.longitude,
-				roadName
-			};
-
-		 } else {
-			// PUBLIC-TRANSIT flow: first try live bus
-			let transitType   = 'Unknown';
-			let transitDetail = `${loc.latitude.toFixed(5)},${loc.longitude.toFixed(5)}`;
-
-			try {
-				const res = await fetch(
-					'https://datamall2.mytransport.sg/ltaodataservice/BusPositions',
-					{ headers: { AccountKey: LTA_ACCOUNT_KEY } }
-				);
-				const json = await res.json();
-				const buses = json.value || [];
-
-				let nearest = null, minD = Infinity;
-				buses.forEach(b => {
-					const d = calculateDistance(
-						loc.latitude, loc.longitude,
-						b.Latitude,    b.Longitude
-					); // km
-					if (d < minD) {
-						minD = d;
-						nearest = b;
-					}
-				});
-
-				if (nearest && minD < 0.1) { // within 100m
-					transitType   = 'Bus';
-					transitDetail = nearest.ServiceNo;
-				}
-			} catch (e) {
-				console.warn('BusPositions fetch failed', e);
-			}
-
-			// if still unknown, fall back on your route’s step info
-			const step = steps[currentStepIndex];
-			if (step?.transitInfo) {
-				if (step.transitInfo.vehicleType === 'SUBWAY') {
-					transitType   = 'MRT';
-					transitDetail = step.transitInfo.lineName;
-				} else if (step.transitInfo.vehicleType === 'BUS') {
-					transitType   = 'Bus';
-					transitDetail = step.transitInfo.lineName;
-				}
-			}
-
-			reportData = {
-				...reportData,
-				transitType,
-				transitDetail
-			};
-		}
-
-		console.log('Submitting report →', reportData);
-		// TODO: POST reportData to your backend
-		Alert.alert("Report Submitted", `You reported: ${reportType}`);
-		setReportOpen(false);
-	};
-
+    try {
+      await fetch(`${API_URL}/crowd/submit-crowd-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reportData)
+      });
+      Alert.alert("Report Submitted", `You reported: ${reportType}`);
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      Alert.alert("Submission Failed", "Please try again.");
+    }
+    setReportOpen(false);
+  };
 
   // Public transport totals
   const totalBusStops = steps

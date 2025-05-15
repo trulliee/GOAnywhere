@@ -24,8 +24,12 @@ const Notification = () => {
           message: item.message,
           timeCategory: 'today',
         }));
-
-        setNotifications(mapped);
+        // pull our local weather-driven notifications:
+        const localJson    = await AsyncStorage.getItem('local_notifications');
+        const localNotifs  = localJson ? JSON.parse(localJson) : [];
+        // combine newest first:
+        const combined = [...localNotifs, ...mapped];
+        setNotifications(combined);
       } catch (error) {
         console.error("Error loading notifications:", error);
       }

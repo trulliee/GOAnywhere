@@ -43,7 +43,7 @@ export default function LoginUser() {
     if (emailOrPhone === 'ben@gmail.com' && password === '1234') {
       console.log('Logged in with regular user test account');
       // Navigate to user home screen
-      router.replace('./homeScreen');
+      router.replace('./HomeScreen');
       return;
     }
     
@@ -65,7 +65,7 @@ export default function LoginUser() {
         router.replace('./AdminHomeScreen');
       }
       else {
-        router.replace('./homeScreen');
+        router.replace('./HomeScreen');
       }
 
     } catch (error) {

@@ -437,7 +437,7 @@ export default function AdminHomeScreen() {
 
             <TouchableOpacity 
               style={styles.menuItem} 
-              onPress={() => navigateTo('homeScreen')}
+              onPress={() => navigateTo('HomeScreen')}
             >
               <View style={styles.menuItemRow}>
                 <MaterialIcons name="home" size={24} color="#aaa" style={styles.menuIcon} />

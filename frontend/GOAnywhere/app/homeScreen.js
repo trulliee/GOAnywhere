@@ -1,5 +1,5 @@
 
-// app/homeScreen.js
+// app/HomeScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
@@ -827,7 +827,7 @@ export default function HomeScreen() {
           {/* Weather Section */}
           <TouchableOpacity 
             style={styles.menuItem} 
-            onPress={() => navigateTo('weatherPull')}
+            onPress={() => navigateTo('WeatherPull')}
           >
             <View style={styles.menuItemRow}>
               <Ionicons name="rainy" size={24} color="#fff" style={styles.menuIcon} />

@@ -222,10 +222,21 @@ export default function AdminHomeScreen() {
     async function fetchRecentUsers() {
       try {
         const res = await fetch(`${API_URL}/admin/users`);
-        const data = await res.json();
-        setRecentUsers(data.users);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Server returned ${res.status}: ${errText}`);
+        }
+        const contentType = res.headers.get('content-type') || '';
+        let data;
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const txt = await res.text();
+          throw new Error(`Expected JSON but got: ${txt}`);
+        }
+        setRecentUsers(data.users || []);
       } catch (err) {
-        console.error("Error fetching users:", err);
+        console.error("Error fetching users:", err.message);
       }
     }
 
@@ -235,10 +246,21 @@ export default function AdminHomeScreen() {
     async function fetchAdminAlerts() {
       try {
         const res = await fetch(`${API_URL}/admin/alert-notifications`);
-        const data = await res.json();
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Server returned ${res.status}: ${errText}`);
+        }
+        const contentType = res.headers.get('content-type') || '';
+        let data;
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const txt = await res.text();
+          throw new Error(`Expected JSON but got: ${txt}`);
+        }
         setAdminAlerts(data.notifications || []);
       } catch (err) {
-        console.error("Error fetching admin alerts:", err);
+        console.error("Error fetching admin alerts:", err.message);
       }
     }
 

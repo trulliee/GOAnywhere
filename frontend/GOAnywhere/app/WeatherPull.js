@@ -62,6 +62,15 @@ const WeatherApp = () => {
   const [weatherData, setWeatherData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showAreaSelector, setShowAreaSelector] = useState(false);
+  const [favoriteId, setFavoriteId] = useState(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem('favorite_location').then(json => {
+      const fav = json ? JSON.parse(json) : null;
+      setFavoriteId(fav);
+    });
+  }, []);
+
 
   // Load default Singapore weather on component mount
   useEffect(() => {
@@ -124,14 +133,17 @@ const WeatherApp = () => {
           humidity,
           windSpeed
         });
-        await addLocalNotification({
-         id: Date.now().toString(),
-         icon: rainIcon,
-         iconColor: '#9de3d2',
-         title: `Weather Update: ${currentData.name}`,
-         message: `${rainCondition}, ${rainVolume} mm`,
-         timeCategory: 'today',
-       });
+        if (favoriteId === selectedArea.id) {
+          await addLocalNotification({
+
+          id: Date.now().toString(),
+          icon: rainIcon,
+          iconColor: '#9de3d2',
+          title: `Weather Update: ${currentData.name}`,
+          message: `${rainCondition}, ${rainVolume} mm`,
+          timeCategory: 'today',
+        });
+      }
       } else {
         console.error("API Error:", currentData.message || "Unknown error");
         alert("Failed to fetch weather data. Please try again later.");
@@ -171,13 +183,28 @@ const WeatherApp = () => {
   };
 
   const renderAreaItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.areaItem}
-      onPress={() => handleAreaSelect(item)}
-    >
-      <Text style={styles.areaItemText}>{item.name}</Text>
-    </TouchableOpacity>
+    <View style={styles.areaItemRow}>
+      <TouchableOpacity
+        style={styles.areaItemTextContainer}
+        onPress={() => handleAreaSelect(item)}
+      >
+        <Text style={styles.areaItemText}>{item.name}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => toggleFavorite(item.id)}>
+        <Ionicons
+          name={favoriteId === item.id ? "star" : "star-outline"}
+          size={20}
+          color="#9de3d2"
+        />
+      </TouchableOpacity>
+    </View>
   );
+
+  const toggleFavorite = async (id) => {
+    const newFav = favoriteId === id ? null : id;
+    setFavoriteId(newFav);
+    await AsyncStorage.setItem('favorite_location', JSON.stringify(newFav));
+  };
 
   const addLocalNotification = async (notification) => {
     try {
@@ -212,6 +239,13 @@ const WeatherApp = () => {
           <Text style={styles.selectedAreaText}>{selectedArea.name}</Text>
           <Ionicons name="chevron-down" size={20} color="#9de3d2" />
         </TouchableOpacity>
+        {favoriteId && (
+        <View style={styles.favoriteContainer}>
+          <Text style={styles.favoriteText}>
+            Favorite Location: {SINGAPORE_AREAS.find(a => a.id === favoriteId)?.name}
+          </Text>
+        </View>
+      )}
 
         {/* Weather Data Display */}
         {weatherData && (
@@ -472,7 +506,29 @@ const styles = StyleSheet.create({
   areaItemText: {
     color: '#fff',
     fontSize: 16,
-  }
+  },
+  areaItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
+  },
+  areaItemTextContainer: {
+    flex: 1,
+  },
+  favoriteContainer: {
+    backgroundColor: '#444',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  favoriteText: {
+    color: '#9de3d2',
+    fontSize: 16,
+  },
 });
 
 export default WeatherApp;

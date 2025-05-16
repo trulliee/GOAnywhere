@@ -27,8 +27,13 @@ const Notification = () => {
         // pull our local weather-driven notifications:
         const localJson    = await AsyncStorage.getItem('local_notifications');
         const localNotifs  = localJson ? JSON.parse(localJson) : [];
+        const fav = await AsyncStorage.getItem('favorite_location');
+        const favoriteId = fav ? JSON.parse(fav) : null;
+        const filteredLocal = favoriteId
+          ? localNotifs.filter(n => n.areaId === favoriteId)
+           : [];
         // combine newest first:
-        const combined = [...localNotifs, ...mapped];
+        const combined = [...filteredLocal, ...mapped];
         setNotifications(combined);
       } catch (error) {
         console.error("Error loading notifications:", error);

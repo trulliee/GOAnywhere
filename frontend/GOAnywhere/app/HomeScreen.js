@@ -1,5 +1,5 @@
 
-// app/homeScreen.js
+// app/HomeScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
@@ -12,17 +12,14 @@ import {
   Animated,
   Modal,
   TouchableWithoutFeedback,
-  KeyboardAvoidingView,
-  Platform,
   PanResponder,
   Dimensions
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import Collapsible from 'react-native-collapsible';
-import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { TextInput, Button } from 'react-native';
+import { TextInput } from 'react-native';
 import AuthService from './authService';
 import WarningIcon from '../assets/images/triangle-exclamation-solid.svg';
 import * as Location from 'expo-location';
@@ -30,7 +27,7 @@ import { useNavigation } from '@react-navigation/native';
 // Commented out Firebase imports until configured
 // import { db } from './firebaseConfig';
 // import { collection, addDoc } from 'firebase/firestore';
-import { Ionicons, FontAwesome } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons, Ionicons, FontAwesome, FontAwesome5  } from '@expo/vector-icons';
 
 import ENV from './env';
 import { API_URL } from './utils/apiConfig';
@@ -38,7 +35,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
+const GOOGLE_MAPS_API_KEY = "AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0";
 
 // Get screen dimensions
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -61,69 +58,100 @@ export default function HomeScreen() {
   // State for collapsible menu sections
   const [trafficExpanded, setTrafficExpanded] = useState(false);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
 
   
   // Crowdsourced Menu
-  const [isCrowdModalVisible, setIsCrowdModalVisible] = useState(false);
-  const slideAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
-  const driverCategories = [
-    "Accident", "Road Works", "Traffic Police",
-    "Weather", "Hazard", "Map Issue"
-  ];
-  const publicCategories = [
-    "Accident", "Transit Works", "High Crowd",
-    "Weather", "Hazard", "Traffic Police",
-    "Delays", "Map Issue"
-  ];
+  const [reportOpen, setReportOpen]       = useState(false);
+  const reportAnim                        = useRef(new Animated.Value(Dimensions.get('window').height * 0.45)).current;
+  const [reportMode, setReportMode]       = useState(null); // 'driver' | 'public'
+  const driverCategories                  = ["Accident","Road Works","Police","Weather","Hazard","Map Issue"];
+  const publicCategories                  = ["Accident","Transit Works","High Crowd","Weather","Hazard","Delays","Map Issue"];
   const categoryIcons = {
-    "Accident": { name: "skull-outline", library: "Ionicons" },              
-    "Road Works": { name: "construct", library: "Ionicons" },               
-    "Transit Works": { name: "train", library: "FontAwesome" },             
-    "High Crowd": { name: "people", library: "Ionicons" },                  
-    "Weather": { name: "rainy", library: "Ionicons" },                      
-    "Hazard": { name: "exclamation-triangle", library: "FontAwesome" },     
-    "Traffic Police": { name: "shield-checkmark", library: "Ionicons" },    
-    "Delays": { name: "time", library: "Ionicons" },                        
-    "Map Issue": { name: "map", library: "FontAwesome" }                    
+    Accident:      { name: "car-crash",             lib: "FontAwesome5" },
+    "Road Works":  { name: "hard-hat",              lib: "FontAwesome5" },
+    Police:        { name: "user-secret",           lib: "FontAwesome5" },
+    Weather:       { name: "cloud",                 lib: "FontAwesome5" },
+    Hazard:        { name: "exclamation-triangle",  lib: "FontAwesome5" },
+    "Map Issue":   { name: "map-marked",            lib: "FontAwesome5" },
+    "Transit Works":{ name: "train",                lib: "FontAwesome5" },
+    "High Crowd":  { name: "people",                lib: "MaterialIcons" },
+    Delays:        { name: "hand-paper",            lib: "FontAwesome5" }
   };
-  const savedLocations = [
-    { name: 'Home', icon: 'home' },
-    { name: 'Work', icon: 'briefcase' },
-    { name: 'Add', icon: 'add' },
-    { name: 'Saved 1', icon: 'star'},
-    { name: 'Saved 2', icon: 'star'},
-  ];
+
+
+  // start empty; we'll load (or init) from AsyncStorage in useEffect
+  const [savedLocations, setSavedLocations] = useState([]);
+
+  const getNextSavedName = () => {
+    const others = savedLocations.slice(2).map(l => l.name);
+    const nums = others
+      .map(n => parseInt(n.replace('Saved ', ''), 10))
+      .filter(n => !isNaN(n))
+      .sort((a, b) => a - b);
+    let i = 1;
+    for (const n of nums) {
+      if (n === i) i++;
+      else break;
+    }
+    return `Saved ${i}`;
+  };
+
+
+  useEffect(() => {
+    AsyncStorage.getItem('mySavedLocations')
+      .then(json => {
+        let list = json ? JSON.parse(json) : [];
+
+        // ensure Home exists at index 0
+        if (!list.find(l => l.name === 'Home')) {
+          list.unshift({ name: 'Home', address: '' });
+        }
+        // ensure Work exists at index 1
+        if (!list.find(l => l.name === 'Work')) {
+          // if Home is at 0, insert Work at 1
+          list.splice(1, 0, { name: 'Work', address: '' });
+        }
+
+        // save back (so next time it's already there)
+        AsyncStorage.setItem('mySavedLocations', JSON.stringify(list));
+        setSavedLocations(list);
+      })
+      .catch(console.warn);
+  }, []);
   
-  const showCrowdModal = () => {
-    setReportMode(null);
-    setIsCrowdModalVisible(true);
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+
+
+  const persistSaved = fullList => {
+    // always keep Home & Work
+    const fixed = fullList.slice(0, 2)
+
+    // drop any extra where name _or_ address is blank
+    const others = fullList
+      .slice(2)
+      .filter(loc =>
+        loc.name.trim()    !== '' &&
+        loc.address.trim() !== ''
+      )
+
+    const newList = [ ...fixed, ...others ]
+    setSavedLocations(newList)
+    AsyncStorage.setItem('mySavedLocations', JSON.stringify(others))
   }
-
-  const hideCrowdModal = () => {
-    Animated.timing(slideAnim, {
-      toValue: Dimensions.get('window').height, // Slide off-screen
+  const toggleReport = () => {
+    Animated.timing(reportAnim, {
+      toValue: reportOpen
+        ? Dimensions.get('window').height - 25
+        : Dimensions.get('window').height * 0.45,
       duration: 300,
-      useNativeDriver: true,
-    }).start(() => setIsCrowdModalVisible(false));
-  };
-
-  const handleReportModeSelect = (mode) => {
-    Animated.timing(slideAnim, {
-      toValue: Dimensions.get('window').height, // Slide modal down
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setIsCrowdModalVisible(false); // hide modal
-      setReportMode(mode);           // then set the mode after hiding
+      useNativeDriver: false,
+    }).start();
+    setReportOpen(o => {
+      const opening = !o;
+      if (opening) setReportMode('driver');   // default to Driver when opening
+      return opening;
     });
   };
-  const [reportMode, setReportMode] = useState(null); // 'driver' or 'public'
-
   // Get user's location for the crowdsourced report
   const getCurrentLocation = async () => {
     let { status } = await Location.requestForegroundPermissionsAsync();
@@ -145,16 +173,15 @@ export default function HomeScreen() {
     if (!location) return;
   
     try {
-      // Prepare the data to send to the backend
       const reportData = {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        reportType: reportType,
+        reportType,
         username: userName,
-        userId: user?.uid,
-        timestamp: Date.now()
+        userId:   user?.uid || 'anonymous',
+        timestamp: Date.now(),
+        latitude:  location.latitude,
+        longitude: location.longitude
       };
-      
+
       console.log('Sending report to backend:', reportData);
       console.log("Using URL:", `${API_URL}/crowd/submit-crowd-data`);
 
@@ -182,7 +209,7 @@ export default function HomeScreen() {
   
   // Add missing handler functions
   const handleSavedPress = (location) => {
-    const q = location.name;
+    const q = location.address;
     setSearchInput(q);
     setIsModalVisible(false);
     navigation.navigate('P2PNavigation', { endLocation: q });
@@ -478,16 +505,37 @@ export default function HomeScreen() {
                     style={styles.savedLocationRow}
                     showsHorizontalScrollIndicator={false}
                   >
-                    {savedLocations.map((loc, index) => (
+                  {savedLocations.map((loc, index) => {
+                    // pick icon: home/work stay fixed, others get a star
+                    const iconName =
+                      loc.name === 'Home'
+                        ? 'home'
+                        : loc.name === 'Work'
+                          ? 'briefcase'
+                          : 'star';
+                    return (
                       <TouchableOpacity
                         key={index}
                         style={styles.savedLocationButton}
                         onPress={() => handleSavedPress(loc)}
                       >
-                        <Ionicons name={loc.icon} size={24} />
+                        <Ionicons name={iconName} size={24} />
                         <Text>{loc.name}</Text>
+                        {loc.address ? (
+                          <Text style={styles.savedAddressText} numberOfLines={1}>
+                            {loc.address}
+                          </Text>
+                        ) : null}
                       </TouchableOpacity>
-                    ))}
+                    );
+                  })}
+                    <TouchableOpacity
+                      style={[styles.savedLocationButton, styles.editSavedButton]}
+                      onPress={() => setEditModalVisible(true)}
+                    >
+                      <FontAwesome name="edit" size={24} />
+                      <Text>Edit</Text>
+                    </TouchableOpacity>
                   </ScrollView>
 
                   {/* Location History */}
@@ -513,10 +561,10 @@ export default function HomeScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {!isSidebarVisible && (
+      {!isSidebarVisible && !reportOpen && (
         <TouchableOpacity 
           style={styles.hamburgerButton}
-          onPress={showSidebar}
+          onPress={() => { if (!reportOpen) showSidebar() }}
         >
           <Ionicons name="menu" size={28} color="#000" />
         </TouchableOpacity>
@@ -529,96 +577,163 @@ export default function HomeScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Crowdsourced Button */}
-      {isCrowdModalVisible && (
-        <TouchableOpacity style={styles.modalOverlay} onPress={hideCrowdModal} activeOpacity={1}>
-          <Animated.View style={[
-            styles.bottomSheet,
-            { 
-              transform: [{ translateY: slideAnim }],
-              alignSelf: 'stretch'
-            }
-          ]}>
-            <Text style={styles.sheetTitle}>Report As</Text>
-            <TouchableOpacity style={styles.sheetButton} onPress={() => {
-              handleReportModeSelect('driver');
-              hideCrowdModal();
-            }}>
-              <Text style={styles.sheetButtonText}>Driver</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.sheetButton} onPress={() => {
-              handleReportModeSelect('public');
-              hideCrowdModal();
-            }}>
-              <Text style={styles.sheetButtonText}>Public Transport</Text>
-            </TouchableOpacity>
-          </Animated.View>
+      {/* Unified Crowdsourced Button & Bottom Sheet */}
+      {reportOpen && (
+        <Animated.View style={[styles.reportSheet, { top: reportAnim }]}>
+          <TouchableOpacity
+            style={[styles.closeButton, { top: 10, bottom: 15 }]}
+            onPress={toggleReport}
+          >
+            <Text style={styles.closeText}>Close</Text>
+          </TouchableOpacity>
+
+          <View style={styles.headerRow}>
+            {/* Driver / Public Transport pills */}
+            <View style={styles.modeSelector}>
+              <TouchableOpacity
+                style={[styles.modeButton, reportMode === 'driver' && styles.modeButtonActive]}
+                onPress={() => setReportMode('driver')}
+              >
+                <Text style={[styles.modeText, reportMode === 'driver' && styles.modeTextActive]}>Driver</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, reportMode === 'public' && styles.modeButtonActive]}
+                onPress={() => setReportMode('public')}
+              >
+                <Text style={[styles.modeText, reportMode === 'public' && styles.modeTextActive]}>Public Transport</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* category grid */}
+          <ScrollView
+            style={styles.reportScroll}                     
+            contentContainerStyle={styles.reportContent}    
+            showsVerticalScrollIndicator={false}
+          >
+            {(reportMode === 'driver' ? driverCategories : publicCategories).map(cat => {
+              const { name, lib } = categoryIcons[cat];
+              const Icon = lib === 'MaterialIcons' ? MaterialIcons : FontAwesome5;
+              return (
+                <View key={cat} style={styles.reportButtonWrapper}>
+                  <TouchableOpacity
+                    style={styles.reportButton}
+                    onPress={() => submitCrowdsourcedReport(cat)}
+                  >
+                    <Icon name={name} size={30} color="#fff" />
+                  </TouchableOpacity>
+                  <Text style={styles.reportLabel}>{cat}</Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </Animated.View>
+      )}
+
+
+      {!reportOpen && !isSidebarVisible && (
+        <TouchableOpacity style={styles.crowdsourceButton} onPress={toggleReport}>
+          <WarningIcon width={36} height={36} />
         </TouchableOpacity>
       )}
       
-      {reportMode && (
-        <TouchableWithoutFeedback onPress={() => setReportMode(null)}>
+    
+      
+      {editModalVisible && (
+        <Modal
+          transparent
+          animationType="slide"
+          onRequestClose={() => setEditModalVisible(false)}
+        >
           <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
-                <Text style={styles.sheetTitle}>
-                  {reportMode === 'driver' ? "Driver Report" : "Public Transport Report"}
-                </Text>
-
-                {reportMode === 'driver' && (
-                  <View style={styles.reportCategoryContainer}>
-                    {driverCategories.map((category, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.reportButton}
-                      onPress={() => submitCrowdsourcedReport(category)}
-                    >
-                      {(() => {
-                        const iconInfo = categoryIcons[category] || {};
-                        const IconComponent = iconInfo.library === "FontAwesome" ? FontAwesome : Ionicons;
-                        return (
-                          <IconComponent
-                            name={iconInfo.name || "help-circle"}
-                            size={28}
-                            style={{ marginBottom: 5 }}
-                          />
-                        );
-                      })()}
-                      <Text style={styles.buttonText}>{category}</Text>
-                    </TouchableOpacity>
-                  ))}
+            <View style={styles.editModalContainer}>
+              <Text style={styles.sheetTitle}>Manage Saved Locations</Text>
+              <ScrollView>
+                {savedLocations.map((loc, i) => (
+                  <View key={i} style={styles.editRow}>
+                    {i < 2 ? (
+                      // Home/Work: only address
+                      <TextInput
+                        style={[styles.editInput, { flex: 7 }]}
+                        placeholder={`Enter ${loc.name} Address`}
+                        value={loc.address}
+                        onChangeText={addr => {
+                          const copy = [...savedLocations];
+                          copy[i].address = addr;
+                          setSavedLocations(copy);
+                        }}
+                      />
+                    ) : (
+                      // Extras: name (3) + address (7) + trash
+                      <>
+                        <TextInput
+                          style={[styles.editInput, { flex: 3 }]}
+                          placeholder="Name"
+                          value={loc.name}
+                          onChangeText={name => {
+                            const copy = [...savedLocations];
+                            copy[i].name = name;
+                            setSavedLocations(copy);
+                          }}
+                        />
+                        <TextInput
+                          style={[styles.editInput, { flex: 7, marginLeft: 8 }]}
+                          placeholder="Address"
+                          value={loc.address}
+                          onChangeText={addr => {
+                            const copy = [...savedLocations];
+                            copy[i].address = addr;
+                            setSavedLocations(copy);
+                          }}
+                        />
+                        <TouchableOpacity
+                          onPress={() => {
+                            const copy = savedLocations.filter((_, idx) => idx !== i);
+                            setSavedLocations(copy);
+                          }}
+                          style={{ marginLeft: 8 }}
+                        >
+                          <Ionicons name="trash" size={24} color="red" />
+                        </TouchableOpacity>
+                      </>
+                    )}
                   </View>
-                )}
+                ))}
+              </ScrollView>
 
-                {reportMode === 'public' && (
-                  <View style={styles.reportCategoryContainer}>
-                    {publicCategories.map((category, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.reportButton}
-                      onPress={() => submitCrowdsourcedReport(category)}
-                    >
-                      {(() => {
-                        const iconInfo = categoryIcons[category] || {};
-                        const IconComponent = iconInfo.library === "FontAwesome" ? FontAwesome : Ionicons;
-                        return (
-                          <IconComponent
-                            name={iconInfo.name || "help-circle"}
-                            size={28}
-                            style={{ marginBottom: 5 }}
-                          />
-                        );
-                      })()}
-                      <Text style={styles.buttonText}>{category}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  </View>
-                )}
-              </Animated.View>
-            </TouchableWithoutFeedback>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => {
+                  const nextName = getNextSavedName();
+                  const copy = [
+                    ...savedLocations,
+                    { name: nextName, address: '' }
+                  ];
+                  setSavedLocations(copy);
+                }}
+              >
+                <Text style={styles.editButtonText}>Add New</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => {
+                  // on Done: drop any extras with empty name OR address
+                  const filtered = savedLocations.filter((loc, i) => {
+                    if (i < 2) return true;
+                    return loc.name.trim() !== '' && loc.address.trim() !== '';
+                  });
+                  persistSaved(filtered);
+                  setEditModalVisible(false);
+                }}
+              >
+                <Text style={styles.editButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </TouchableWithoutFeedback>
+        </Modal>
       )}
+
 
       {/* Sidebar */}
       <Animated.View style={[styles.sidebar, { transform: [{ translateX: sidebarPosition }] }]}>
@@ -668,12 +783,6 @@ export default function HomeScreen() {
               onPress={() => navigateTo('TrafficPrediction')}
             >
               <Text style={styles.submenuText}>Forecast</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.submenuItem} 
-              onPress={() => navigateTo('dashboard')}
-            >
-              <Text style={styles.submenuText}>Dashboard</Text>
             </TouchableOpacity>
           </Collapsible>
 
@@ -736,7 +845,7 @@ export default function HomeScreen() {
           {/* Weather Section */}
           <TouchableOpacity 
             style={styles.menuItem} 
-            onPress={() => navigateTo('weatherPull')}
+            onPress={() => navigateTo('WeatherPull')}
           >
             <View style={styles.menuItemRow}>
               <Ionicons name="rainy" size={24} color="#fff" style={styles.menuIcon} />
@@ -757,10 +866,10 @@ export default function HomeScreen() {
         </ScrollView>
       </Animated.View>
       
-      {!isCrowdModalVisible && !reportMode && (
+      {!reportOpen && !isSidebarVisible && (
         <TouchableOpacity 
           style={styles.crowdsourceButton}
-          onPress={showCrowdModal}
+          onPress={toggleReport}
         >
           <WarningIcon width={36} height={36} />
         </TouchableOpacity>
@@ -963,11 +1072,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
   modalContainer: {
     height: '50%',
     backgroundColor: '#fff',
@@ -1077,23 +1181,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  reportCategoryContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginTop: 10,
-  },
-  reportButton: {
-    width: '30%',
-    marginVertical: 10,
-    backgroundColor: '#eee',
-    paddingVertical: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
-  },
+
   buttonText: {
     fontSize: 12,
     textAlign: 'center',
@@ -1108,5 +1196,151 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
     elevation: 3,
+  },
+  savedAddressText: {
+    fontSize: 12,
+    color: '#666',
+    width: 70,
+    textAlign: 'center'
+  },
+  editInput: {
+    backgroundColor: '#fff',
+    borderRadius: 10,      
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    flex: 1,
+    marginVertical: 0,
+  },
+  editModalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  editLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 8,
+    alignSelf: 'center',
+  },
+  editRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 12,
+  },
+  editButton: {
+    backgroundColor: '#ccc',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  editButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  editSavedButton: {
+    backgroundColor: '#ddd',
+    borderColor: '#999',
+  },
+  modeSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 20,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    marginHorizontal: 5,
+    borderRadius: 8,
+    backgroundColor:'rgba(255, 255, 255, 0.72)',
+    alignItems: 'center',
+  },
+  modeButtonActive: {
+    backgroundColor:'rgba(255,255,255,0.27)',
+  },
+  modeText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  modeTextActive: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#eee',
+  },
+  reportCategoryContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginTop: 10,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 5,
+    bottom: 5,
+    right: 20,
+    zIndex: 100,
+  },
+  closeText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  reportSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: Dimensions.get('window').height * 0.55,
+    backgroundColor: '#333',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    zIndex: 50,
+    paddingTop: 40,  // space for the close button
+  },
+
+  reportButton: {
+    width: 60,
+    height: 60,
+    backgroundColor:'rgba(255,255,255,0.27)',
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+  },
+
+  reportContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',   // pack tightly
+    paddingHorizontal: 20,
+    paddingTop: 8,                 // leave room under the pill
+    paddingBottom: 20,
+  },
+
+  reportButtonWrapper: {
+    width: '33%',                   // three per row
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+
+  reportLabel: {
+    color:'#fff', 
+    fontSize:12,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reportScroll: {
+  flex: 1,
   }
 });

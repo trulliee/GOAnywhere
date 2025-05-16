@@ -60,26 +60,16 @@ const TrafficPredictionRendering = ({
   predictCongestion,
   predictTravelTime,
   predictBoth,
+  bothPredicted,
   startJourney,
+  goToFeedback,
   formatMinutes,
   isHoliday,
   getDayType
   }) => {
   
-    const navigation = useNavigation();
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <TouchableOpacity 
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Ionicons name="arrow-back" size={24} color="#FFF" />
-      </TouchableOpacity>
-      <Text style={styles.headerTitle}>TrafficPrediction</Text>
-      <View style={{width: 24}} />
-    </View>
-  );
-
+  const navigation = useNavigation();
+ 
   const renderDateBanner = () => (
     <View style={styles.dateBanner}>
       <Text style={styles.titleText}>Traffic Prediction</Text>
@@ -134,14 +124,16 @@ const TrafficPredictionRendering = ({
         </Modal>
       )}
 
-      {currentTemperature !== null && currentHumidity !== null && (
+      currentTemperature !== null && currentHumidity !== null && (
         <View style={styles.weatherInfoBanner}>
-          <Text style={styles.weatherInfoText}>
-            🌡 Temp: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
-          </Text>
+          <TouchableOpacity onPress={() => Alert.alert('Weather Information', 'Default is to current Singapore weather.')}>
+              <Text style={styles.weatherInfoText}>
+              🌡 Temp: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
+              </Text>
+              <Ionicons name="information-circle-outline" size={18} color="#9de3d2" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
         </View>
-      )}
-
+      )
     </View>
   );
 
@@ -292,38 +284,6 @@ const TrafficPredictionRendering = ({
     )
   );
   
-  const [tooltipVisible, setTooltipVisible] = useState(false);
-  
-  const renderWeatherInfoBanner = () => (
-    currentTemperature !== null && currentHumidity !== null && (
-        <View style={styles.weatherInfoBanner}>
-        <TouchableOpacity onPress={() => setTooltipVisible(true)} style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={styles.weatherInfoText}>
-            🌡 Temp: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
-            </Text>
-            <Ionicons name="information-circle-outline" size={18} color="#9de3d2" style={{ marginLeft: 8 }} />
-        </TouchableOpacity>
-
-        <Modal
-            transparent
-            visible={tooltipVisible}
-            animationType="fade"
-            onRequestClose={() => setTooltipVisible(false)}
-        >
-            <TouchableOpacity 
-            style={styles.tooltipOverlay} 
-            activeOpacity={1} 
-            onPressOut={() => setTooltipVisible(false)}
-            >
-            <View style={styles.tooltipBox}>
-                <Text style={styles.tooltipText}>This data is auto-detected for Singapore (Central)</Text>
-            </View>
-            </TouchableOpacity>
-        </Modal>
-        </View>
-    )
-    );
-
   const renderPredictionButtons = () => (
     routes.length > 0 && selectedRouteIndex !== null && !congestionPrediction && !travelTimePrediction && (
       <View style={styles.predictionButtonsContainer}>
@@ -358,9 +318,6 @@ const TrafficPredictionRendering = ({
       </View>
     )
   );
-
-
-
 
   const renderEditableCongestionForm = () => (
     <View style={styles.editFormContainer}>
@@ -403,20 +360,25 @@ const TrafficPredictionRendering = ({
         {/* Event Count Dropdown (0–5) */}
         <View style={styles.inputRowVertical}>
           <Text style={styles.inputRowLabel}>Nearby Events</Text>
+          <TouchableOpacity
+            onPress={() =>
+              Alert.alert(
+                'Nearby Events',
+                'Number of relevant traffic-affecting events within the area.'
+              )
+            }
+          >
+            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
           <RNPickerSelect
             onValueChange={(value) => updateCustomCongestionInput('event_count', value)}
             value={customCongestionInput.event_count}
-            placeholder={{ label: 'Select count', value: null }}
             items={[0, 1, 2, 3, 4, 5].map((val) => ({
               label: val.toString(),
               value: val
             }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: {
-                color: '#999',
-              }
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -425,44 +387,55 @@ const TrafficPredictionRendering = ({
         {/* Incident Count Dropdown (0–5) */}
         <View style={styles.inputRowVertical}>
           <Text style={styles.inputRowLabel}>Nearby Incidents</Text>
+          <TouchableOpacity
+            onPress={() =>
+              Alert.alert(
+                'Nearby Incidents',
+                'Number of relevant traffic-affecting incidents within the area.'
+              )
+            }
+          >
+            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
           <RNPickerSelect
             onValueChange={(value) => updateCustomCongestionInput('incident_count', value)}
             value={customCongestionInput.incident_count}
-            placeholder={{ label: 'Select count', value: null }}
             items={[0, 1, 2, 3, 4, 5].map((val) => ({
               label: val.toString(),
               value: val
             }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' }
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
         </View>
 
-
         {/* Max Event Severity (0–3) */}
         <View style={styles.inputRowVertical}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={styles.inputRowLabel}>Biggest Event Nearby</Text>
-            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
-          </View>
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert(
+                  'Biggest Event Nearby',
+                  'Represents the severity of the most impactful event (e.g., road works or closures) near the selected route. Ranges from 0 (none) to 3 (major disruption).'
+                )
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View> {/* ✅ Add this closing tag here */}
+          
           <RNPickerSelect
             onValueChange={(value) => updateCustomCongestionInput('max_event_severity', value)}
             value={customCongestionInput.max_event_severity}
-            placeholder={{ label: 'Select level', value: null }}
             items={[0, 1, 2, 3].map((val) => ({
               label: val.toString(),
               value: val
             }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: {
-                color: '#999',
-              }
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -472,22 +445,26 @@ const TrafficPredictionRendering = ({
         <View style={styles.inputRowVertical}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={styles.inputRowLabel}>Total Event Effect</Text>
+            <TouchableOpacity
+            onPress={() =>
+              Alert.alert(
+                'Total Event Effect',
+                'Sum of the severity levels for all nearby traffic-related events (e.g., road works, closures). A higher total indicates more disruptions along the route.'
+              )
+            }
+          >
             <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
           </View>
           <RNPickerSelect
             onValueChange={(value) => updateCustomCongestionInput('sum_event_severity', value)}
             value={customCongestionInput.sum_event_severity}
-            placeholder={{ label: 'Select total', value: null }}
             items={[0, 1, 2, 3, 4, 5].map((val) => ({
               label: val.toString(),
               value: val
             }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: {
-                color: '#999',
-              }
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -536,14 +513,13 @@ const TrafficPredictionRendering = ({
         </TouchableOpacity>
 
         <TouchableOpacity 
-        style={styles.cancelButton}
-        onPress={toggleEditCongestion}
+          style={styles.cancelButton}
+          onPress={toggleEditCongestion}
         >
-        <Text style={styles.cancelButtonText}>Cancel</Text>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
     </View>
-    );
-
+  );
 
   const renderEditableTravelTimeForm = () => (
     <View style={styles.editFormContainer}>
@@ -590,7 +566,7 @@ const TrafficPredictionRendering = ({
             onPress={() =>
               Alert.alert(
                 'Nearby Events',
-                'number of relevant traffic-affecting events within the area.'
+                'Number of relevant traffic-affecting events within the area.'
               )
             }
           >
@@ -599,12 +575,9 @@ const TrafficPredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('event_count', value)}
             value={customTravelTimeInput.event_count}
-            placeholder={{ label: 'Select count', value: null }}
             items={[0, 1, 2, 3, 4, 5].map((val) => ({ label: val.toString(), value: val }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' },
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -626,12 +599,9 @@ const TrafficPredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('incident_count', value)}
             value={customTravelTimeInput.incident_count}
-            placeholder={{ label: 'Select count', value: null }}
             items={[0, 1, 2, 3, 4, 5].map((val) => ({ label: val.toString(), value: val }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' },
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -655,12 +625,9 @@ const TrafficPredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('max_event_severity', value)}
             value={customTravelTimeInput.max_event_severity}
-            placeholder={{ label: 'Select severity', value: null }}
             items={[0, 1, 2, 3].map((val) => ({ label: val.toString(), value: val }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' },
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -684,12 +651,9 @@ const TrafficPredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('sum_event_severity', value)}
             value={customTravelTimeInput.sum_event_severity}
-            placeholder={{ label: 'Select total', value: null }}
             items={[0, 1, 2, 3, 4, 5].map((val) => ({ label: val.toString(), value: val }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' },
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -713,12 +677,9 @@ const TrafficPredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('mean_incident_severity', value)}
             value={customTravelTimeInput.mean_incident_severity}
-            placeholder={{ label: 'Select average', value: null }}
             items={[0, 0.5, 1.0, 1.5, 2.0, 2.5].map((val) => ({ label: val.toString(), value: val }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' },
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -742,12 +703,9 @@ const TrafficPredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('max_incident_severity', value)}
             value={customTravelTimeInput.max_incident_severity}
-            placeholder={{ label: 'Select worst', value: null }}
             items={[0, 1, 2, 3].map((val) => ({ label: val.toString(), value: val }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' },
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -771,12 +729,9 @@ const TrafficPredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('sum_incident_severity', value)}
             value={customTravelTimeInput.sum_incident_severity}
-            placeholder={{ label: 'Select total', value: null }}
             items={[0, 1, 2, 3].map((val) => ({ label: val.toString(), value: val }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' },
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -800,12 +755,9 @@ const TrafficPredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('distance_km', value)}
             value={customTravelTimeInput.distance_km}
-            placeholder={{ label: 'Select distance', value: null }}
             items={[5, 10, 15, 20, 25, 30, 35].map((val) => ({ label: val.toString(), value: val }))}
             style={{
-              inputIOS: styles.dropdownInput,
-              inputAndroid: styles.dropdownInput,
-              placeholder: { color: '#999' },
+              inputAndroid: styles.dropdownInput
             }}
             useNativeAndroidPickerStyle={false}
           />
@@ -821,7 +773,7 @@ const TrafficPredictionRendering = ({
 
         <TouchableOpacity
         style={styles.cancelButton}
-        onPress={toggleEditTravelTime}
+        onPress={toggleEditCongestion}
         >
         <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
@@ -836,9 +788,16 @@ const TrafficPredictionRendering = ({
           <Text style={styles.predictionTitle}>Traffic Congestion Prediction</Text>
           <TouchableOpacity 
             style={styles.editButton}
-            onPress={toggleEditCongestion}
+            onPress={() => {
+              if (bothPredicted) {
+                Alert.alert('Locked', 'You cannot edit after Predict Both. Please reset.');
+              } else {
+                toggleEditCongestion();
+              }
+            }}
+            disabled={bothPredicted}
           >
-            <Feather name="edit-2" size={20} color="#CCC" />
+            <Feather name="edit-2" size={20} color={bothPredicted ? '#555' : '#CCC'} />
           </TouchableOpacity>
         </View>
         
@@ -906,9 +865,15 @@ const TrafficPredictionRendering = ({
           <Text style={styles.predictionTitle}>Travel Time Prediction</Text>
           <TouchableOpacity 
             style={styles.editButton}
-            onPress={toggleEditTravelTime}
+            onPress={() => {
+              if (bothPredicted) {
+                  Alert.alert('Locked', 'You cannot edit after Predict Both. Please reset.');
+                } else {
+                  toggleEditTravelTime();
+                }
+              }}
           >
-            <Feather name="edit-2" size={20} color="#CCC" />
+            <Feather name="edit-2" size={20} color={bothPredicted ? '#555' : '#CCC'} />
           </TouchableOpacity>
         </View>
         
@@ -916,7 +881,7 @@ const TrafficPredictionRendering = ({
           <View style={styles.timeIconContainer}>
             <Ionicons name="stopwatch" size={32} color="#FFB300" />
             <Text style={styles.timeValue}>
-              {formatMinutes(travelTimePrediction.predictions[0].prediction)}
+              {Math.round(travelTimePrediction.predictions[0].prediction)} minutes
             </Text>
           </View>
 
@@ -925,7 +890,7 @@ const TrafficPredictionRendering = ({
               {Math.round(
                 travelTimePrediction.predictions[0].prediction -
                 (routes[selectedRouteIndex].durationValue / 60)
-              )} min{' '}
+              )} minutes{' '}
               {travelTimePrediction.predictions[0].prediction >
               (routes[selectedRouteIndex].durationValue / 60)
                 ? 'slower'
@@ -989,36 +954,43 @@ const TrafficPredictionRendering = ({
     ) : editingTravelTime && customTravelTimeInput ? renderEditableTravelTimeForm() : null
   );
 
+  const renderResetAndFeedbackButtons = () => (
+    <View style={styles.predictionButtonsContainer}>
+      {/* Reset Predictions Button */}
+      <TouchableOpacity
+        style={styles.resetButton}
+        onPress={resetPredictions}
+      >
+        <Ionicons name="refresh" size={16} color="#FFF" style={styles.buttonIcon} />
+        <Text style={styles.buttonText}>Reset Predictions</Text>
+      </TouchableOpacity>
+
+      {/* Give Feedback Button */}
+      <TouchableOpacity
+        style={[styles.resetButton, { backgroundColor: '#00cfb4', marginTop: 10 }]}
+        onPress={goToFeedback}
+      >
+        <Text style={styles.buttonText}>Give Feedback</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const renderStartJourneyButton = () => (
-      routes.length > 0 &&
-      selectedRouteIndex !== null &&
-      !editingCongestion &&
-      !editingTravelTime && (
-        <View>
-          <TouchableOpacity
-            style={styles.startJourneyButton}
-            onPress={startJourney}
-          >
-            <Text style={styles.startJourneyText}>Start Journey!</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.startJourneyButton, { backgroundColor: '#00cfb4', marginTop: 12 }]}
-            onPress={() =>
-              navigation.navigate('TrafficPredictionFeedback', {
-                predictionType: congestionPrediction
-                  ? 'traffic_congestion'
-                  : 'travel_time'
-              })
-            }
-          >
-            <Text style={styles.startJourneyText}>Give Feedback</Text>
-          </TouchableOpacity>
-        </View>
-      )
-    );
-
+    routes.length > 0 &&
+    selectedRouteIndex !== null &&
+    !editingCongestion &&
+    !editingTravelTime &&
+    (congestionPrediction || travelTimePrediction) && (
+      <View style={{ paddingHorizontal: 16 }}>
+        <TouchableOpacity
+          style={styles.startJourneyButton}
+          onPress={startJourney}
+        >
+          <Text style={styles.startJourneyText}>Start Journey</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  );
 
   const renderLoadingIndicator = () => (
     isLoading && (
@@ -1031,10 +1003,8 @@ const TrafficPredictionRendering = ({
 
     return (
     <View style={styles.container}>
-      {renderHeader()}
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         {renderDateBanner()}
-        {/* {renderWeatherInfoBanner()} */}
         {renderRouteInput()}
         {renderRouteFound()}
         {routes.length > 0 && (
@@ -1046,17 +1016,7 @@ const TrafficPredictionRendering = ({
             {renderTravelTimePrediction()}
           </>
         )}
-        {(congestionPrediction || travelTimePrediction) && !editingCongestion && !editingTravelTime && (
-          <View style={styles.predictionButtonsContainer}>
-            <TouchableOpacity
-              style={styles.resetButton}
-              onPress={resetPredictions}
-            >
-              <Ionicons name="refresh" size={16} color="#FFF" style={styles.buttonIcon} />
-              <Text style={styles.buttonText}>Reset Predictions</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {(congestionPrediction || travelTimePrediction) && !editingCongestion && !editingTravelTime && renderResetAndFeedbackButtons()}
       </ScrollView>
       {renderStartJourneyButton()}
       {renderLoadingIndicator()}

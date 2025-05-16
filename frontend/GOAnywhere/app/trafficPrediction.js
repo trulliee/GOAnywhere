@@ -50,6 +50,7 @@ const TrafficPrediction = () => {
   const [editingTravelTime, setEditingTravelTime] = useState(false);
   const [customCongestionInput, setCustomCongestionInput] = useState(null);
   const [customTravelTimeInput, setCustomTravelTimeInput] = useState(null);
+  const [bothPredicted, setBothPredicted] = useState(false);
 
   // Ref to keep track of mounted state
   const isMounted = useRef(true);
@@ -606,7 +607,6 @@ const TrafficPrediction = () => {
     }
     
     setIsLoading(true);
-    setPredictionLock(true);
     
     try {
       const route = routes[selectedRouteIndex];
@@ -653,7 +653,6 @@ const TrafficPrediction = () => {
     }
     
     setIsLoading(true);
-    setPredictionLock(true);
     
     try {
       const route = routes[selectedRouteIndex];
@@ -710,6 +709,8 @@ const TrafficPrediction = () => {
   };
 
   const predictBoth = async () => {
+    setPredictionLock(true);
+    setBothPredicted(true);
     await predictCongestion();
     await predictTravelTime();
   };
@@ -727,6 +728,10 @@ const TrafficPrediction = () => {
     } else {
       Alert.alert('Route Selection', 'Please select a route first.');
     }
+  };
+
+  const goToFeedback = () => {
+    navigation.navigate('TrafficPredictionFeedback');
   };
 
   // Props to pass to the rendering component
@@ -751,6 +756,7 @@ const TrafficPrediction = () => {
     routeCount,
     editingCongestion,
     editingTravelTime,
+    bothPredicted,
     customCongestionInput,
     customTravelTimeInput,
     findRoute,
@@ -768,11 +774,13 @@ const TrafficPrediction = () => {
     predictTravelTime,
     predictBoth,
     startJourney,
+    goToFeedback,
     formatMinutes,
     isHoliday,
     getDayType
   };
   
+
   return <TrafficPredictionRendering {...renderProps} />;
 };
 

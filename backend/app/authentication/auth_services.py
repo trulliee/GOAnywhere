@@ -1,4 +1,5 @@
 from firebase_admin import auth
+from app.database.firestore_utils import db
 
 print("auth_services.py LOADED")
 
@@ -39,20 +40,27 @@ class AuthService:
     @staticmethod
     async def get_user(uid: str):
         user = auth.get_user(uid)
+        user_doc = db.collection("users").document(uid).get()
+        user_data = user_doc.to_dict() if user_doc.exists else {}
         return {
             "uid": user.uid,
             "email": user.email,
-            "name": user.display_name
+            "name": user.display_name,
+            "phone": user_data.get("phone_number", "")
         }
 
     @staticmethod
     async def get_user_info(uid: str):
         try:
             user = auth.get_user(uid)
+            user_doc = db.collection("users").document(uid).get()
+            user_data = user_doc.to_dict() if user_doc.exists else {}
+
             return {
                 "uid": user.uid,
                 "email": user.email,
-                "name": user.display_name
+                "name": user.display_name,
+                "phone": user_data.get("phone_number", "")
             }
         except Exception as e:
             return {"error": str(e)}

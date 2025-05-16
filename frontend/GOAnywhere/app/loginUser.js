@@ -13,6 +13,8 @@ import {
 import AuthService from './authService';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { API_URL } from './utils/apiConfig';
+
 
 //update with actual logo stuff
 const TrafficLightIcon = () => (
@@ -38,43 +40,37 @@ export default function LoginUser() {
       alert('Please fill in all fields');
       return;
     }
-    
-    // Test accounts for quick login
+
+    // Quick test logins
     if (emailOrPhone === 'ben@gmail.com' && password === '1234') {
-      console.log('Logged in with regular user test account');
-      // Navigate to user home screen
       router.replace('./homeScreen');
       return;
     }
-    
-    // Admin test account
     if (emailOrPhone === 'admin@gmail.com' && password === '1234') {
-      console.log('Logged in with admin test account');
-      // Navigate to admin home screen
       router.replace('./AdminHomeScreen');
       return;
     }
-    
+
     setLoading(true);
     try {
       const userData = await AuthService.login(emailOrPhone, password);
       console.log('Logged in:', userData);
-      
-      // Route based on user type from server
+      console.log('Logging in as:', emailOrPhone, "with password:", password);
+
       if (userData.user_type === 'admin') {
         router.replace('./AdminHomeScreen');
-      }
-      else {
+      } else {
         router.replace('./homeScreen');
       }
 
     } catch (error) {
       console.error('Login failed:', error.message);
-      alert('Login failed. Please check your credentials and try again.');
+      alert('Login failed: ${error.message}');
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -124,7 +120,20 @@ export default function LoginUser() {
           >
             <Text style={styles.signupText}>Don't have an account? Sign up</Text>
           </TouchableOpacity>
-          
+
+          <View style={{ height: 10 }} />
+
+          <Text style={[styles.signupText, { textAlign: 'center', marginBottom: 5 }]}>
+            — OR —
+          </Text>
+
+          <TouchableOpacity 
+            style={styles.signupLink}
+            onPress={() => router.push('./AdminSignUp')}
+          >
+            <Text style={styles.signupText}>System Admin? Register here</Text>
+          </TouchableOpacity>
+
           {/* Quick login buttons - Only visible in development */}
           <View style={styles.devLoginContainer}>
             <TouchableOpacity 

@@ -12,22 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-
-// hard coded data first need connect to backend
-const mockUsers = [
-  { id: '1', name: 'Trippi Troppi', email: 'trippi.troppi@pastanation.it', isBanned: false, lastActive: '2023-11-01' },
-  { id: '2', name: 'Tung Tung Tung Sahur', email: 'sahur.bird@tungtungmail.com', isBanned: true, lastActive: '2023-10-28' },
-  { id: '3', name: 'Brr Brr Patapim', email: ' brr.patapim@zoomzoom.it', isBanned: false, lastActive: '2023-11-02' },
-  { id: '4', name: 'Tralalero Tralala', email: 'TralaleroTralala@example.com', isBanned: false, lastActive: '2023-10-31' },
-  { id: '5', name: 'Bombardiro Crocodilo', email: 'BombardiroCrocodilo@example.com', isBanned: true, lastActive: '2023-09-15' },
-  { id: '6', name: 'Bombombini Gusini', email: 'Bombombini Gusini@example.com', isBanned: false, lastActive: '2023-11-03' },
-  { id: '7', name: 'Trippi Troppi', email: 'trippi.troppi@pastanation.it', isBanned: false, lastActive: '2023-11-01' },
-  { id: '8', name: 'Tung Tung Tung Sahur', email: 'sahur.bird@tungtungmail.com', isBanned: true, lastActive: '2023-10-28' },
-  { id: '9', name: 'Brr Brr Patapim', email: ' brr.patapim@zoomzoom.it', isBanned: false, lastActive: '2023-11-02' },
-  { id: '10', name: 'Tralalero Tralala', email: 'TralaleroTralala@example.com', isBanned: false, lastActive: '2023-10-31' },
-  { id: '11', name: 'Bombardiro Crocodilo', email: 'BombardiroCrocodilo@example.com', isBanned: true, lastActive: '2023-09-15' },
-  { id: '12', name: 'Bombombini Gusini', email: 'Bombombini Gusini@example.com', isBanned: false, lastActive: '2023-11-03' },
-];
+import { API_URL } from './utils/apiConfig';
 
 export default function UserManagement() {
   const router = useRouter();
@@ -39,10 +24,32 @@ export default function UserManagement() {
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   useEffect(() => {
-    // update with backend API call here
-    setUsers(mockUsers);
-    setFilteredUsers(mockUsers);
+   const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/users`);
+      const data = await res.json();
+      console.log(data.users);
+
+      const converted = data.users.map(user => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isBanned: user.user_type === 'banned',
+        lastActive: user.last_login
+          ? new Date(user.last_login).toLocaleString()
+          : '—',
+      }));
+
+      setUsers(converted);
+      setFilteredUsers(converted);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    }
+  };
+
+  fetchUsers();
   }, []);
+
 
   useEffect(() => {
     applyFilters();
@@ -71,33 +78,54 @@ export default function UserManagement() {
     setFilteredUsers(result);
   };
 
-  const handleBanUser = (userId) => {
-    // Update local state first for immediate UI feedback
-    const updatedUsers = users.map(user => 
-      user.id === userId ? { ...user, isBanned: true } : user
-    );
-    setUsers(updatedUsers);
-    
-    // backend api call here
-    console.log(`User ${userId} banned`);
-    
-    // Close modal if open
+  const handleBanUser = async (userId) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/ban_user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, action: 'ban' }),
+      });
+
+      if (res.ok) {
+        const updatedUsers = users.map(user =>
+          user.id === userId ? { ...user, isBanned: true } : user
+        );
+        setUsers(updatedUsers);
+      } else {
+        console.error("Failed to ban user.");
+      }
+    } catch (err) {
+      console.error("Error banning user:", err);
+    }
+
     setIsModalVisible(false);
   };
 
-  const handleUnbanUser = (userId) => {
-    // Update local state first for immediate UI feedback
-    const updatedUsers = users.map(user => 
-      user.id === userId ? { ...user, isBanned: false } : user
-    );
-    setUsers(updatedUsers);
-    
-    // backend api call here
-    console.log(`User ${userId} unbanned`);
-    
-    // Close modal if open
+
+  const handleUnbanUser = async (userId) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/set-user-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, status: 'registered' }),
+      });
+
+      if (res.ok) {
+        const updatedUsers = users.map(user =>
+          user.id === userId ? { ...user, isBanned: false } : user
+        );
+        setUsers(updatedUsers);
+      } else {
+        console.error("Failed to unban user.");
+      }
+    } catch (err) {
+      console.error("Error unbanning user:", err);
+    }
+
     setIsModalVisible(false);
   };
+
+  
 
   const handleRemoveUser = (userId) => {
     Alert.alert(
@@ -109,19 +137,26 @@ export default function UserManagement() {
           style: "cancel"
         },
         { 
-          text: "Remove", 
-          onPress: () => {
-            // Update local state for immediate UI feedback
-            const updatedUsers = users.filter(user => user.id !== userId);
-            setUsers(updatedUsers);
-            
-            // backend api call here
-            console.log(`User ${userId} removed`);
-            
-            // Close modal if open
+          text: "Remove",
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_URL}/admin/delete-user/${userId}`, {
+                method: 'DELETE',
+              });
+
+              if (res.ok) {
+                const updatedUsers = users.filter(user => user.id !== userId);
+                setUsers(updatedUsers);
+              } else {
+                console.error("Failed to delete user.");
+              }
+            } catch (err) {
+              console.error("Error deleting user:", err);
+            }
+
             setIsModalVisible(false);
-          },
-          style: "destructive"
+          }
         }
       ]
     );

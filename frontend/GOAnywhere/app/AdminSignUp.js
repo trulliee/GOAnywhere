@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   SafeAreaView,
-  KeyboardAvoidingView,
-  Platform
+  Keyboard
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AuthService from './authService';
@@ -34,6 +33,16 @@ export default function SignUp() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleSignUp = async () => {
     if (!name || !email || !password || !confirmPassword) {
@@ -74,12 +83,9 @@ export default function SignUp() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidView}
-      >
+
         {/* Top curved shape */}
-        <View style={styles.topCurve} />
+        <View style={[styles.topCurve, keyboardVisible && { opacity: 0 }]} />
         
         <View style={styles.contentContainer}>
           {/* Logo */}
@@ -154,7 +160,7 @@ export default function SignUp() {
         </View>
         
         {/* Sign up button */}
-        <View style={styles.bottomSection}>
+        <View style={[styles.bottomSection, keyboardVisible && { opacity: 0 }]}>
           <View style={styles.signUpContainer}>
             <Text style={styles.signUpText}>Create Account</Text>
             <TouchableOpacity
@@ -170,7 +176,6 @@ export default function SignUp() {
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

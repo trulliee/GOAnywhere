@@ -1,20 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Keyboard
 } from 'react-native';
 import AuthService from './authService';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { API_URL } from './utils/apiConfig';
-
 
 //update with actual logo stuff
 const TrafficLightIcon = () => (
@@ -32,8 +29,17 @@ export default function LoginUser() {
   const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleLogin = async () => {
     if (!emailOrPhone || !password) {
@@ -74,12 +80,8 @@ export default function LoginUser() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidView}
-      >
         {/* Top curved shape */}
-        <View style={styles.topCurve} />
+        <View style={[styles.topCurve, keyboardVisible && { opacity: 0 }]} />
         
         <View style={styles.contentContainer}>
           {/* udpate this with the logo */}
@@ -159,7 +161,7 @@ export default function LoginUser() {
         </View>
         
         {/* Sign in button */}
-        <View style={styles.bottomSection}>
+        <View style={[styles.bottomSection, keyboardVisible && { opacity: 0 }]}>
           <View style={styles.signInContainer}>
             <Text style={styles.signInText}>Sign In</Text>
             <TouchableOpacity
@@ -175,7 +177,6 @@ export default function LoginUser() {
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -184,9 +185,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'white',
-  },
-  keyboardAvoidView: {
-    flex: 1,
   },
   topCurve: {
     height: 150,

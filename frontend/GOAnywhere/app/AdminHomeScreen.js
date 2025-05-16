@@ -320,8 +320,11 @@ export default function AdminHomeScreen() {
             </TouchableOpacity>
           </View>
           
-          {recentUsers.slice(0, 3).map((item) => renderUserItem({ item }))}
-          
+          {recentUsers.slice(0, 3).map((item) => (
+            <View key={item.id}>
+              {renderUserItem({ item })}
+            </View>
+          ))}          
           {/* Notifications Section */}
           <View style={styles.sectionTitle}>
             <MaterialIcons name="notifications" size={24} color="#333" />

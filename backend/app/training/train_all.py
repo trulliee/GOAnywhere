@@ -1,9 +1,15 @@
 import os
 import pandas as pd
 import logging
-from datetime import datetime, timedelta
+import datetime
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+
+print("🧪 USE_LOCAL_FIREBASE_CREDENTIALS =", os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS"))
+
 
 # Import model classes with correct file names
 from app.models.travel_time_prediction import TravelTimePredictionModel
@@ -102,13 +108,10 @@ def train_travel_time_model(data_loader):
     X, y = model.prepare_data(travel_times_df, incidents_df, speed_bands_df, weather_df, events_df, holidays_df)
     results = model.train(X, y)
 
-    # Save the model locally
-    local_path, serving_path = model.save_model(
-        trained_local_path="models/trained/travel_time",
-        serving_local_path="model_serving/travel_time"
-    )
+    # Save model
+    versioned_path, latest_path = model.save_model()
 
-    logger.info(f"Travel Time Model saved at {local_path}")
+    logger.info(f"Travel Time Model saved: {versioned_path} → {latest_path}")
     logger.info(f"Model metrics: RMSE: {results['test_rmse']:.2f}, MAE: {results['test_mae']:.2f}, R²: {results['test_r2']:.2f}")
 
     return True
@@ -176,13 +179,10 @@ def train_congestion_model(data_loader):
     X, y = model.prepare_data(speed_bands_df, incidents_df, weather_df, events_df, holidays_df)
     results = model.train(X, y)
 
-    # Save the model locally
-    local_path, serving_path = model.save_model(
-        trained_local_path="models/trained/traffic_congestion",
-        serving_local_path="model_serving/traffic_congestion"
-    )
+    # Save model
+    versioned_path, latest_path = model.save_model()
 
-    logger.info(f"Traffic Congestion Model saved at {local_path}")
+    logger.info(f"Traffic Congestion Model saved: {versioned_path} → {latest_path}")
     logger.info(f"Model metrics: Test Accuracy: {results['test_accuracy']:.4f}, Test F1 Score: {results['test_f1_score']:.4f}")
 
     return True

@@ -135,9 +135,9 @@ const TrafficIncidentViewing = () => {
         
         <View style={styles.locationContainer}>
           <Image 
-            source={require('./assets/location-pin.png')} 
+            // source={require('./assets/location-pin.png')} 
             style={styles.locationIcon}
-            defaultSource={require('./assets/location-pin.png')}
+            // defaultSource={require('./assets/location-pin.png')}
           />
           <Text style={styles.locationText}>
             {item.location?.name || `${item.location?.latitude.toFixed(4)}, ${item.location?.longitude.toFixed(4)}`}

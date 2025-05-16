@@ -31,12 +31,17 @@ from datetime import datetime, timedelta
 client = secretmanager.SecretManagerServiceClient()
 
 # Access the LTA API key from Secret Manager
-def get_secret(secret_name):
-    response = client.access_secret_version(name=secret_name)
+def get_secret(secret_id: str, version_id: str = "latest") -> str:
+    client = secretmanager.SecretManagerServiceClient()
+
+    project_id = os.environ.get("GCP_PROJECT_ID", "goanywhere-c55c8")  # fallback if env var missing
+
+    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+    response = client.access_secret_version(request={"name": name})
     return response.payload.data.decode("UTF-8")
 
 # Fetch LTA API key from Secret Manager
-LTA_API_KEY = get_secret("projects/541900038032/secrets/LTA_API_account_key/versions/latest")
+LTA_API_KEY = get_secret("LTA_API_account_key")
 
 # Define API endpoints
 BUS_ARRIVAL_URL = "https://datamall2.mytransport.sg/ltaodataservice/v3/BusArrival"

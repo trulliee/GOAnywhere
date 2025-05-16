@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header, status
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from firebase_admin import auth
-from app.database.firestore_utils import db
+from app.database.firestore_utils import get_firestore_client
 from datetime import datetime
 
 router = APIRouter(

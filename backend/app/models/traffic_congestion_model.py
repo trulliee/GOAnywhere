@@ -9,6 +9,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from scipy.stats import randint, uniform
+import datetime
 import joblib
 import os
 
@@ -17,8 +18,11 @@ class TrafficCongestionModel:
         self.model = None
         self.preprocessor = None
         self.feature_names = None
+        self.model_version = datetime.datetime.now().strftime("v1_%Y-%m-%d")
+        self.trained_on = datetime.datetime.now()
         self.morning_peak_hours = list(range(7, 10))
         self.evening_peak_hours = list(range(17, 21))
+
 
     def process_inputs(self, json_input):
         """
@@ -380,10 +384,13 @@ class TrafficCongestionModel:
             'train_f1_score': f1_score(y_train, self.model.predict(X_train)),
             'test_accuracy': test_accuracy,
             'test_f1_score': test_f1,
-            'confusion_matrix': confusion_matrix(y_test, y_pred_test),
+            'confusion_matrix': cm,
             'best_params': random_search.best_params_,
-            'feature_importances': feature_importance_df
+            'feature_importances': feature_importance_df,
+            'model_version': self.model_version,
+            'trained_on': self.trained_on.strftime("%Y-%m-%d %H:%M:%S")
         }
+
 
     def save_model(self, 
                trained_local_path="models/trained/traffic_congestion", 
@@ -395,9 +402,13 @@ class TrafficCongestionModel:
         os.makedirs(trained_local_path, exist_ok=True)
         os.makedirs(serving_local_path, exist_ok=True)
 
+        # Generate versioned filename based on date
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        versioned_filename = f"model_{timestamp}.joblib"
+
         # Define paths
-        trained_model_path = os.path.join(trained_local_path, "model.joblib")
-        serving_model_path = os.path.join(serving_local_path, "model.joblib")
+        trained_model_path = os.path.join(trained_local_path, versioned_filename)
+        serving_model_path = os.path.join(serving_local_path, versioned_filename)
 
         # Save to both places
         joblib.dump(self.model, trained_model_path)
@@ -407,6 +418,7 @@ class TrafficCongestionModel:
         print(f"   - {trained_model_path}")
         print(f"   - {serving_model_path}")
         return trained_model_path, serving_model_path
+
 
     def load_model(self, model_path):
         """Load a trained model from disk and restore feature names."""
@@ -449,5 +461,6 @@ class TrafficCongestionModel:
         return {
             "predictions": predictions,
             "probabilities": probabilities,
-            "classes": classes
+            "classes": classes,
+            "model_version": self.model_version
         }

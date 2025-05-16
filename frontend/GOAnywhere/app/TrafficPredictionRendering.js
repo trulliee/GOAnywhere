@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,10 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons, MaterialIcons, FontAwesome, AntDesign, Feather } from '@expo/vector-icons';
+import { Tooltip } from 'react-native-elements';
+import { Picker } from '@react-native-picker/picker';
+import { Alert } from 'react-native';
+import RNPickerSelect from 'react-native-picker-select';
 import moment from 'moment';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useNavigation } from '@react-navigation/native';
@@ -31,6 +35,8 @@ const TrafficPredictionRendering = ({
   travelTimePrediction,
   selectedDate,
   datePickerVisible,
+  currentTemperature,
+  currentHumidity,
   predictionLock,
   routeFound,
   routeDistance,
@@ -58,8 +64,9 @@ const TrafficPredictionRendering = ({
   formatMinutes,
   isHoliday,
   getDayType
-}) => {
-  const navigation = useNavigation();
+  }) => {
+  
+    const navigation = useNavigation();
   const renderHeader = () => (
     <View style={styles.header}>
       <TouchableOpacity 
@@ -126,6 +133,15 @@ const TrafficPredictionRendering = ({
           </TouchableOpacity>
         </Modal>
       )}
+
+      {currentTemperature !== null && currentHumidity !== null && (
+        <View style={styles.weatherInfoBanner}>
+          <Text style={styles.weatherInfoText}>
+            🌡 Temp: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
+          </Text>
+        </View>
+      )}
+
     </View>
   );
 
@@ -229,20 +245,18 @@ const TrafficPredictionRendering = ({
         </View>
         
         <View style={styles.mapInfoContainer}>
-          <View style={styles.mapInfoItem}>
-            <Text style={styles.mapInfoLabel}>Distance:</Text>
-            <Text style={[styles.mapInfoValue, { color: '#FFF' }]}>{routes[selectedRouteIndex].distance}</Text>
-          </View>
-          
-          <View style={styles.mapInfoItem}>
-            <Text style={styles.mapInfoLabel}>Est. Travel Time:</Text>
-            <Text style={[styles.mapInfoValue, { color: '#FFF' }]}>{routes[selectedRouteIndex].duration}</Text>
-          </View>
+          <Text style={[styles.mapInfoLabel, { color: '#FFF' }]}>
+            Distance: {routes[selectedRouteIndex].distance}
+          </Text>
+          <Text style={[styles.mapInfoLabel, { color: '#FFF' }]}>
+            Est. Travel Time: {routes[selectedRouteIndex].duration}
+          </Text>
+          {routes[selectedRouteIndex].summary && (
+            <Text style={[styles.mapInfoValue, { color: '#FFF' }]}>
+              Via: {routes[selectedRouteIndex].summary}
+            </Text>
+          )}
         </View>
-        
-        {routes[selectedRouteIndex].summary && (
-          <Text style={[styles.mapInfoValue, { color: '#FFF' }]}>Via: {routes[selectedRouteIndex].summary}</Text>
-        )}
       </View>
     )
   );
@@ -277,364 +291,543 @@ const TrafficPredictionRendering = ({
       </View>
     )
   );
+  
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  
+  const renderWeatherInfoBanner = () => (
+    currentTemperature !== null && currentHumidity !== null && (
+        <View style={styles.weatherInfoBanner}>
+        <TouchableOpacity onPress={() => setTooltipVisible(true)} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.weatherInfoText}>
+            🌡 Temp: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
+            </Text>
+            <Ionicons name="information-circle-outline" size={18} color="#9de3d2" style={{ marginLeft: 8 }} />
+        </TouchableOpacity>
+
+        <Modal
+            transparent
+            visible={tooltipVisible}
+            animationType="fade"
+            onRequestClose={() => setTooltipVisible(false)}
+        >
+            <TouchableOpacity 
+            style={styles.tooltipOverlay} 
+            activeOpacity={1} 
+            onPressOut={() => setTooltipVisible(false)}
+            >
+            <View style={styles.tooltipBox}>
+                <Text style={styles.tooltipText}>This data is auto-detected for Singapore (Central)</Text>
+            </View>
+            </TouchableOpacity>
+        </Modal>
+        </View>
+    )
+    );
 
   const renderPredictionButtons = () => (
-    routes.length > 0 && selectedRouteIndex !== null && (
+    routes.length > 0 && selectedRouteIndex !== null && !congestionPrediction && !travelTimePrediction && (
       <View style={styles.predictionButtonsContainer}>
-        {congestionPrediction || travelTimePrediction ? (
+        <View style={styles.predictionButtonsRow}>
           <TouchableOpacity
-            style={styles.resetButton}
-            onPress={resetPredictions}
+            style={[styles.predictionButton, { backgroundColor: '#FFF' }]}
+            onPress={predictCongestion}
+            disabled={isLoading || selectedRouteIndex === null}
           >
-            <Ionicons name="refresh" size={16} color="#FFF" style={styles.buttonIcon} />
-            <Text style={styles.buttonText}>Reset Predictions</Text>
+            <MaterialIcons name="traffic" size={16} color="#000" style={styles.buttonIcon} />
+            <Text style={styles.congestionButtonText}>Predict Traffic Congestion</Text>
           </TouchableOpacity>
-        ) : (
-          <View style={styles.predictionButtonsRow}>
-            <TouchableOpacity
-              style={[styles.predictionButton, styles.congestionButton]}
-              onPress={predictCongestion}
-              disabled={isLoading || selectedRouteIndex === null}
-            >
-              <MaterialIcons name="traffic" size={16} color="#FFF" style={styles.buttonIcon} />
-              <Text style={styles.buttonText}>Predict Traffic Congestion</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.predictionButton, styles.timeButton]}
-              onPress={predictTravelTime}
-              disabled={isLoading || selectedRouteIndex === null}
-            >
-              <Ionicons name="time" size={16} color="#FFF" style={styles.buttonIcon} />
-              <Text style={styles.buttonText}>Predict Travel Time</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.predictionButton, styles.bothButton]}
-              onPress={predictBoth}
-              disabled={isLoading || selectedRouteIndex === null}
-            >
-              <MaterialIcons name="all-inclusive" size={16} color="#FFF" style={styles.buttonIcon} />
-              <Text style={styles.buttonText}>Predict Both</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+
+          <TouchableOpacity
+            style={[styles.predictionButton, { backgroundColor: '#FFF' }]}
+            onPress={predictTravelTime}
+            disabled={isLoading || selectedRouteIndex === null}
+          >
+            <Ionicons name="time" size={16} color="#000" style={styles.buttonIcon} />
+            <Text style={styles.congestionButtonText}>Predict Travel Time</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.predictionButton, { backgroundColor: '#444' }]}
+            onPress={predictBoth}
+            disabled={isLoading || selectedRouteIndex === null}
+          >
+            <MaterialIcons name="all-inclusive" size={16} color="#FFF" style={styles.buttonIcon} />
+            <Text style={styles.bothButtonText}>Predict Both</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     )
   );
 
+
+
+
   const renderEditableCongestionForm = () => (
     <View style={styles.editFormContainer}>
-      <Text style={styles.editFormTitle}>Edit Congestion Prediction Input</Text>
-      
-      <View style={styles.inputRow}>
-        <Text style={styles.inputRowLabel}>Road Type:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.road_type === 'normal' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('road_type', 'normal')}
-        >
-          <Text style={styles.inputOptionText}>Normal</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.road_type === 'major' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('road_type', 'major')}
-        >
-          <Text style={styles.inputOptionText}>Major</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.road_type === 'expressway' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('road_type', 'expressway')}
-        >
-          <Text style={styles.inputOptionText}>Expressway</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
-        <Text style={styles.inputRowLabel}>Day Type:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.day_type === 'weekday' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('day_type', 'weekday')}
-        >
-          <Text style={styles.inputOptionText}>Weekday</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.day_type === 'weekend' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('day_type', 'weekend')}
-        >
-          <Text style={styles.inputOptionText}>Weekend</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
+        <Text style={styles.editFormTitle}>Edit Congestion Prediction Input</Text>
+
+        {/* Peak Hour Toggle */}
+        <View style={styles.inputRow}>
         <Text style={styles.inputRowLabel}>Peak Hour:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.peak_hour_flag === 0 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('peak_hour_flag', 0)}
-        >
-          <Text style={styles.inputOptionText}>No</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.peak_hour_flag === 1 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('peak_hour_flag', 1)}
-        >
-          <Text style={styles.inputOptionText}>Yes</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
+        {[0, 1].map((val) => (
+            <TouchableOpacity
+            key={`peak_hour_${val}`}
+            style={[
+                styles.inputOption,
+                customCongestionInput.peak_hour_flag === val && styles.inputOptionSelected
+            ]}
+            onPress={() => updateCustomCongestionInput('peak_hour_flag', val)}
+            >
+            <Text style={styles.inputOptionText}>{val === 1 ? 'Yes' : 'No'}</Text>
+            </TouchableOpacity>
+        ))}
+        </View>
+
+        {/* Holiday Toggle */}
+        <View style={styles.inputRow}>
         <Text style={styles.inputRowLabel}>Holiday:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.is_holiday === 0 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('is_holiday', 0)}
-        >
-          <Text style={styles.inputOptionText}>No</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.is_holiday === 1 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('is_holiday', 1)}
-        >
-          <Text style={styles.inputOptionText}>Yes</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
-        <Text style={styles.inputRowLabel}>Recent Incident:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.recent_incident_flag === 0 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('recent_incident_flag', 0)}
-        >
-          <Text style={styles.inputOptionText}>No</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.recent_incident_flag === 1 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('recent_incident_flag', 1)}
-        >
-          <Text style={styles.inputOptionText}>Yes</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
+        {[0, 1].map((val) => (
+            <TouchableOpacity
+            key={`holiday_${val}`}
+            style={[
+                styles.inputOption,
+                customCongestionInput.is_holiday === val && styles.inputOptionSelected
+            ]}
+            onPress={() => updateCustomCongestionInput('is_holiday', val)}
+            >
+            <Text style={styles.inputOptionText}>{val === 1 ? 'Yes' : 'No'}</Text>
+            </TouchableOpacity>
+        ))}
+        </View>
+
+        {/* Event Count Dropdown (0–5) */}
+        <View style={styles.inputRowVertical}>
+          <Text style={styles.inputRowLabel}>Nearby Events</Text>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomCongestionInput('event_count', value)}
+            value={customCongestionInput.event_count}
+            placeholder={{ label: 'Select count', value: null }}
+            items={[0, 1, 2, 3, 4, 5].map((val) => ({
+              label: val.toString(),
+              value: val
+            }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: {
+                color: '#999',
+              }
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Incident Count Dropdown (0–5) */}
+        <View style={styles.inputRowVertical}>
+          <Text style={styles.inputRowLabel}>Nearby Incidents</Text>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomCongestionInput('incident_count', value)}
+            value={customCongestionInput.incident_count}
+            placeholder={{ label: 'Select count', value: null }}
+            items={[0, 1, 2, 3, 4, 5].map((val) => ({
+              label: val.toString(),
+              value: val
+            }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' }
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+
+        {/* Max Event Severity (0–3) */}
+        <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Biggest Event Nearby</Text>
+            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+          </View>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomCongestionInput('max_event_severity', value)}
+            value={customCongestionInput.max_event_severity}
+            placeholder={{ label: 'Select level', value: null }}
+            items={[0, 1, 2, 3].map((val) => ({
+              label: val.toString(),
+              value: val
+            }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: {
+                color: '#999',
+              }
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Sum Event Severity (0–5) */}
+        <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Total Event Effect</Text>
+            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+          </View>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomCongestionInput('sum_event_severity', value)}
+            value={customCongestionInput.sum_event_severity}
+            placeholder={{ label: 'Select total', value: null }}
+            items={[0, 1, 2, 3, 4, 5].map((val) => ({
+              label: val.toString(),
+              value: val
+            }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: {
+                color: '#999',
+              }
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Recent Incident Toggle */}
+        <View style={styles.inputRow}>
+          <Text style={styles.inputRowLabel}>Recent Incident:</Text>
+          {[0, 1].map((val) => (
+            <TouchableOpacity
+              key={`recent_incident_${val}`}
+              style={[
+                styles.inputOption,
+                customCongestionInput.recent_incident_flag === val && styles.inputOptionSelected
+              ]}
+              onPress={() => updateCustomCongestionInput('recent_incident_flag', val)}
+            >
+              <Text style={styles.inputOptionText}>{val === 1 ? 'Yes' : 'No'}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Rain Toggle */}
+        <View style={styles.inputRow}>
         <Text style={styles.inputRowLabel}>Rain:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.rain_flag === 0 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('rain_flag', 0)}
-        >
-          <Text style={styles.inputOptionText}>No</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customCongestionInput.rain_flag === 1 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomCongestionInput('rain_flag', 1)}
-        >
-          <Text style={styles.inputOptionText}>Yes</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <TouchableOpacity 
+        {[0, 1].map((val) => (
+            <TouchableOpacity
+            key={`rain_flag_${val}`}
+            style={[
+                styles.inputOption,
+                customCongestionInput.rain_flag === val && styles.inputOptionSelected
+            ]}
+            onPress={() => updateCustomCongestionInput('rain_flag', val)}
+            >
+            <Text style={styles.inputOptionText}>{val === 1 ? 'Yes' : 'No'}</Text>
+            </TouchableOpacity>
+        ))}
+        </View>
+
+        {/* Buttons */}
+        <TouchableOpacity 
         style={styles.applyButton}
         onPress={applyCustomCongestionInput}
-      >
+        >
         <Text style={styles.applyButtonText}>Apply Changes</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
+        </TouchableOpacity>
+
+        <TouchableOpacity 
         style={styles.cancelButton}
         onPress={toggleEditCongestion}
-      >
+        >
         <Text style={styles.cancelButtonText}>Cancel</Text>
-      </TouchableOpacity>
+        </TouchableOpacity>
     </View>
-  );
+    );
+
 
   const renderEditableTravelTimeForm = () => (
     <View style={styles.editFormContainer}>
-      <Text style={styles.editFormTitle}>Edit Travel Time Prediction Input</Text>
-      
-      <View style={styles.inputRow}>
-        <Text style={styles.inputRowLabel}>Road Type:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.road_type === 'minor' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('road_type', 'minor')}
-        >
-          <Text style={styles.inputOptionText}>Minor</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.road_type === 'major' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('road_type', 'major')}
-        >
-          <Text style={styles.inputOptionText}>Major</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
-        <Text style={styles.inputRowLabel}>Day Type:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.day_type === 'weekday' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('day_type', 'weekday')}
-        >
-          <Text style={styles.inputOptionText}>Weekday</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.day_type === 'weekend' && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('day_type', 'weekend')}
-        >
-          <Text style={styles.inputOptionText}>Weekend</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
+        <Text style={styles.editFormTitle}>Edit Travel Time Prediction Input</Text>
+
+        {/* Peak Hour */}
+        <View style={styles.inputRow}>
         <Text style={styles.inputRowLabel}>Peak Hour:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.peak_hour_flag === 0 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('peak_hour_flag', 0)}
-        >
-          <Text style={styles.inputOptionText}>No</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.peak_hour_flag === 1 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('peak_hour_flag', 1)}
-        >
-          <Text style={styles.inputOptionText}>Yes</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
+        {[0, 1].map((val) => (
+            <TouchableOpacity
+            key={`peak_hour_flag_${val}`}
+            style={[
+                styles.inputOption,
+                customTravelTimeInput.peak_hour_flag === val && styles.inputOptionSelected
+            ]}
+            onPress={() => updateCustomTravelTimeInput('peak_hour_flag', val)}
+            >
+            <Text style={styles.inputOptionText}>{val === 1 ? 'Yes' : 'No'}</Text>
+            </TouchableOpacity>
+        ))}
+        </View>
+
+        {/* Holiday */}
+        <View style={styles.inputRow}>
         <Text style={styles.inputRowLabel}>Holiday:</Text>
+        {[0, 1].map((val) => (
+            <TouchableOpacity
+            key={`is_holiday_${val}`}
+            style={[
+                styles.inputOption,
+                customTravelTimeInput.is_holiday === val && styles.inputOptionSelected
+            ]}
+            onPress={() => updateCustomTravelTimeInput('is_holiday', val)}
+            >
+            <Text style={styles.inputOptionText}>{val === 1 ? 'Yes' : 'No'}</Text>
+            </TouchableOpacity>
+        ))}
+        </View>
+
+        {/* Event Count */}
+        <View style={styles.inputRowVertical}>
+          <Text style={styles.inputRowLabel}>Nearby Events</Text>
+          <TouchableOpacity
+            onPress={() =>
+              Alert.alert(
+                'Nearby Events',
+                'number of relevant traffic-affecting events within the area.'
+              )
+            }
+          >
+            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomTravelTimeInput('event_count', value)}
+            value={customTravelTimeInput.event_count}
+            placeholder={{ label: 'Select count', value: null }}
+            items={[0, 1, 2, 3, 4, 5].map((val) => ({ label: val.toString(), value: val }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' },
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Incident Count */}
+        <View style={styles.inputRowVertical}>
+          <Text style={styles.inputRowLabel}>Nearby Incidents</Text>
+          <TouchableOpacity
+            onPress={() =>
+              Alert.alert(
+                'Nearby Incidents',
+                'Number of relevant traffic-affecting incidents within the area.'
+              )
+            }
+          >
+            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomTravelTimeInput('incident_count', value)}
+            value={customTravelTimeInput.incident_count}
+            placeholder={{ label: 'Select count', value: null }}
+            items={[0, 1, 2, 3, 4, 5].map((val) => ({ label: val.toString(), value: val }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' },
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Max Event Severity */}
+        <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Biggest Event Nearby</Text>
+            <TouchableOpacity
+                onPress={() =>
+                  Alert.alert(
+                    'Biggest Event Nearby',
+                    'This is the severity of the most impactful event nearby. Ranges from 0 (none) to 3 (major).'
+                  )
+                }
+              >
+                <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+          </View>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomTravelTimeInput('max_event_severity', value)}
+            value={customTravelTimeInput.max_event_severity}
+            placeholder={{ label: 'Select severity', value: null }}
+            items={[0, 1, 2, 3].map((val) => ({ label: val.toString(), value: val }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' },
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Sum Event Severity */}
+        <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Total Event Effect</Text>
+            <TouchableOpacity
+                onPress={() =>
+                  Alert.alert(
+                    'Total Event Effect',
+                    'Sum of severities for all events nearby. Higher values mean more disruptions.'
+                  )
+                }
+              >
+                <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+          </View>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomTravelTimeInput('sum_event_severity', value)}
+            value={customTravelTimeInput.sum_event_severity}
+            placeholder={{ label: 'Select total', value: null }}
+            items={[0, 1, 2, 3, 4, 5].map((val) => ({ label: val.toString(), value: val }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' },
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Mean Incident Severity */}
+        <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Average Incidents Effect</Text>
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert(
+                  'Average Incidents Effect',
+                  'The average severity of all nearby incidents. Values ranges from 0 (no impact) to 2.5 (major incients). A higher number indicates more serious disruptions.'
+                )
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomTravelTimeInput('mean_incident_severity', value)}
+            value={customTravelTimeInput.mean_incident_severity}
+            placeholder={{ label: 'Select average', value: null }}
+            items={[0, 0.5, 1.0, 1.5, 2.0, 2.5].map((val) => ({ label: val.toString(), value: val }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' },
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Max Incident Severity */}
+        <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Worst Incidents Nearby</Text>
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert(
+                  'Worst Incidents Nearby',
+                  'The severity level of the most serious incident near the route. Ranges from 0 (no incident) to 3 (critical incident).'
+                )
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomTravelTimeInput('max_incident_severity', value)}
+            value={customTravelTimeInput.max_incident_severity}
+            placeholder={{ label: 'Select worst', value: null }}
+            items={[0, 1, 2, 3].map((val) => ({ label: val.toString(), value: val }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' },
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Sum Incident Severity */}
+        <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Total Incidents Nearby</Text>
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert(
+                  'Total Incidents Nearby',
+                  'The combined severity score of all incidents near the route. Higher values indicate more frequent or severe disruptions.'
+                )
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomTravelTimeInput('sum_incident_severity', value)}
+            value={customTravelTimeInput.sum_incident_severity}
+            placeholder={{ label: 'Select total', value: null }}
+            items={[0, 1, 2, 3].map((val) => ({ label: val.toString(), value: val }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' },
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Distance */}
+        <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Distance</Text>
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert(
+                  'Distance',
+                  'The total route length in kilometers based on the selected path between start and destination.'
+                )
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+          <RNPickerSelect
+            onValueChange={(value) => updateCustomTravelTimeInput('distance_km', value)}
+            value={customTravelTimeInput.distance_km}
+            placeholder={{ label: 'Select distance', value: null }}
+            items={[5, 10, 15, 20, 25, 30, 35].map((val) => ({ label: val.toString(), value: val }))}
+            style={{
+              inputIOS: styles.dropdownInput,
+              inputAndroid: styles.dropdownInput,
+              placeholder: { color: '#999' },
+            }}
+            useNativeAndroidPickerStyle={false}
+          />
+        </View>
+
+        {/* Apply + Cancel Buttons */}
         <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.is_holiday === 0 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('is_holiday', 0)}
-        >
-          <Text style={styles.inputOptionText}>No</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.is_holiday === 1 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('is_holiday', 1)}
-        >
-          <Text style={styles.inputOptionText}>Yes</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
-        <Text style={styles.inputRowLabel}>Recent Incident:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.recent_incident_flag === 0 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('recent_incident_flag', 0)}
-        >
-          <Text style={styles.inputOptionText}>No</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.recent_incident_flag === 1 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('recent_incident_flag', 1)}
-        >
-          <Text style={styles.inputOptionText}>Yes</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.inputRow}>
-        <Text style={styles.inputRowLabel}>Rain:</Text>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.rain_flag === 0 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('rain_flag', 0)}
-        >
-          <Text style={styles.inputOptionText}>No</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.inputOption,
-            customTravelTimeInput.rain_flag === 1 && styles.inputOptionSelected
-          ]}
-          onPress={() => updateCustomTravelTimeInput('rain_flag', 1)}
-        >
-          <Text style={styles.inputOptionText}>Yes</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <TouchableOpacity 
         style={styles.applyButton}
         onPress={applyCustomTravelTimeInput}
-      >
+        >
         <Text style={styles.applyButtonText}>Apply Changes</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
+        </TouchableOpacity>
+
+        <TouchableOpacity
         style={styles.cancelButton}
         onPress={toggleEditTravelTime}
-      >
+        >
         <Text style={styles.cancelButtonText}>Cancel</Text>
-      </TouchableOpacity>
+        </TouchableOpacity>
     </View>
-  );
+    );
+
 
   const renderCongestionPrediction = () => (
     congestionPrediction && !editingCongestion ? (
@@ -723,61 +916,66 @@ const TrafficPredictionRendering = ({
           <View style={styles.timeIconContainer}>
             <Ionicons name="stopwatch" size={32} color="#FFB300" />
             <Text style={styles.timeValue}>
-              {Math.round(travelTimePrediction.predictions[0])} min
+              {formatMinutes(travelTimePrediction.predictions[0].prediction)}
             </Text>
           </View>
-          
+
           {routes[selectedRouteIndex] && (
             <Text style={styles.timeComparisonText}>
-              {Math.round(travelTimePrediction.predictions[0] - (routes[selectedRouteIndex].durationValue / 60))} min {' '}
-              {travelTimePrediction.predictions[0] > (routes[selectedRouteIndex].durationValue / 60) 
-                ? 'slower' 
-                : 'faster'} than navigation estimate
+              {Math.round(
+                travelTimePrediction.predictions[0].prediction -
+                (routes[selectedRouteIndex].durationValue / 60)
+              )} min{' '}
+              {travelTimePrediction.predictions[0].prediction >
+              (routes[selectedRouteIndex].durationValue / 60)
+                ? 'slower'
+                : 'faster'}{' '}
+              than navigation estimate
             </Text>
           )}
-          
+
           <View style={styles.timePredictionRange}>
             <Text style={styles.timePredictionRangeTitle}>Prediction Range:</Text>
             <View style={styles.timeRangeValues}>
               <View style={styles.timeRangeValue}>
                 <AntDesign name="arrowdown" size={14} color="#4CD964" />
                 <Text style={styles.timeRangeMinText}>
-                  {Math.round(travelTimePrediction.probabilities[0][0])} min
+                  {Math.round(travelTimePrediction.predictions[0].probabilities[0])} min
                 </Text>
               </View>
-              
+
               <Text style={styles.timeRangeToText}>to</Text>
-              
+
               <View style={styles.timeRangeValue}>
                 <AntDesign name="arrowup" size={14} color="#FF3B30" />
                 <Text style={styles.timeRangeMaxText}>
-                  {Math.round(travelTimePrediction.probabilities[0][2])} min
+                  {Math.round(travelTimePrediction.predictions[0].probabilities[2])} min
                 </Text>
               </View>
             </View>
           </View>
-          
+
           <View style={styles.probabilityContainer}>
             <Text style={styles.probabilityTitle}>Travel Time Estimates:</Text>
             <View style={styles.timeEstimatesRow}>
-              {travelTimePrediction.classes.map((className, idx) => (
+              {travelTimePrediction.predictions[0].classes.map((className, idx) => (
                 <View key={idx} style={styles.timeEstimateItem}>
                   <Text style={styles.timeEstimateLabel}>
                     {className === 'low_estimate' ? 'Optimistic' :
-                     className === 'point_estimate' ? 'Expected' : 'Pessimistic'}
+                    className === 'point_estimate' ? 'Expected' : 'Pessimistic'}
                   </Text>
                   <Text style={[
                     styles.timeEstimateValue,
                     idx === 0 ? styles.optimisticValue : 
                     idx === 2 ? styles.pessimisticValue : {}
                   ]}>
-                    {Math.round(travelTimePrediction.probabilities[0][idx])} min
+                    {Math.round(travelTimePrediction.predictions[0].probabilities[idx])} min
                   </Text>
                 </View>
               ))}
             </View>
           </View>
-          
+
           <View style={styles.routeDetails}>
             <Text style={styles.routeDetailsText}>
               Route: {startLocation.split(',')[0]} to {endLocation.split(',')[0]}
@@ -791,31 +989,52 @@ const TrafficPredictionRendering = ({
     ) : editingTravelTime && customTravelTimeInput ? renderEditableTravelTimeForm() : null
   );
 
+
   const renderStartJourneyButton = () => (
-    routes.length > 0 && selectedRouteIndex !== null && !editingCongestion && !editingTravelTime && (
-      <TouchableOpacity
-        style={styles.startJourneyButton}
-        onPress={startJourney}
-      >
-        <Text style={styles.startJourneyText}>Start Journey!</Text>
-      </TouchableOpacity>
-    )
-  );
+      routes.length > 0 &&
+      selectedRouteIndex !== null &&
+      !editingCongestion &&
+      !editingTravelTime && (
+        <View>
+          <TouchableOpacity
+            style={styles.startJourneyButton}
+            onPress={startJourney}
+          >
+            <Text style={styles.startJourneyText}>Start Journey!</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.startJourneyButton, { backgroundColor: '#00cfb4', marginTop: 12 }]}
+            onPress={() =>
+              navigation.navigate('TrafficPredictionFeedback', {
+                predictionType: congestionPrediction
+                  ? 'traffic_congestion'
+                  : 'travel_time'
+              })
+            }
+          >
+            <Text style={styles.startJourneyText}>Give Feedback</Text>
+          </TouchableOpacity>
+        </View>
+      )
+    );
+
 
   const renderLoadingIndicator = () => (
     isLoading && (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0066FF" />
+        <ActivityIndicator size="large" color="#9de3d2" />
         <Text style={styles.loadingText}>Processing request...</Text>
       </View>
     )
   );
 
-  return (
+    return (
     <View style={styles.container}>
       {renderHeader()}
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         {renderDateBanner()}
+        {/* {renderWeatherInfoBanner()} */}
         {renderRouteInput()}
         {renderRouteFound()}
         {routes.length > 0 && (
@@ -827,11 +1046,22 @@ const TrafficPredictionRendering = ({
             {renderTravelTimePrediction()}
           </>
         )}
+        {(congestionPrediction || travelTimePrediction) && !editingCongestion && !editingTravelTime && (
+          <View style={styles.predictionButtonsContainer}>
+            <TouchableOpacity
+              style={styles.resetButton}
+              onPress={resetPredictions}
+            >
+              <Ionicons name="refresh" size={16} color="#FFF" style={styles.buttonIcon} />
+              <Text style={styles.buttonText}>Reset Predictions</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
       {renderStartJourneyButton()}
       {renderLoadingIndicator()}
     </View>
   );
-};
+}
 
 export default TrafficPredictionRendering;

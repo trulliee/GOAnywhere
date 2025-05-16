@@ -9,11 +9,23 @@ from travel_time_prediction import TravelTimePredictionModel
 
 app = FastAPI()
 
-# Load model
-model_path = "model.joblib"
-if not os.path.exists(model_path):
-    raise RuntimeError(f"Model file not found: {model_path}")
-model = TravelTimePredictionModel().load_model(model_path)
+# Find latest model by timestamp in filename
+def find_latest_model(path: str) -> str:
+    files = [f for f in os.listdir(path) if f.startswith("model_") and f.endswith(".joblib")]
+    if not files:
+        raise FileNotFoundError("No versioned model files found in model_serving directory")
+    files.sort(reverse=True)  # Newest first
+    return os.path.join(path, files[0])
+
+# Load the latest versioned model
+serving_dir = os.path.dirname(__file__)
+latest_model_path = find_latest_model(serving_dir)
+model = TravelTimePredictionModel().load_model(latest_model_path)
+print("✅ Travel Time model loaded:", latest_model_path)
+
+# Optional: Inject version into environment for prediction response
+os.environ["MODEL_VERSION"] = os.path.basename(latest_model_path).replace(".joblib", "")
+
 
 # Pydantic input schema
 class Instance(BaseModel):
@@ -54,56 +66,22 @@ def get_dummy_classes():
 async def predict(request: PredictionRequest):
     try:
         input_data = [inst.dict() for inst in request.instances]
-
-        # 1) Let the model do its thing
         result = model.predict(input_data)
-        # result is already:
-        # {
-        #   "predictions": [...],
-        #   "probabilities": [...],
-        #   "classes": [...]
-        # }
 
-        # 2) Return it verbatim (or wrap with status)
+        model_version = os.getenv("MODEL_VERSION", "v1")
+
         return {
-            "status": "success",
-            **result
+            "model_version": model_version,
+            "predictions": [
+                {
+                    "prediction": result["predictions"][i],
+                    "probabilities": result["probabilities"][i],
+                    "classes": result["classes"]
+                }
+                for i in range(len(result["predictions"]))
+            ]
         }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
-# # --- Vertex AI Compatible Endpoints ---
-# async def vertex_predict_common(request: PredictionRequest):
-#     try:
-#         input_data = [inst.dict() for inst in request.instances]
-#         preds = model.predict(input_data)
-
-#         probas = []
-#         for p in preds:
-#             low = round(p - 0.2 * p, 2)
-#             high = round(p + 0.2 * p, 2)
-#             probas.append([low, p, high])
-
-#         return {
-#             "predictions": preds,
-#             "probabilities": probas,
-#             "classes": ["low_estimate", "point_estimate", "high_estimate"]
-#         }
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# @app.post("/v1/endpoints/{endpoint_id}:predict")
-# async def vertex_predict(endpoint_id: str, request: PredictionRequest):
-#     return await vertex_predict_common(request)
-
-# @app.post("/v1/endpoints/{endpoint_id}/deployedModels/{model_id}:predict")
-# async def vertex_predict_with_model(endpoint_id: str, model_id: str, request: PredictionRequest):
-#     return await vertex_predict_common(request)
-
-
-# @app.get("/v1/endpoints/{endpoint_id}/deployedModels/{model_id}")
-# def health_check(endpoint_id: str, model_id: str):
-#     return {"status": "healthy"}

@@ -2,11 +2,12 @@ import pandas as pd
 import numpy as np
 import firebase_admin
 import os
-from datetime import datetime, timedelta
+import datetime
 from firebase_admin import credentials, firestore
 from google.cloud import storage
 from google.oauth2 import service_account
 from dotenv import load_dotenv
+from app.database.firestore_utils import get_firestore_client
 import tempfile
 import logging
 import json
@@ -33,20 +34,20 @@ class FirestoreDataLoader:
         Args:
             gcs_bucket_name (str, optional): Name of the GCS bucket for auxiliary data.
         """
+        self.db = get_firestore_client()
 
-        if not firebase_admin._apps:
+        # Optional: Initialize GCS client only if needed
+        use_local = os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS")
+        if use_local == "1":
             creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-            if not creds_path:
-                raise RuntimeError("FIREBASE_CREDENTIALS_PATH is not set.")
-            print(f"Initializiong Firebase using: {creds_path}")
-            firebase_cred = credentials.Certificate(creds_path)
-            firebase_admin.initialize_app(firebase_cred)
-
             gcs_cred = service_account.Credentials.from_service_account_file(creds_path)
-            self.storage_client = storage.Client(credentials=gcs_cred)
-            self.db = firestore.client()
-            self.gcs_bucket_name = gcs_bucket_name or "goanywhere-traffic-data-history"
-            #self.storage_client = storage.Client()
+        else:
+            # Use default credentials (e.g. for Cloud Run)
+            gcs_cred = None
+
+        self.storage_client = storage.Client(credentials=gcs_cred) if gcs_cred else storage.Client()
+        self.gcs_bucket_name = gcs_bucket_name or "goanywhere-traffic-data-history"
+
             
     # LTA DataMall 2.1: Bus Arrival
     def get_bus_arrivals(self, bus_stop_code=None, limit=10):
@@ -138,7 +139,7 @@ class FirestoreDataLoader:
         try:
             # Calculate the cutoff date
             if days is not None:
-                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
                 query = query.where(... >= cutoff_date)
 
             
@@ -155,7 +156,7 @@ class FirestoreDataLoader:
             
             # Filter by timestamp and order by timestamp
             if days is not None:
-                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
                 query = query.where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
 
             query = query.order_by("timestamp", direction=firestore.Query.DESCENDING)
@@ -694,7 +695,7 @@ class FirestoreDataLoader:
         try:
             # Calculate the cutoff date
             if days is not None:
-                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
                 query = query.where(... >= cutoff_date)
             
             # Query Firestore
@@ -747,7 +748,7 @@ class FirestoreDataLoader:
 
             # Build query
             if days is not None:
-                cutoff = datetime.now() - timedelta(days=days)
+                cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
                 query = collection_ref.where("Timestamp", ">=", cutoff)
             else:
                 query = collection_ref
@@ -774,8 +775,6 @@ class FirestoreDataLoader:
         except Exception as e:
             logger.error(f"❌ Error loading estimated travel times: {e}")
             return pd.DataFrame()
-
-
 
     # LTA DataMall: Faulty Traffic Lights
     def get_faulty_traffic_lights(self, active_only=True, type_filter=None):
@@ -849,7 +848,7 @@ class FirestoreDataLoader:
         try:
             # Calculate the cutoff date
             if days is not None:
-                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
                 query = query.where(... >= cutoff_date)
             
             # Query Firestore
@@ -956,7 +955,7 @@ class FirestoreDataLoader:
             # Query Firestore
             speed_bands_ref = self.db.collection("traffic_speed_bands")
             if days is not None:
-                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
                 query = (speed_bands_ref
                         .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
                         .order_by("Timestamp", direction=firestore.Query.DESCENDING))
@@ -1009,7 +1008,7 @@ class FirestoreDataLoader:
             # Query official incidents
             incidents_ref = self.db.collection("traffic_incidents")
             if days is not None:
-                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
                 query = (incidents_ref
                         .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
                         .order_by("Timestamp", direction=firestore.Query.DESCENDING))
@@ -1070,7 +1069,7 @@ class FirestoreDataLoader:
 
             # Apply time filter only if days is provided
             if days is not None:
-                start_time = datetime.now() - timedelta(days=days)
+                start_time = datetime.datetime.now() - datetime.timedelta(days=days)
                 query = query.where("stored_at", ">=", start_time)
 
             # Apply location filter if specified
@@ -1116,7 +1115,6 @@ class FirestoreDataLoader:
         except Exception as e:
             logging.error(f"Error loading weather data: {e}")
             return pd.DataFrame()
-
 
     def get_historical_holidays(self, years=None):
         """

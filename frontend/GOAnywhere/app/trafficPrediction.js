@@ -9,6 +9,7 @@ import axios from 'axios';
 import P2PDriver from './P2PDriver';
 
 // Import components for rendering
+import TrafficPredictionFeedback from './TrafficPredictionFeedback';
 import TrafficPredictionRendering from './TrafficPredictionRendering';
 
 const API_BASE_URL = 'https://goanywhere-backend-541900038032.asia-southeast1.run.app';
@@ -30,6 +31,8 @@ const TrafficPrediction = () => {
   const navigation = useNavigation();
   const [startLocation, setStartLocation] = useState('');
   const [endLocation, setEndLocation] = useState('');
+  const [currentTemperature, setCurrentTemperature] = useState(null);
+  const [currentHumidity, setCurrentHumidity] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [routes, setRoutes] = useState([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(null);
@@ -52,13 +55,11 @@ const TrafficPrediction = () => {
   const isMounted = useRef(true);
 
   useEffect(() => {
-    // Request location permission and get current location
     requestLocationPermission();
-
-    return () => {
-      isMounted.current = false;
-    };
+    fetchWeatherFromAPI();
+    return () => { isMounted.current = false; };
   }, []);
+
 
   // Check if a date is a holiday
   const isHoliday = (date) => {
@@ -139,6 +140,23 @@ const TrafficPrediction = () => {
       return 'Current Location';
     }
   };
+  
+  const fetchWeatherFromAPI = async () => {
+    try {
+      const response = await fetch("https://api.openweathermap.org/data/2.5/weather?lat=1.290270&lon=103.851959&appid=1c6a0489337511175419c64f0fbba7d1&units=metric");
+      const data = await response.json();
+      if (data && data.main) {
+        setCurrentTemperature(data.main.temp ?? 28.0);
+        setCurrentHumidity(data.main.humidity ?? 75.0);
+      }
+    } catch (err) {
+      console.error("Weather fetch error:", err);
+      // fallback
+      setCurrentTemperature(28.0);
+      setCurrentHumidity(75.0);
+    }
+  };
+
 
   const findRoute = async () => {
     if (!startLocation || !endLocation) {
@@ -318,17 +336,6 @@ const TrafficPrediction = () => {
         // Fix the prediction (convert to minutes if needed)
         const data = { ...response.data };
         
-        // If the model returns values that seem like hours, convert to minutes
-        if (data.predictions && data.predictions.length > 0 && data.predictions[0] < 10) {
-          data.predictions = data.predictions.map(p => p * 60);
-          
-          if (data.probabilities && data.probabilities.length > 0) {
-            data.probabilities = data.probabilities.map(p => 
-              p.map(v => v * 60)
-            );
-          }
-        }
-        
         setTravelTimePrediction(data);
         setPredictionLock(true);
       } else {
@@ -399,8 +406,8 @@ const TrafficPrediction = () => {
     
     // Environmental conditions - could get from weather API in a real app
     // Using realistic values for Singapore
-    const temperature = 28.0;
-    const humidity = 75.0;
+    const temperature = currentTemperature ?? 28.0;
+    const humidity = currentHumidity ?? 75.0;
     const rainFlag = 0; // Default to no rain
     
     // Event info from route data
@@ -663,20 +670,6 @@ const TrafficPrediction = () => {
         // Fix the prediction (convert to minutes if needed)
         const data = { ...response.data };
         
-        // If the model returns values that seem like hours, convert to minutes
-        if (data.predictions && data.predictions.length > 0 && data.predictions[0] < 10) {
-          // Multiply by 60 to convert hours to minutes - your ML model probably 
-          // predicts in hours but users expect minutes
-          data.predictions = data.predictions.map(p => p * 60);
-          
-          // Also adjust probabilities (confidence intervals)
-          if (data.probabilities && data.probabilities.length > 0) {
-            data.probabilities = data.probabilities.map(p => 
-              p.map(v => v * 60)
-            );
-          }
-        }
-        
         setTravelTimePrediction(data);
       } else {
         throw new Error('Invalid prediction response');
@@ -742,6 +735,8 @@ const TrafficPrediction = () => {
     setStartLocation,
     endLocation,
     setEndLocation,
+    currentTemperature,
+    currentHumidity,
     isLoading,
     routes,
     selectedRouteIndex,

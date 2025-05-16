@@ -85,9 +85,9 @@ const TrafficIncidentReporting = () => {
           }}
         >
           <Image 
-            source={require('./assets/car-icon.png')} 
+            // source={require('./assets/car-icon.png')} 
             style={styles.modeIcon}
-            defaultSource={require('./assets/car-icon.png')}
+            // defaultSource={require('./assets/car-icon.png')}
           />
           <Text style={styles.modeText}>Driver</Text>
         </TouchableOpacity>
@@ -101,9 +101,9 @@ const TrafficIncidentReporting = () => {
           }}
         >
           <Image 
-            source={require('./assets/bus-icon.png')} 
+            // source={require('./assets/bus-icon.png')} 
             style={styles.modeIcon}
-            defaultSource={require('./assets/bus-icon.png')}
+            // defaultSource={require('./assets/bus-icon.png')}
           />
           <Text style={styles.modeText}>Public Transport</Text>
         </TouchableOpacity>

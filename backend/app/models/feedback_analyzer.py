@@ -1,14 +1,27 @@
 import logging
-from datetime import datetime, timedelta
+import datetime
 from typing import Optional
-from firebase_admin import firestore
+from app.database.firestore_utils import get_firestore_client
+from google.cloud import firestore  # Needed for SERVER_TIMESTAMP
 
 logger = logging.getLogger(__name__)
 
 class FeedbackAnalyzer:
     def __init__(self):
-        self.db = firestore.client()
-        self.collection = self.db.collection('simple_feedback')
+        self._db = None
+        self._collection = None
+
+    @property
+    def db(self):
+        if self._db is None:
+            self._db = get_firestore_client()
+        return self._db
+
+    @property
+    def collection(self):
+        if self._collection is None:
+            self._collection = self.db.collection("simple_feedback")
+        return self._collection
 
     def record_feedback(self, prediction_type: str, rating: int, user_id: str, feedback_text: Optional[str] = ""):
         if not (1 <= rating <= 5):
@@ -28,8 +41,8 @@ class FeedbackAnalyzer:
         return doc_ref.id
 
     def analyze_feedback(self, prediction_type: str, days: int = 30):
-        end = datetime.now()
-        start = end - timedelta(days=days)
+        end = datetime.datetime.now()
+        start = end - datetime.timedelta(days=days)
 
         query = (self.collection
                  .where('prediction_type', '==', prediction_type)

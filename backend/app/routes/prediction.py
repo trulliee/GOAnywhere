@@ -10,7 +10,7 @@ import requests
 import json
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
-
+from google.cloud import firestore
 from app.models.feedback_analyzer import FeedbackAnalyzer
 
 # Logger setup
@@ -31,6 +31,24 @@ def ping():
 
 # Instantiate FeedbackAnalyzer
 feedback_analyzer = FeedbackAnalyzer()
+
+# Firestore logging
+db = firestore.Client()
+
+def log_prediction_to_firestore(model_name: str, model_input: dict, model_output: dict, version: str = "v1"):
+    log_entry = {
+        "model_name": model_name,
+        "model_version": version,
+        "input": model_input,
+        "output": model_output,
+        "timestamp": datetime.utcnow()
+    }
+    try:
+        db.collection("model_predictions_log").add(log_entry)
+        logger.info(f"[LOGGED] Prediction logged for model: {model_name}")
+    except Exception as e:
+        logger.error(f"[LOGGING ERROR] Failed to log prediction: {e}")
+
 
 # # Auth token helper
 # def get_google_auth_token():
@@ -106,10 +124,20 @@ async def predict_congestion(input_data: TrafficPredictionInput = Body(...)):
             raise HTTPException(status_code=500, detail="Cloud Run congestion model failed.")
 
         result = response.json()
+
+        # Log to Firestore
+        log_prediction_to_firestore(
+            model_name="traffic_congestion",
+            model_input=input_data.dict(),
+            model_output=result,
+            version="v1_2025-05-15"
+        )
+
         return {
             "status": "success",
             "predictions": result.get("predictions", [])
         }
+
 
     except Exception as e:
         logger.exception("Unexpected error during congestion prediction.")
@@ -169,6 +197,15 @@ async def predict_travel_time(input_data: TravelTimeInput):
             raise HTTPException(status_code=500, detail="Cloud Run travel time model failed to respond.")
 
         result = response.json()
+
+        # Log to Firestore
+        log_prediction_to_firestore(
+            model_name="travel_time",
+            model_input=input_data.dict(),
+            model_output=result,
+            version="v1_2025-05-15"
+        )
+
         predictions = result.get("predictions", [])
         probabilities = result.get("probabilities", [])
         classes = result.get("classes", [])

@@ -35,7 +35,7 @@ import { API_URL } from './utils/apiConfig';
 
 
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
+const GOOGLE_MAPS_API_KEY = "AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0";
 
 // Get screen dimensions
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -767,16 +767,9 @@ export default function HomeScreen() {
               style={styles.submenuItem} 
               onPress={() => navigateTo('TrafficPrediction')}
             >
-              <Text style={styles.submenuText}>Forecast</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.submenuItem} 
-              onPress={() => navigateTo('dashboard')}
-            >
-              <Text style={styles.submenuText}>Dashboard</Text>
+              <Text style={styles.submenuText}>Predictions</Text>
             </TouchableOpacity>
           </Collapsible>
-
 
           {/* Navigation Section */}
           <TouchableOpacity 

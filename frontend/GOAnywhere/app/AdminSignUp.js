@@ -30,13 +30,13 @@ export default function SignUp() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [adminCode, setAdminCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
-    if (!name || !email || !phoneNumber || !password || !confirmPassword) {
+    if (!name || !email || !password || !confirmPassword) {
       alert('Please fill in all fields');
       return;
     }
@@ -45,8 +45,8 @@ export default function SignUp() {
       return;
     }
 
-    if (!/^\d{8}$/.test(phoneNumber.trim())) {
-      alert('Phone number must be 8 digits');
+    if (adminCode.trim() !== 'CSCI321') {
+      alert('Invalid admin code. Please enter the correct code.');
       return;
     }
 
@@ -54,14 +54,13 @@ export default function SignUp() {
       email,
       password,
       name,
-      phone_number: phoneNumber,
     });
 
     setLoading(true);
     try {
       // You may need to adjust your AuthService to handle separate email and phone
       // For now, we'll pass both values
-      const userData = await AuthService.signUp(email, password, name, phoneNumber.trim());
+      const userData = await AuthService.signUp(email, password, name, null);
       console.log('Signup successful:', userData);
       alert('Account created successfully!');
       router.replace('./loginUser');  // Navigate to login page after successful signup
@@ -92,6 +91,9 @@ export default function SignUp() {
           
           {/* Signup Form */}
           <View style={styles.formContainer}>
+            <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 10 }}>
+                System Admin Registration
+            </Text>
             <TextInput
               style={styles.input}
               placeholder="Name"
@@ -101,7 +103,6 @@ export default function SignUp() {
               editable={!loading}
               placeholderTextColor="#555"
             />
-            
             <TextInput
               style={styles.input}
               placeholder="Email"
@@ -112,17 +113,16 @@ export default function SignUp() {
               editable={!loading}
               placeholderTextColor="#555"
             />
-            
+
             <TextInput
               style={styles.input}
-              placeholder="Phone Number"
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              keyboardType="phone-pad"
+              placeholder="Admin Code"
+              value={adminCode}
+              onChangeText={setAdminCode}
               editable={!loading}
               placeholderTextColor="#555"
             />
-            
+
             <TextInput
               style={styles.input}
               placeholder="Password"

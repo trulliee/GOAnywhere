@@ -15,14 +15,15 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AuthService from './authService';
+import { API_URL } from './utils/apiConfig';
 
 export default function EditProfile() {
   const router = useRouter();
   const [username, setUsername] = useState('Bentley');
   const [email, setEmail] = useState('heheheha@gmail.com');
   const [phone, setPhone] = useState('91234567');
-  const [password, setPassword] = useState('hehesecretduntellu'); // This would normally be loaded from user data
-  const [maskedPassword, setMaskedPassword] = useState('••••••••••••••••');
+  const [password, setPassword] = useState('');
+  //const [maskedPassword, setMaskedPassword] = useState('••••••••••••••••');
   const [showPassword, setShowPassword] = useState(false);
   
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function EditProfile() {
     async function loadUserData() {
       try {
         const userData = await AuthService.getCurrentUser();
+        console.log("Loaded user data:", userData);
         if (userData) {
           setUsername(userData.name || 'Bentley');
           setEmail(userData.email || 'heheheha@gmail.com');
@@ -61,12 +63,18 @@ export default function EditProfile() {
       user_id: uid,
       name: username,
       email: email,
-      phone_number: phone,
-      password: password
+      phone_number: phone
     };
 
     await AuthService.updateProfile(payload, token);
-    if (password.trim().length > 0) {
+
+    const updatedUser = await AuthService.getCurrentUser();
+    await AuthService.setUserName(updatedUser.name);
+    if (updatedUser && updatedUser.name) {
+      setUsername(updatedUser.name);
+    }
+    // Only call change password if user typed a new one
+    if (password && password !== '••••••••••••••••' && password.trim().length >= 6) {
       const res = await fetch(`${API_URL}/auth/change_password`, {
         method: 'POST',
         headers: {
@@ -76,9 +84,23 @@ export default function EditProfile() {
         body: JSON.stringify({ new_password: password })
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail);
-    }
+      //Safely parse the response only if possible
+      let data;
+      try {
+        data = await res.json();
+      } catch (jsonError) {
+        console.error("Failed to parse JSON from change_password response");
+        data = null;
+      }
+
+      if (!res.ok) {
+        const errorMessage = data?.detail || 'Password update failed.';
+        throw new Error(errorMessage);
+      }
+
+}
+
+
     Alert.alert("Success", "Profile updated successfully.");
     router.back();
   } catch (error) {
@@ -126,10 +148,7 @@ export default function EditProfile() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidView}
-      >
+
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
@@ -226,7 +245,6 @@ export default function EditProfile() {
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

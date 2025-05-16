@@ -38,3 +38,7 @@ networkx
 google-cloud-aiplatform
 beautifulsoup4
 playwright
+
+# Phone number
+phonenumbers>=8.12.0
+

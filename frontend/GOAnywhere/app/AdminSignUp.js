@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  SafeAreaView,
+import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  SafeAreaView,
   Keyboard
 } from 'react-native';
-import AuthService from './authService';
 import { useRouter } from 'expo-router';
+import AuthService from './authService';
 import { Ionicons } from '@expo/vector-icons';
 
 //update with actual logo stuff
@@ -25,12 +25,15 @@ const TrafficLightIcon = () => (
   </View>
 );
 
-export default function LoginUser() {
-  const [emailOrPhone, setEmailOrPhone] = useState('');
+export default function SignUp() {
+  const router = useRouter();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [adminCode, setAdminCode] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
@@ -41,69 +44,91 @@ export default function LoginUser() {
     };
   }, []);
 
-  const handleLogin = async () => {
-    if (!emailOrPhone || !password) {
+  const handleSignUp = async () => {
+    if (!name || !email || !password || !confirmPassword) {
       alert('Please fill in all fields');
       return;
     }
+    if (password !== confirmPassword) {
+      alert('Passwords do not match');
+      return;
+    }
 
-    // Quick test logins
-    if (emailOrPhone === 'ben@gmail.com' && password === '1234') {
-      router.replace('./HomeScreen');
+    if (adminCode.trim() !== 'CSCI321') {
+      alert('Invalid admin code. Please enter the correct code.');
       return;
     }
-    if (emailOrPhone === 'admin@gmail.com' && password === '1234') {
-      router.replace('./AdminHomeScreen');
-      return;
-    }
+
+    console.log("Sending payload:", {
+      email,
+      password,
+      name,
+    });
 
     setLoading(true);
     try {
-      const userData = await AuthService.login(emailOrPhone, password);
-      console.log('Logged in:', userData);
-      console.log('Logging in as:', emailOrPhone, "with password:", password);
-
-      if (userData.user_type === 'admin') {
-        router.replace('./AdminHomeScreen');
-      } else {
-        router.replace('./HomeScreen');
-      }
-
+      // You may need to adjust your AuthService to handle separate email and phone
+      // For now, we'll pass both values
+      const userData = await AuthService.signUp(email, password, name, null);
+      console.log('Signup successful:', userData);
+      alert('Account created successfully!');
+      router.replace('./loginUser');  // Navigate to login page after successful signup
     } catch (error) {
-      console.error('Login failed:', error.message);
-      alert('Login failed: ${error.message}');
+      console.error('Signup error:', error.message);
+      alert('Signup failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-
   return (
     <SafeAreaView style={styles.container}>
+
         {/* Top curved shape */}
         <View style={[styles.topCurve, keyboardVisible && { opacity: 0 }]} />
         
         <View style={styles.contentContainer}>
-          {/* udpate this with the logo */}
+          {/* Logo */}
           <View style={styles.logoContainer}>
             <TrafficLightIcon />
             <Text style={styles.logoText}>GOANYWHERE</Text>
             <Text style={styles.tagline}>The only traffic forecasting website.</Text>
           </View>
           
-          {/* Login Form */}
+          {/* Signup Form */}
           <View style={styles.formContainer}>
-          <TextInput
+            <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 10 }}>
+                System Admin Registration
+            </Text>
+            <TextInput
               style={styles.input}
-              placeholder="Email / Phone Number"
-              value={emailOrPhone}
-              onChangeText={setEmailOrPhone}
+              placeholder="Name"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
               autoCapitalize="none"
               editable={!loading}
               placeholderTextColor="#555"
             />
 
-            
+            <TextInput
+              style={styles.input}
+              placeholder="Admin Code"
+              value={adminCode}
+              onChangeText={setAdminCode}
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
+
             <TextInput
               style={styles.input}
               placeholder="Password"
@@ -113,60 +138,34 @@ export default function LoginUser() {
               editable={!loading}
               placeholderTextColor="#555"
             />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              editable={!loading}
+              placeholderTextColor="#555"
+            />
           </View>
           
-          {/* Sign Up Link */}
+          {/* Login Link */}
           <TouchableOpacity 
-            style={styles.signupLink}
-            onPress={() => router.push('./SignUp')}
+            style={styles.loginLink}
+            onPress={() => router.replace('./loginUser')}
           >
-            <Text style={styles.signupText}>Don't have an account? Sign up</Text>
+            <Text style={styles.loginText}>Already have an account? Login</Text>
           </TouchableOpacity>
-
-          <View style={{ height: 10 }} />
-
-          <Text style={[styles.signupText, { textAlign: 'center', marginBottom: 5 }]}>
-            — OR —
-          </Text>
-
-          <TouchableOpacity 
-            style={styles.signupLink}
-            onPress={() => router.push('./AdminSignUp')}
-          >
-            <Text style={styles.signupText}>System Admin? Register here</Text>
-          </TouchableOpacity>
-
-          {/* Quick login buttons - Only visible in development */}
-          <View style={styles.devLoginContainer}>
-            <TouchableOpacity 
-              style={styles.devLoginButton}
-              onPress={() => {
-                setEmailOrPhone('ben@gmail.com');
-                setPassword('1234');
-              }}
-            >
-              <Text style={styles.devLoginText}>Quick User Login</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.devLoginButton, styles.adminLoginButton]}
-              onPress={() => {
-                setEmailOrPhone('admin@gmail.com');
-                setPassword('1234');
-              }}
-            >
-              <Text style={styles.devLoginText}>Quick Admin Login</Text>
-            </TouchableOpacity>
-          </View>
         </View>
         
-        {/* Sign in button */}
+        {/* Sign up button */}
         <View style={[styles.bottomSection, keyboardVisible && { opacity: 0 }]}>
-          <View style={styles.signInContainer}>
-            <Text style={styles.signInText}>Sign In</Text>
+          <View style={styles.signUpContainer}>
+            <Text style={styles.signUpText}>Create Account</Text>
             <TouchableOpacity
               style={[styles.arrowButton, loading && styles.buttonDisabled]}
-              onPress={handleLogin}
+              onPress={handleSignUp}
               disabled={loading}
             >
               {loading ? (
@@ -186,6 +185,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'white',
   },
+  keyboardAvoidView: {
+    flex: 1,
+  },
   topCurve: {
     height: 150,
     backgroundColor: '#9de3d2', 
@@ -202,7 +204,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 50,
+    marginBottom: 30,
   },
   trafficLightContainer: {
     alignItems: 'center',
@@ -250,10 +252,10 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontSize: 16,
   },
-  signupLink: {
+  loginLink: {
     alignSelf: 'center',
   },
-  signupText: {
+  loginText: {
     color: '#3498db',
     fontSize: 14,
   },
@@ -265,11 +267,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingLeft: 50,
   },
-  signInContainer: {
+  signUpContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  signInText: {
+  signUpText: {
     fontSize: 24,
     fontWeight: 'bold',
     marginRight: 15,
@@ -284,25 +286,5 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     backgroundColor: '#888',
-  },
-  // Development quick login buttons
-  devLoginContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  devLoginButton: {
-    backgroundColor: '#f0f0f0',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginHorizontal: 5,
-  },
-  adminLoginButton: {
-    backgroundColor: '#ffe0e0',
-  },
-  devLoginText: {
-    fontSize: 12,
-    color: '#666',
   },
 });

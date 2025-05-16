@@ -19,8 +19,9 @@ import MapView, { Marker } from 'react-native-maps';
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from './authService';
+import { API_URL } from './utils/apiConfig';
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
+const GOOGLE_MAPS_API_KEY = "AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0";
 
 // Get screen dimensions
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -46,38 +47,45 @@ export default function AdminHomeScreen() {
   const [activeUsers, setActiveUsers] = useState(347);
   
   // Recent users data
-  const [recentUsers, setRecentUsers] = useState([
-    { id: 1, name: 'Sarah Johnson', email: 'sarah.j@example.com', joinDate: '2023-10-15', status: 'active' },
-    { id: 2, name: 'Michael Chen', email: 'm.chen@example.com', joinDate: '2023-10-20', status: 'inactive' },
-    { id: 3, name: 'Emma Wilson', email: 'e.wilson@example.com', joinDate: '2023-10-22', status: 'active' },
-    { id: 4, name: 'James Brown', email: 'j.brown@example.com', joinDate: '2023-11-01', status: 'active' },
-    { id: 5, name: 'Olivia Davis', email: 'o.davis@example.com', joinDate: '2023-11-03', status: 'pending' }
-  ]);
-  
+  const [recentUsers, setRecentUsers] = useState([]);
+
   // Admin notifications draft
-  const [notificationDrafts, setNotificationDrafts] = useState([
-    { id: 1, title: 'System Maintenance', content: 'Scheduled maintenance on Nov 15, 2023', status: 'draft' },
-    { id: 2, title: 'New Feature Announcement', content: 'New traffic prediction features launching soon', status: 'scheduled' }
-  ]);
+  const [notificationDrafts, setNotificationDrafts] = useState([]);
+
+  const [adminAlerts, setAdminAlerts] = useState([]);
+
 
   // Animated value for sidebar position
   const sidebarPosition = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
 
   // Handle user status toggle
-  const handleToggleUserStatus = (userId) => {
-    // Update the state to toggle the user status
-    const updatedUsers = recentUsers.map(user => {
-      if (user.id === userId) {
-        const newStatus = user.status === 'active' ? 'inactive' : 'active';
-        return {...user, status: newStatus};
+  const handleToggleUserStatus = async (userId, currentType) => {
+    const action = currentType === 'banned' ? 'unban' : 'ban';
+
+    try {
+      const response = await fetch(`${API_URL}/admin/ban_user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, action }),
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        // Update the user's type in the frontend state
+        setRecentUsers(prevUsers =>
+          prevUsers.map(user =>
+            user.id === userId ? { ...user, user_type: data.new_user_type } : user
+          )
+        );
+      } else {
+        Alert.alert("Error", "Failed to update user status.");
       }
-      return user;
-    });
-    setRecentUsers(updatedUsers);
-    
-    // In a real app, you would also update this in your backend
-    Alert.alert("Status Updated", `User status has been updated.`);
+    } catch (error) {
+      console.error("Ban/unban error:", error);
+      Alert.alert("Error", "Server error while updating user.");
+    }
   };
 
   // Handle logout
@@ -187,19 +195,20 @@ export default function AdminHomeScreen() {
     async function loadUser() {
       setIsLoading(true);
       try {
-        // First check if we have the name in AsyncStorage
         const storedName = await AuthService.getUserName();
         if (storedName && storedName !== 'User') {
           setUserName(storedName.toUpperCase());
         }
-        
-        // Then try to get full user data from current session
+
         const userData = await AuthService.getCurrentUser();
         setUser(userData);
-        
+
         if (userData) {
-          const displayName = userData.name || userData.display_name || 
-                              userData.email?.split('@')[0] || 'ADMIN';
+          const displayName =
+            userData.name ||
+            userData.display_name ||
+            userData.email?.split('@')[0] ||
+            'ADMIN';
           setUserName(displayName.toUpperCase());
         }
       } catch (error) {
@@ -208,9 +217,56 @@ export default function AdminHomeScreen() {
         setIsLoading(false);
       }
     }
-    
+
+
+    async function fetchRecentUsers() {
+      try {
+        const res = await fetch(`${API_URL}/admin/users`);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Server returned ${res.status}: ${errText}`);
+        }
+        const contentType = res.headers.get('content-type') || '';
+        let data;
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const txt = await res.text();
+          throw new Error(`Expected JSON but got: ${txt}`);
+        }
+        setRecentUsers(data.users || []);
+      } catch (err) {
+        console.error("Error fetching users:", err.message);
+      }
+    }
+
     loadUser();
+    fetchRecentUsers();
+
+    async function fetchAdminAlerts() {
+      try {
+        const res = await fetch(`${API_URL}/admin/alert-notifications`);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Server returned ${res.status}: ${errText}`);
+        }
+        const contentType = res.headers.get('content-type') || '';
+        let data;
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const txt = await res.text();
+          throw new Error(`Expected JSON but got: ${txt}`);
+        }
+        setAdminAlerts(data.notifications || []);
+      } catch (err) {
+        console.error("Error fetching admin alerts:", err.message);
+      }
+    }
+
+    fetchAdminAlerts();
   }, []);
+
 
   const navigateTo = (screen) => {
     router.push(`./${screen}`);
@@ -235,29 +291,26 @@ export default function AdminHomeScreen() {
             <Text style={styles.userEmail}>{item.email}</Text>
           </View>
           <View style={[
-            styles.statusBadge, 
-            item.status === 'active' ? styles.activeStatus : 
-            item.status === 'inactive' ? styles.inactiveStatus : styles.pendingStatus
+            styles.statusBadge,
+            item.user_type === 'banned' ? styles.inactiveStatus : styles.activeStatus
           ]}>
-            <Text style={styles.statusText}>{item.status}</Text>
+            <Text style={styles.statusText}>
+              {item.user_type === 'banned' ? 'INACTIVE' : 'ACTIVE'}
+            </Text>
           </View>
         </View>
-        
+          
         <View style={styles.userActions}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.statusToggleButton,
-              item.status === 'active' ? styles.deactivateButton : styles.activateButton
+              item.user_type !== 'banned' ? styles.deactivateButton : styles.activateButton,
             ]}
-            onPress={() => handleToggleUserStatus(item.id)}
+            onPress={() => handleToggleUserStatus(item.id, item.user_type)}
           >
             <Text style={styles.buttonText}>
-              {item.status === 'active' ? 'Deactivate' : 'Activate'}
+              {item.user_type !== 'banned' ? 'Deactivate' : 'Activate'}
             </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.editUserButton}>
-            <Text style={styles.buttonText}>Edit</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -282,24 +335,6 @@ export default function AdminHomeScreen() {
         
         {/* Main Content */}
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-          {/* Stats Cards */}
-          <View style={styles.statsContainer}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{totalUsers}</Text>
-              <Text style={styles.statLabel}>Total Users</Text>
-            </View>
-            
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{activeUsers}</Text>
-              <Text style={styles.statLabel}>Active Users</Text>
-            </View>
-            
-            <View style={[styles.statCard, styles.alertStatCard]}>
-              <Text style={styles.statValue}>{pendingReports}</Text>
-              <Text style={styles.statLabel}>Pending Reports</Text>
-            </View>
-          </View>
-          
           {/* Welcome message */}
           <View style={styles.welcomeMessageContainer}>
             <Text style={styles.welcomeMessageTitle}>Welcome to Admin Dashboard</Text>
@@ -320,12 +355,15 @@ export default function AdminHomeScreen() {
             </TouchableOpacity>
           </View>
           
-          {recentUsers.slice(0, 3).map((item) => renderUserItem({ item }))}
-          
+          {recentUsers.slice(0, 3).map((item) => (
+            <View key={item.id}>
+              {renderUserItem({ item })}
+            </View>
+          ))}          
           {/* Notifications Section */}
           <View style={styles.sectionTitle}>
-            <MaterialIcons name="notifications" size={24} color="#333" />
-            <Text style={styles.sectionTitleText}>Notification Drafts</Text>
+            <MaterialIcons name="warning" size={24} color="#333" />
+            <Text style={styles.sectionTitleText}>Crowdsourced Alerts</Text>
             <TouchableOpacity 
               style={styles.viewAllButton}
               onPress={() => navigateTo('AdminNotification')}
@@ -333,34 +371,18 @@ export default function AdminHomeScreen() {
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>
-          
-          {notificationDrafts.map(draft => (
-            <View key={draft.id} style={styles.notificationCard}>
-              <View style={styles.notificationHeader}>
-                <Text style={styles.notificationTitle}>{draft.title}</Text>
-                <View style={[
-                  styles.notificationStatus,
-                  draft.status === 'draft' ? styles.draftStatus : styles.scheduledStatus
-                ]}>
-                  <Text style={styles.notificationStatusText}>{draft.status}</Text>
-                </View>
+
+          {adminAlerts.length === 0 ? (
+            <Text style={{ marginBottom: 10, color: '#888' }}>No urgent reports.</Text>
+          ) : (
+            adminAlerts.slice(0, 3).map(alert => (
+              <View key={alert.id} style={styles.notificationCard}>
+                <Text style={styles.notificationTitle}>{alert.type}</Text>
+                <Text style={styles.notificationContent}>{alert.message}</Text>
               </View>
-              <Text style={styles.notificationContent}>{draft.content}</Text>
-              <View style={styles.notificationActions}>
-                <TouchableOpacity style={styles.editButton}>
-                  <Text style={styles.buttonText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.sendButton, draft.status === 'scheduled' && styles.disabledButton]}
-                  disabled={draft.status === 'scheduled'}
-                >
-                  <Text style={styles.buttonText}>
-                    {draft.status === 'draft' ? 'Send Now' : 'Scheduled'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+            ))
+          )}
+
         </ScrollView>
 
         {/* Dark overlay when sidebar is visible */}
@@ -437,7 +459,7 @@ export default function AdminHomeScreen() {
 
             <TouchableOpacity 
               style={styles.menuItem} 
-              onPress={() => navigateTo('homeScreen')}
+              onPress={() => navigateTo('HomeScreen')}
             >
               <View style={styles.menuItemRow}>
                 <MaterialIcons name="home" size={24} color="#aaa" style={styles.menuIcon} />
@@ -485,7 +507,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#393939',
     paddingVertical: 15,
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+    paddingTop: 40,
   },
   headerTitle: {
     color: '#fff',

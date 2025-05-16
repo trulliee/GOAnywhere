@@ -41,6 +41,8 @@ export default function Navigation() {
   const [instructionSub, setInstructionSub]     = useState('');
   const [currentSpeed, setCurrentSpeed]         = useState(0);
   const [userName, setUserName] = useState('USER');
+  const [arrived, setArrived] = useState(false);
+
 
   const [showDetail, setShowDetail] = useState(false);
   const detailAnim                  = useRef(new Animated.Value(height)).current;
@@ -70,7 +72,7 @@ export default function Navigation() {
 
   // Update navigation instruction
   useEffect(() => {
-    if (!location || !steps.length) return;
+    if (!location || !steps.length || arrived) return;
     const next   = steps[currentStepIndex];
     const nextPt = polyline?.[currentStepIndex + 1];
     if (!nextPt) return;
@@ -85,12 +87,13 @@ export default function Navigation() {
         if (currentStepIndex < steps.length - 1) {
         setCurrentStepIndex(i => i + 1);
         } else {
+        setArrived(true);
         Alert.alert('You have reached your destination');
         }
     }    
     setInstructionMain(cleanInstruction(next.instruction).toUpperCase());
     setInstructionSub(`IN ${dist} M`);
-  }, [location, currentStepIndex]);
+  }, [location, currentStepIndex, arrived]);
 
   // Toggle route detail sheet
   const toggleDetail = () => {

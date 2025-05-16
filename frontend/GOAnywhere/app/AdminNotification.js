@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Button, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { API_URL } from './utils/apiConfig';
 
 const Notification = () => {
   const [notifications, setNotifications] = useState([]);
@@ -10,57 +11,58 @@ const Notification = () => {
   const [filterStatus, setFilterStatus] = useState('all');
 
   useEffect(() => {
-    const exampleNotifications = [
-      {
-        id: 1,
-        icon: 'car',
-        iconColor: '#BC3535',
-        title: 'Heavy Traffic Reported',
-        message: 'Heavy traffic reported on PIE (Tuas bound)',
-        timeCategory: 'today',
-        type: 'driver',
-        status: 'pending',
-      },
-      {
-        id: 2,
-        icon: 'car',
-        iconColor: '#EEA039',
-        title: 'Moderate Traffic Reported',
-        message: 'Moderate traffic reported on PIE (Tuas bound)',
-        timeCategory: 'today',
-        type: 'public',
-        status: 'accepted',
-      },
-      {
-        id: 3,
-        icon: 'rainy',
-        iconColor: '#5C96E2',
-        title: 'Bad Weather Reported',
-        message: 'Flash Floods Reported along Upper Bukit Timah Road.',
-        timeCategory: 'yesterday',
-        type: 'public',
-        status: 'flagged',
-      },
-      {
-        id: 4,
-        icon: 'alert-circle',
-        iconColor: '#000000',
-        title: 'Traffic Incident Reported',
-        message: 'Accident reported along Upper Bukit Timah Road.',
-        timeCategory: '2days',
-        type: 'driver',
-        status: 'pending',
-      },
-    ];
-    setNotifications(exampleNotifications);
+    const fetchReports = async () => {
+      try {
+        const res = await fetch(`${API_URL}/admin/crowdsourced-reports`);
+        const data = await res.json();
+
+        const formatted = data.reports.map((r) => {
+          const reportDate = new Date(r.timestamp * 1000); // assuming backend sends timestamp in seconds
+          const now = new Date();
+          const diff = Math.floor((now - reportDate) / (1000 * 60 * 60 * 24));
+
+          let timeCategory = '2days';
+          if (diff === 0) timeCategory = 'today';
+          else if (diff === 1) timeCategory = 'yesterday';
+
+          return {
+            id: r.id,
+            icon: r.type === 'High Crowd' ? 'people' : 'alert-circle',
+            iconColor: r.type === 'High Crowd' ? '#BC3535' : '#EEA039',
+            title: r.type,
+            message: `${r.username} reported ${r.type}`,
+            timeCategory,
+            type: 'public',
+            status: r.status,
+          };
+        });
+
+        setNotifications(formatted);
+      } catch (err) {
+        console.error('Failed to fetch reports:', err);
+      }
+    };
+
+    fetchReports();
   }, []);
 
-  const handleStatusChange = (id, newStatus) => {
-    const updated = notifications.map((item) =>
-      item.id === id ? { ...item, status: newStatus } : item
-    );
-    setNotifications(updated);
+  const handleStatusChange = async (id, newStatus) => {
+    try {
+      await fetch(`${API_URL}/admin/update-report-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_id: id, status: newStatus }),
+      });
+
+      const updated = notifications.map((item) =>
+        item.id === id ? { ...item, status: newStatus } : item
+      );
+      setNotifications(updated);
+    } catch (err) {
+      console.error('Failed to update report status:', err);
+    }
   };
+
 
   const renderCard = (item, index) => (
     <View key={index} style={styles.notificationCard}>

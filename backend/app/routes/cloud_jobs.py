@@ -45,3 +45,10 @@ def trigger_weather_job():
 def trigger_events_job():
     return {"status": scrape_visit_singapore_events()}
 
+@router.post("/cloud_job/all")
+def trigger_all_jobs():
+    trigger_lta_job()
+    trigger_datagov_job()
+    trigger_weather_job()
+    trigger_events_job()
+    return {"status": "all jobs triggered"}

@@ -333,18 +333,12 @@ export default function AdminHomeScreen() {
             </TouchableOpacity>
           </View>
           
-<<<<<<< HEAD
           {recentUsers.slice(0, 3).map((item) => (
             <View key={item.id}>
               {renderUserItem({ item })}
             </View>
           ))}          
           {/* Notifications Section */}
-=======
-          {recentUsers.slice(0, 3).map((item) => renderUserItem({ item }))}
-          
-
->>>>>>> 92d3aeeac628e06e5d042d08782739479ac64759
           <View style={styles.sectionTitle}>
             <MaterialIcons name="warning" size={24} color="#333" />
             <Text style={styles.sectionTitleText}>Crowdsourced Alerts</Text>

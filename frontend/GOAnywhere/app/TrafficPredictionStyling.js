@@ -139,7 +139,7 @@ export default StyleSheet.create({
     fontSize: 16,
   },
   findButton: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#00cfb4',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
@@ -206,7 +206,7 @@ export default StyleSheet.create({
     marginRight: 10,
   },
   selectedRouteTab: {
-    backgroundColor: '#0066FF',
+    backgroundColor: '#00e7c8',
   },
   routeTabText: {
     color: '#CCC',
@@ -217,6 +217,35 @@ export default StyleSheet.create({
     color: '#FFF',
     fontWeight: '600',
   },
+
+  dropdownInput: {
+  color: '#FFF',
+  backgroundColor: '#2a2a2a',
+  paddingVertical: 10,
+  paddingHorizontal: 12,
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#555',
+  fontSize: 16,
+  marginTop: 6,
+  marginBottom: 12,
+  textAlign: 'center', // optional
+  },
+
+  dropdownContainer: {
+  marginTop: 4,
+  marginBottom: 12,
+  },
+
+
+  dropdown: {
+    color: '#FFF',
+    backgroundColor: '#2a2a2a',
+    height: 42,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+
   
   // Prediction buttons
   predictionButtonsContainer: {
@@ -236,14 +265,35 @@ export default StyleSheet.create({
     flexDirection: 'row',
   },
   congestionButton: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#FFF', // white background
   },
+
   timeButton: {
-    backgroundColor: '#FFB300',
+    backgroundColor: '#FFF', // white background
   },
+
   bothButton: {
-    backgroundColor: '#0066FF',
+    backgroundColor: '#555', // grey background
   },
+
+  congestionButtonText: {
+    color: '#000', // Black text for white button
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  timeButtonText: {
+    color: '#FFF', // White text for turquoise button
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  bothButtonText: {
+    color: '#FFF', // White text for dark grey button
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
   resetButton: {
     backgroundColor: '#555',
     paddingVertical: 14,
@@ -480,6 +530,7 @@ export default StyleSheet.create({
   },
   inputRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     marginBottom: 16,
   },
@@ -614,4 +665,36 @@ export default StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  weatherInfoBanner: {
+  backgroundColor: '#2A2A2A',
+  marginHorizontal: 16,
+  padding: 12,
+  borderRadius: 10,
+  alignItems: 'center',
+  marginBottom: 12,
+  },
+  weatherInfoText: {
+    color: '#9de3d2',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tooltipOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tooltipBox: {
+    backgroundColor: '#444',
+    padding: 14,
+    borderRadius: 8,
+    maxWidth: 250,
+  },
+  tooltipText: {
+    color: '#fff',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+
+
 });

@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-from datetime import datetime, timezone
+import datetime
 from app.database.firestore_utils import store_events_data
 
 def scrape_visit_singapore_events(max_pages=None):  # Safe default
@@ -41,7 +41,7 @@ def scrape_visit_singapore_events(max_pages=None):  # Safe default
                 "event_url": card.get("ctaUrl", ""),
                 "image_url": card.get("cardImageDesktop", "") or card.get("cardImageMobile", ""),
                 "source": "Visit Singapore",
-                "scraped_at": datetime.now(timezone.utc).isoformat()
+                "scraped_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
             }
             events.append(event)
 
@@ -63,7 +63,7 @@ def parse_event_date(date_str):
     try:
         if not date_str:
             return None
-        return datetime.strptime(date_str, "%m-%d-%Y").date().isoformat()
+        return datetime.datetime.strptime(date_str, "%m-%d-%Y")
     except Exception:
         return None
 

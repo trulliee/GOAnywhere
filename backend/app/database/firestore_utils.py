@@ -1,63 +1,40 @@
 import os
 import json
 import firebase_admin
-from firebase_admin import credentials, firestore, initialize_app
+from firebase_admin import credentials, firestore, initialize_app  
 from google.cloud import secretmanager
-from google.protobuf.timestamp_pb2 import Timestamp
-from datetime import datetime
-from dotenv import load_dotenv
-import json
-import os
-
-# Create the Secret Manager client
-# client = secretmanager.SecretManagerServiceClient()
-
-#if os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS") == "1":
-#    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("FIREBASE_CREDENTIALS_PATH")
+import datetime
 
 def get_firebase_credentials():
-    """
-    Gets Firebase credentials based on environment settings.
-    Supports both local (.env) and production (Secret Manager) setups.
-    """
-# Access the secret version
-# response = client.access_secret_version(name=secret_name)
+    use_local = os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS")
+    print(f"🧪 USE_LOCAL_FIREBASE_CREDENTIALS = {use_local}")
 
-# The secret payload is in 'response.payload.data'
-# service_account_key = response.payload.data.decode("UTF-8")
-
-# Load the service account key as a JSON object
-# service_account_key_json = json.loads(service_account_key)
-
-# Initialize Firebase with the service account key
-# cred = credentials.Certificate(service_account_key_json)
-# firebase_admin.initialize_app(cred)
-
-# Firestore database client
-# db = firestore.client()
-    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-    load_dotenv(dotenv_path=env_path)
-
-    if os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS") == "1":
+    if use_local == "1":
         creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-        print(f"Using local Firebase credentials: {creds_path}")
-        return credentials.Certificate(creds_path)   
+        print(f"🔴 Loading Firebase credentials from local path: {creds_path}")
+        if not creds_path:
+            raise ValueError("FIREBASE_CREDENTIALS_PATH environment variable is not set")
+        if not os.path.exists(creds_path):
+            raise FileNotFoundError(f"Firebase credentials file not found: {creds_path}")
+        return credentials.Certificate(creds_path)
     else:
-        print("Using GCP Secret Manager credentials")
+        print("✅ Loading Firebase credentials from Secret Manager")
         client = secretmanager.SecretManagerServiceClient()
-        secret_name = os.getenv("SECRET_NAME")  # e.g., "projects/.../secrets/.../versions/latest"
-        response = client.access_secret_version(name=secret_name)
-        service_account_key = response.payload.data.decode("UTF-8")
-        service_account_key_json = json.loads(service_account_key)
-        return credentials.Certificate(service_account_key_json)
+        project_id = os.getenv("GCP_PROJECT_ID")
+        secret_name = os.getenv("FIREBASE_SECRET_NAME")
+        if not secret_name:
+            raise ValueError("FIREBASE_SECRET_NAME is not set in the environment.")
+        
+        name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        service_account_info = json.loads(response.payload.data.decode("UTF-8"))
+        return credentials.Certificate(service_account_info)
 
-cred = get_firebase_credentials()
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(cred)
-db = firestore.client()
-
-
-
+def get_firestore_client():
+    if not firebase_admin._apps:
+        cred = get_firebase_credentials()
+        initialize_app(cred)
+    return firestore.client()
 
 def store_bus_arrival_data(bus_stop_code, services, store_history=True):
     """
@@ -68,6 +45,7 @@ def store_bus_arrival_data(bus_stop_code, services, store_history=True):
         services (list): List of bus services and their arrival information
         store_history (bool, optional): Whether to store historical data. Defaults to True.
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the bus arrivals collection
         bus_arrivals_ref = db.collection("bus_arrivals")
@@ -109,10 +87,9 @@ def store_bus_arrival_data(bus_stop_code, services, store_history=True):
                 if estimated_arrival:
                     try:
                         # Parse the ISO 8601 datetime string
-                        from datetime import datetime
-                        dt = datetime.fromisoformat(estimated_arrival.replace('Z', '+00:00'))
+                        dt = datetime.datetime.fromisoformat(estimated_arrival.replace('Z', '+00:00'))
                         # Convert to Firestore timestamp
-                        firestore_timestamp = convert_to_timestamp(estimated_arrival)
+                        firestore_timestamp = datetime.datetime.fromisoformat(estimated_arrival.replace('Z', '+00:00'))
                     except Exception as e:
                         print(f"Error parsing timestamp {estimated_arrival}: {e}")
                 
@@ -152,13 +129,13 @@ def store_bus_arrival_history(bus_stop_code, services):
         bus_stop_code (str): The bus stop code
         services (list): List of bus services and their arrival information
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the historical bus arrivals collection
         history_ref = db.collection("bus_arrivals_history")
         
         # Generate a timestamp-based document ID for this entry
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         doc_id = f"{bus_stop_code}_{timestamp}"
         
         # Prepare simplified historical data
@@ -202,6 +179,7 @@ def store_bus_services_info(services_data):
     Args:
         services_data (list): List of bus services information
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the bus services info collection
         bus_services_ref = db.collection("bus_services_info")
@@ -269,6 +247,7 @@ def store_bus_routes(routes_data):
     Args:
         routes_data (list): List of bus routes information
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the bus routes collection
         bus_routes_ref = db.collection("bus_routes")
@@ -364,6 +343,7 @@ def store_bus_services_summary(services_summary):
     Args:
         services_summary (dict): Dictionary of service summaries
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the bus services collection
         bus_services_ref = db.collection("bus_services")
@@ -406,6 +386,7 @@ def store_bus_passenger_volume(records, date, filename):
         date (str): Date string in format YYYYMM
         filename (str): Original filename for reference
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the bus passenger volume collection
         bus_pv_ref = db.collection("bus_passenger_volume")
@@ -473,6 +454,7 @@ def summarize_passenger_volume(records_ref, doc_ref):
         records_ref: Firestore reference to the records subcollection
         doc_ref: Firestore reference to the parent document
     """
+    db = get_firestore_client()
     try:
         # This function would typically query the stored records,
         # compute aggregations (e.g., by bus stop, time of day, weekday/weekend),
@@ -532,6 +514,7 @@ def store_bus_od_passenger_volume(records, date, filename, chunk_index=0):
         filename (str): Original filename for reference
         chunk_index (int): Index of the chunk when processing large files
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the bus OD passenger volume collection
         bus_od_pv_ref = db.collection("bus_od_passenger_volume")
@@ -623,6 +606,7 @@ def summarize_od_passenger_volume(doc_ref):
     Args:
         doc_ref: Firestore reference to the parent document
     """
+    db = get_firestore_client()
     try:
         # This is a placeholder for the aggregation logic
         # The actual implementation would depend on the CSV structure from LTA
@@ -707,6 +691,7 @@ def store_train_od_passenger_volume(records, date, filename, chunk_index=0):
         filename (str): Original filename for reference
         chunk_index (int): Index of the chunk when processing large files
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the train OD passenger volume collection
         train_od_pv_ref = db.collection("train_od_passenger_volume")
@@ -798,6 +783,7 @@ def summarize_train_od_passenger_volume(doc_ref):
     Args:
         doc_ref: Firestore reference to the parent document
     """
+    db = get_firestore_client()
     try:
         # Set an aggregation in progress flag
         doc_ref.update({"aggregation_in_progress": True})
@@ -867,6 +853,7 @@ def store_train_passenger_volume(records, date, filename, chunk_index=0):
         filename (str): Original filename for reference
         chunk_index (int): Index of the chunk when processing large files
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the train passenger volume collection
         train_pv_ref = db.collection("train_passenger_volume")
@@ -958,6 +945,7 @@ def summarize_train_passenger_volume(doc_ref):
     Args:
         doc_ref: Firestore reference to the parent document
     """
+    db = get_firestore_client()
     try:
         # Set an aggregation in progress flag
         doc_ref.update({"aggregation_in_progress": True})
@@ -1042,6 +1030,7 @@ def store_train_service_alerts(alerts):
     Args:
         alerts (list): List of train service alert objects
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the train service alerts collection
         train_alerts_ref = db.collection("train_service_alerts")
@@ -1162,13 +1151,13 @@ def store_train_alert_history(alerts, active_alert_ids):
         alerts (list): The list of current alerts
         active_alert_ids (list): List of active alert IDs
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the train alerts history collection
         history_ref = db.collection("train_alerts_history")
         
         # Create a timestamp-based document ID for this snapshot
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         doc_id = f"snapshot_{timestamp}"
         
         # Prepare the data
@@ -1194,6 +1183,7 @@ def get_active_train_disruptions():
     Returns:
         list: List of active train service disruption objects
     """
+    db = get_firestore_client()
     try:
         train_alerts_ref = db.collection("train_service_alerts")
         
@@ -1214,6 +1204,7 @@ def get_active_train_disruptions():
 
 def store_estimated_travel_times(travel_times):
     """Stores estimated travel times from LTA DataMall in Firestore."""
+    db = get_firestore_client()
     try:
         travel_time_ref = db.collection("estimated_travel_times")
 
@@ -1232,7 +1223,7 @@ def store_estimated_travel_times(travel_times):
                     "Timestamp": firestore.SERVER_TIMESTAMP
                 }
 
-                travel_time_data["date"] = datetime.now().strftime("%Y-%m-%d")
+                travel_time_data["date"] = datetime.datetime.now().strftime("%Y-%m-%d")
                 doc_ref = travel_time_ref.document(doc_id)
                 existing_doc = doc_ref.get()
 
@@ -1250,6 +1241,7 @@ def store_faulty_traffic_lights(faulty_lights):
     Args:
         faulty_lights (list): List of faulty traffic light objects
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the faulty traffic lights collection
         traffic_lights_ref = db.collection("faulty_traffic_lights")
@@ -1280,8 +1272,7 @@ def store_faulty_traffic_lights(faulty_lights):
             
             if not alarm_id:
                 # If no AlarmID, use NodeID with timestamp
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                 alarm_id = f"{node_id}_{timestamp}"
             
             # Add to our active list
@@ -1297,19 +1288,13 @@ def store_faulty_traffic_lights(faulty_lights):
 
             if start_date:
                 try:
-                    from datetime import datetime
-                    start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S.%f")
-                    start_timestamp = Timestamp()
-                    start_timestamp.FromDatetime(start_dt)
+                    start_timestamp = datetime.datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S.%f")
                 except Exception as e:
                     print(f"Error parsing start date {start_date}: {e}")
 
             if end_date:
                 try:
-                    from datetime import datetime
-                    end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S.%f")
-                    end_timestamp = Timestamp()
-                    end_timestamp.FromDatetime(end_dt)
+                    end_timestamp = datetime.datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S.%f")
                 except Exception as e:
                     print(f"Error parsing end date {end_date}: {e}")
 
@@ -1406,13 +1391,13 @@ def store_traffic_light_history(faulty_lights, active_fault_ids):
         faulty_lights (list): The list of current faulty traffic lights
         active_fault_ids (list): List of active fault IDs
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the traffic lights history collection
         history_ref = db.collection("traffic_lights_history")
         
         # Create a timestamp-based document ID for this snapshot
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         doc_id = f"snapshot_{timestamp}"
         
         # Count faults by type
@@ -1452,6 +1437,7 @@ def get_active_faulty_traffic_lights(type_filter=None):
     Returns:
         list: List of active faulty traffic light objects
     """
+    db = get_firestore_client()
     try:
         traffic_lights_ref = db.collection("faulty_traffic_lights")
         
@@ -1483,6 +1469,7 @@ def store_planned_road_openings(road_openings):
     Args:
         road_openings (list): List of planned road opening objects
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the planned road openings collection
         road_openings_ref = db.collection("planned_road_openings")
@@ -1532,31 +1519,24 @@ def store_planned_road_openings(road_openings):
             
             if start_date:
                 try:
-                    from datetime import datetime
-                    # Parse the date string
-                    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                    start_timestamp = firestore.Timestamp.from_datetime(start_dt)
+                    start_timestamp = datetime.datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S.%f")
                 except Exception as e:
                     print(f"Error parsing start date {start_date}: {e}")
-            
+
             if end_date:
                 try:
-                    from datetime import datetime
-                    # Parse the date string
-                    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-                    end_timestamp = firestore.Timestamp.from_datetime(end_dt)
+                    end_timestamp = datetime.datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S.%f")
                 except Exception as e:
                     print(f"Error parsing end date {end_date}: {e}")
             
             # Calculate status based on current date and start/end dates
-            from datetime import datetime
-            current_date = datetime.now().date()
+            current_date = datetime.datetime.now().date()
             
             status = "scheduled"  # Default status
             
             if start_timestamp and end_timestamp:
-                start_date_obj = start_timestamp.datetime.date()
-                end_date_obj = end_timestamp.datetime.date()
+                start_date_obj = start_timestamp.datetime.datetime.date()
+                end_date_obj = end_timestamp.datetime.datetime.date()
                 
                 if current_date > end_date_obj:
                     status = "completed"
@@ -1652,6 +1632,7 @@ def get_road_openings(status=None):
     Returns:
         list: List of road opening objects
     """
+    db = get_firestore_client()
     try:
         road_openings_ref = db.collection("planned_road_openings")
         
@@ -1683,6 +1664,7 @@ def store_approved_road_works(road_works):
     Args:
         road_works (list): List of approved road work objects
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the approved road works collection
         road_works_ref = db.collection("approved_road_works")
@@ -1733,23 +1715,20 @@ def store_approved_road_works(road_works):
 
             if start_date:
                 try:
-                    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                    start_timestamp = Timestamp()
-                    start_timestamp.FromDatetime(start_dt)
+                    start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+                    start_timestamp = datetime.datetime.strptime(start_date, "%Y-%m-%d")
                 except Exception as e:
                     print(f"Error parsing start date {start_date}: {e}")
 
             if end_date:
                 try:
-                    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-                    end_timestamp = Timestamp()
-                    end_timestamp.FromDatetime(end_dt)
+                    end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d")
+                    end_timestamp = datetime.datetime.strptime(end_date, "%Y-%m-%d")
                 except Exception as e:
                     print(f"Error parsing end date {end_date}: {e}")
 
             # Calculate status based on current date and start/end dates
-            from datetime import datetime
-            current_date = datetime.now().date()
+            current_date = datetime.datetime.now().date()
             
             status = "scheduled"  # Default status
             
@@ -1848,6 +1827,7 @@ def get_road_works(status=None):
     Returns:
         list: List of road work objects
     """
+    db = get_firestore_client()
     try:
         road_works_ref = db.collection("approved_road_works")
         
@@ -1874,6 +1854,7 @@ def get_road_works(status=None):
 
 def store_traffic_data(incidents):
     """Stores traffic incidents data in Firestore."""
+    db = get_firestore_client()
     try:
         traffic_ref = db.collection("traffic_incidents")
 
@@ -1883,7 +1864,7 @@ def store_traffic_data(incidents):
                 incident_id = incident.get("IncidentID")
                 if incident_id is None:
                     # Fallback doc id if missing IncidentID
-                    incident_id = f"incident_{datetime.now().timestamp()}"
+                    incident_id = f"incident_{datetime.datetime.now().timestamp()}"
 
                 filtered_incident = {
                     "Type": incident.get("Type", ""),
@@ -1892,7 +1873,7 @@ def store_traffic_data(incidents):
                     "Message": incident.get("Message", ""),
                     "Timestamp": firestore.SERVER_TIMESTAMP,  # Firestore server time
                     # NEW: Add a static "date" field based on now
-                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "date": datetime.datetime.now().strftime("%Y-%m-%d"),
                 }
 
                 traffic_ref.document(str(incident_id)).set(filtered_incident)
@@ -1904,6 +1885,7 @@ def store_traffic_data(incidents):
 
 def store_traffic_speed_bands(speed_bands):
     """Stores traffic speed bands data from LTA DataMall in Firestore."""
+    db = get_firestore_client()
     try:
         speed_bands_ref = db.collection("traffic_speed_bands")
 
@@ -1941,6 +1923,7 @@ def store_traffic_speed_bands(speed_bands):
 
 def store_vms_data(vms_messages):
     """Stores Variable Message Services (VMS) data from LTA DataMall in Firestore."""
+    db = get_firestore_client()
     try:
         vms_ref = db.collection("vms_messages")
 
@@ -1978,6 +1961,7 @@ def store_station_crowd_density(crowd_data, train_line):
         crowd_data (list): List of station crowd density objects
         train_line (str): Code of train network line
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the station crowd density collection
         crowd_density_ref = db.collection("station_crowd_density")
@@ -2022,17 +2006,13 @@ def store_station_crowd_density(crowd_data, train_line):
 
             if start_time:
                 try:
-                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                    start_timestamp = Timestamp()
-                    start_timestamp.FromDatetime(start_dt)
+                    start_timestamp = datetime.datetime.fromisoformat(start_time.replace('Z', '+00:00'))
                 except Exception as e:
                     print(f"Error parsing start time {start_time}: {e}")
 
             if end_time:
                 try:
-                    end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-                    end_timestamp = Timestamp()
-                    end_timestamp.FromDatetime(end_dt)
+                    end_timestamp = datetime.datetime.fromisoformat(end_time.replace('Z', '+00:00'))
                 except Exception as e:
                     print(f"Error parsing end time {end_time}: {e}")
             
@@ -2068,13 +2048,13 @@ def store_crowd_density_history(crowd_data, train_line):
         crowd_data (list): List of station crowd density objects
         train_line (str): Code of train network line
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the crowd density history collection
         history_ref = db.collection("crowd_density_history")
         
         # Current timestamp for tracking when the data was fetched
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y%m%d%H%M")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M")
         doc_id = f"{train_line}_{timestamp}"
         
         # Prepare the data to store
@@ -2120,6 +2100,7 @@ def get_crowd_density(train_line=None, station_code=None):
     Returns:
         dict or list: Crowd density data based on the filters provided
     """
+    db = get_firestore_client()
     try:
         crowd_density_ref = db.collection("station_crowd_density")
         
@@ -2175,6 +2156,7 @@ def store_station_crowd_forecast(forecast_data, train_line):
         forecast_data (list): List of station crowd forecast objects
         train_line (str): Code of train network line
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the station crowd forecast collection
         crowd_forecast_ref = db.collection("station_crowd_forecast")
@@ -2215,26 +2197,24 @@ def store_station_crowd_forecast(forecast_data, train_line):
             
             if date_str:
                 try:
-                    from datetime import datetime
                     # Parse the ISO 8601 datetime string
-                    date_dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                    # Convert to Firestore timestamp
-                    date_timestamp = firestore.Timestamp.from_datetime(date_dt)
+                    date_dt = datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    # Convert to Firestore-compatible protobuf Timestamp
+                    date_timestamp = Timestamp()
                     # Use as key for organizing forecasts
                     date_key = date_dt.strftime('%Y-%m-%d')
                 except Exception as e:
                     print(f"Error parsing date {date_str}: {e}")
-                    continue  # Skip this entry if date can't be parsed
+                    continue
             else:
-                continue  # Skip entries without date
-            
+                continue
+
             if start_str:
                 try:
-                    from datetime import datetime
                     # Parse the ISO 8601 datetime string
-                    start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-                    # Convert to Firestore timestamp
-                    start_timestamp = firestore.Timestamp.from_datetime(start_dt)
+                    start_dt = datetime.datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                    # Convert to Firestore-compatible protobuf Timestamp
+                    start_timestamp = datetime.datetime.strptime(start_date, "%Y-%m-%d")
                     # Time in HH:MM format
                     time_key = start_dt.strftime('%H:%M')
                 except Exception as e:
@@ -2242,7 +2222,7 @@ def store_station_crowd_forecast(forecast_data, train_line):
                     time_key = "unknown"
             else:
                 time_key = "unknown"
-            
+
             # Get the crowd level
             crowd_level = forecast.get("CrowdLevel", "NA")
             
@@ -2295,6 +2275,7 @@ def get_crowd_forecast(train_line=None, date=None, station_code=None):
     Returns:
         dict or list: Crowd forecast data based on the filters provided
     """
+    db = get_firestore_client()
     try:
         crowd_forecast_ref = db.collection("station_crowd_forecast")
         
@@ -2362,6 +2343,7 @@ def store_traffic_flow(traffic_flow_data):
     Args:
         traffic_flow_data (dict): Traffic flow data from LTA DataMall
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the traffic flow collection
         traffic_flow_ref = db.collection("traffic_flow")
@@ -2373,8 +2355,7 @@ def store_traffic_flow(traffic_flow_data):
         metadata = traffic_flow_data.get('metadata', {})
         
         # Get the quarter information or use current date
-        from datetime import datetime
-        current_date = datetime.now()
+        current_date = datetime.datetime.now()
         current_quarter = (current_date.month - 1) // 3 + 1
         quarter_year = current_date.year
         
@@ -2499,6 +2480,7 @@ def get_traffic_flow_data(quarter=None):
     Returns:
         dict: Traffic flow data including metadata and optionally nodes/links
     """
+    db = get_firestore_client()
     try:
         traffic_flow_ref = db.collection("traffic_flow")
         
@@ -2542,6 +2524,7 @@ def get_traffic_flow_nodes(quarter, limit=100, skip=0):
     Returns:
         list: List of traffic flow nodes
     """
+    db = get_firestore_client()
     try:
         nodes_ref = db.collection("traffic_flow").document(quarter).collection("nodes")
         
@@ -2579,6 +2562,7 @@ def get_traffic_flow_links(quarter, limit=100, skip=0):
     Returns:
         list: List of traffic flow links
     """
+    db = get_firestore_client()
     try:
         links_ref = db.collection("traffic_flow").document(quarter).collection("links")
         
@@ -2606,6 +2590,7 @@ def get_traffic_flow_links(quarter, limit=100, skip=0):
 
 def store_traffic_conditions(traffic_conditions):
     """Stores traffic conditions during peak hours data from data.gov.sg in Firestore."""
+    db = get_firestore_client()
     try:
         traffic_conditions_ref = db.collection("peak_traffic_conditions")
         
@@ -2633,6 +2618,7 @@ def store_traffic_conditions(traffic_conditions):
 
 def store_weather_forecast(forecast_data):
     """Stores 24-hour weather forecast data from data.gov.sg in Firestore."""
+    db = get_firestore_client()
     try:
         weather_forecast_ref = db.collection("weather_forecast_24hr")
         
@@ -2662,11 +2648,12 @@ def store_weather_forecast(forecast_data):
         
 def store_weather_data(weather_info):
     """Stores weather data in Firestore."""
+    db = get_firestore_client()
     try:
         weather_ref = db.collection("weather_data")
         
         # Add timestamp when data was fetched
-        fetched_time = datetime.utcnow()
+        fetched_time = datetime.datetime.utcnow()
         weather_info["fetched_at"] = fetched_time.isoformat()
 
         # Use timestamp as the document ID to avoid overwrite
@@ -2678,9 +2665,9 @@ def store_weather_data(weather_info):
     except Exception as e:
         print(f"Error storing weather data: {e}")
 
-
 def upload_csv_to_firestore(csv_file_path, collection_name):
     """Uploads a CSV file to Firestore."""
+    db = get_firestore_client()
     try:
         # Load CSV file
         df = pd.read_csv(csv_file_path)
@@ -2700,6 +2687,7 @@ def upload_csv_to_firestore(csv_file_path, collection_name):
 
 def fetch_firestore_data(collection_name, limit=10):
     """Fetches and returns documents from Firestore as a list."""
+    db = get_firestore_client()
     try:
         collection_ref = db.collection(collection_name)
         docs = collection_ref.limit(limit).stream()
@@ -2721,6 +2709,7 @@ def store_events_data(events):
     Args:
         events (list): List of event dictionaries
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the events collection
         events_ref = db.collection("singapore_events")
@@ -2742,8 +2731,7 @@ def store_events_data(events):
             
             if not doc_id:
                 # If we can't generate an ID from title, use a timestamp
-                from datetime import datetime
-                doc_id = f"event_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                doc_id = f"event_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
             
             # Add server timestamp
             event['imported_at'] = current_timestamp
@@ -2773,7 +2761,7 @@ def store_events_data(events):
     except Exception as e:
         print(f"Error storing events data: {e}")
 
-async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered", created_at=None, last_login=None, settings=None):
+async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered"):
     """
     Stores user data in Firestore
     
@@ -2787,6 +2775,7 @@ async def store_user_data(user_id, name=None, email=None, phone_number=None, use
     Returns:
         bool: True if successful
     """
+    db = get_firestore_client()
     try:
         # Create a reference to the users collection
         users_ref = db.collection('users')
@@ -2795,12 +2784,8 @@ async def store_user_data(user_id, name=None, email=None, phone_number=None, use
         user_data = {
             'user_id': user_id,
             'user_type': user_type,
-            'created_at': created_at or firestore.SERVER_TIMESTAMP,
-            'last_login': last_login or firestore.SERVER_TIMESTAMP,
-            'settings' : {
-                'locationSharing': False,
-                'notifications': True
-            }
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'last_login': firestore.SERVER_TIMESTAMP
         }
         
         # Add optional fields if provided
@@ -2829,6 +2814,7 @@ async def update_user_last_login(user_id):
     Returns:
         bool: True if successful
     """
+    db = get_firestore_client()
     try:
         # Update the last_login field
         db.collection('users').document(user_id).update({

@@ -11,7 +11,7 @@ import {
   countTransfers
 } from './P2PHelper';
 
-const GOOGLE_MAPS_API_KEY = 'AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g';
+const GOOGLE_MAPS_API_KEY = 'AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0';
 const LTA_ACCOUNT_KEY        = 'CetOCVT4SmqDrAHkHLrf5g==';
 const GOOGLE_GEOCODE_URL    = 'https://maps.googleapis.com/maps/api/geocode/json';
 const GOOGLE_DIRECTIONS_URL = 'https://maps.googleapis.com/maps/api/directions/json';

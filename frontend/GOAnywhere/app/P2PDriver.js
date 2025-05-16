@@ -2,7 +2,7 @@ import axios from 'axios';
 import polyline from '@mapbox/polyline';
 import { isNear } from './P2PHelper';
 
-const GOOGLE_MAPS_API_KEY = 'AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g';
+const GOOGLE_MAPS_API_KEY = 'AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0';
 const LTA_ACCOUNT_KEY = 'CetOCVT4SmqDrAHkHLrf5g==';
 const GOOGLE_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 const GOOGLE_DIRECTIONS_URL = 'https://maps.googleapis.com/maps/api/directions/json';
@@ -14,9 +14,16 @@ async function getCoordinates(address) {
     const [lat, lng] = address.split(',').map(Number);
     return { lat, lng };
   }
-  const formatted = address.toLowerCase().includes('singapore')
-    ? address
-    : `${address}, Singapore`;
+
+  // const formatted = address.toLowerCase().includes('singapore')
+  //   ? address
+  //   : `${address}, Singapore`;
+
+  // Remove duplicate "Singapore" if already in address
+  let cleaned = address.replace(/,?\s*singapore\s*$/i, '');
+  cleaned = cleaned.replace(/^Blk\s*/i, 'Block '); // Normalize Blk to Block
+  const formatted = `${cleaned}, Singapore`;
+
   const { data } = await axios.get(
     `${GOOGLE_GEOCODE_URL}?address=${encodeURIComponent(formatted)}&key=${GOOGLE_MAPS_API_KEY}`
   );

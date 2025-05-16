@@ -19,12 +19,15 @@ class TravelTimePredictionModel:
     def __init__(self):
         self.model = None
         self.preprocessor = None
+        self.feature_names = None
+        self.model_version = datetime.datetime.now().strftime("v1_%Y-%m-%d")
+        self.trained_on = datetime.datetime.now()
         self.model_name = "travel_time_predictor"
         self.gcs_bucket = "goanywhere-traffic-data-history"
-        
-        # Define peak hours for peak_hour_flag
-        self.morning_peak_hours = list(range(7, 10))  # 7-9 AM
-        self.evening_peak_hours = list(range(17, 21))  # 5-8 PM
+
+        self.morning_peak_hours = list(range(7, 10))
+        self.evening_peak_hours = list(range(17, 21))
+
 
     def process_inputs(self, json_input):
         """
@@ -458,8 +461,11 @@ class TravelTimePredictionModel:
             'test_mae': mae,
             'test_r2': r2,
             'best_params': best_params,
-            'feature_importances': feature_importance_df
+            'feature_importances': feature_importance_df,
+            'model_version': self.model_version,
+            'trained_on': self.trained_on.strftime("%Y-%m-%d %H:%M:%S")
         }
+
 
 
     def save_model(self, 
@@ -472,9 +478,14 @@ class TravelTimePredictionModel:
         os.makedirs(trained_local_path, exist_ok=True)
         os.makedirs(serving_local_path, exist_ok=True)
 
+        # Generate versioned filename based on date
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        versioned_filename = f"model_{timestamp}.joblib"
+
+
         # Define paths
-        trained_model_path = os.path.join(trained_local_path, "model.joblib")
-        serving_model_path = os.path.join(serving_local_path, "model.joblib")
+        trained_model_path = os.path.join(trained_local_path, versioned_filename)
+        serving_model_path = os.path.join(serving_local_path, versioned_filename)
 
         # Save to both places
         joblib.dump(self.model, trained_model_path)
@@ -484,6 +495,7 @@ class TravelTimePredictionModel:
         print(f"   - {trained_model_path}")
         print(f"   - {serving_model_path}")
         return trained_model_path, serving_model_path
+
 
     def load_model(self, model_path):
         """Load a trained model from disk and restore feature names."""
@@ -504,14 +516,13 @@ class TravelTimePredictionModel:
         return self
 
     def predict(self, json_input):
-        """Predict travel time and return prediction + mock confidence interval."""
+        """Predict travel time and return prediction + mock confidence intervals."""
         if self.model is None:
             raise ValueError("Model has not been trained yet")
 
         X = self.process_inputs(json_input)
         preds = self.model.predict(X)
 
-        # Mock "confidence intervals" (±10%)
         intervals = []
         for pred in preds:
             low = round(pred * 0.9, 2)
@@ -521,5 +532,6 @@ class TravelTimePredictionModel:
         return {
             "predictions": preds.tolist(),
             "probabilities": intervals,
-            "classes": ["low_estimate", "point_estimate", "high_estimate"]
+            "classes": ["low_estimate", "point_estimate", "high_estimate"],
+            "model_version": self.model_version
         }

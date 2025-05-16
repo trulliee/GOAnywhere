@@ -21,7 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from './authService';
 import { API_URL } from './utils/apiConfig';
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g";
+const GOOGLE_MAPS_API_KEY = "AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0";
 
 // Get screen dimensions
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -434,7 +434,7 @@ export default function AdminHomeScreen() {
 
             <TouchableOpacity 
               style={styles.menuItem} 
-              onPress={() => navigateTo('homeScreen')}
+              onPress={() => navigateTo('HomeScreen')}
             >
               <View style={styles.menuItemRow}>
                 <MaterialIcons name="home" size={24} color="#aaa" style={styles.menuIcon} />

@@ -29,8 +29,8 @@ gcloud run deploy goanywhere-backend ^
   --image=trolley124/goanywhere-backend:latest ^
   --platform=managed ^
   --region=asia-southeast1 ^
+  --set-env-vars=USE_LOCAL_FIREBASE_CREDENTIALS=0,GCP_PROJECT_ID=goanywhere-c55c8,FIREBASE_SECRET_NAME=firebase-service-account-key,GMAPS_API_KEY=AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0,FORCE_DEPLOY_TIMESTAMP=%TIMESTAMP% ^
   --allow-unauthenticated
-  --set-env-vars=PORT=8080,GCP_PROJECT_ID=goanywhere-c55c8,REGION=asia-southeast1,GCP_REGION=asia-southeast1,USE_LOCAL_FIREBASE_CREDENTIALS=0,FIREBASE_SECRET_NAME=firebase-service-account-key,GMAPS_API_KEY=AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g
 
 IF %ERRORLEVEL% EQU 0 (
   echo ✅ Successfully deployed to Cloud Run!

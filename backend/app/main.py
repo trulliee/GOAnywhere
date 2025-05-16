@@ -10,6 +10,9 @@ print("FIREBASE_CREDENTIALS_PATH =", os.getenv("FIREBASE_CREDENTIALS_PATH"))
 # Import routers
 from app.authentication import account_settings
 from app.authentication import auth
+from app.admin import admin_user
+from app.admin import admin_reports
+from app.admin.admin_notifications import router as admin_notifications_router
 from app.database.firestore_utils import get_firebase_credentials
 from app.routes.cloud_jobs import router as cloud_jobs_router
 from app.routes.retrain_models import router as retrain_router
@@ -41,6 +44,9 @@ app.include_router(notifications_router, tags=["Notifications"])
 app.include_router(crowd_router, tags=["Crowdsourced"])
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(account_settings.router)
+app.include_router(admin_user.router)
+app.include_router(admin_reports.router)
+app.include_router(admin_notifications_router)
 app.include_router(cloud_jobs_router, tags=["Cloud Jobs"])
 app.include_router(retrain_router, tags=["Retrain"])
 app.include_router(traffic_incidents.router)

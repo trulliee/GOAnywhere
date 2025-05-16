@@ -56,7 +56,7 @@ export default function P2PNavigation() {
       setRegion(r => ({ ...r, latitude: loc.coords.latitude, longitude: loc.coords.longitude }));
       try {
         const res = await fetch(
-          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${loc.coords.latitude},${loc.coords.longitude}&key=AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g`
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${loc.coords.latitude},${loc.coords.longitude}&key=AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0`
         );
         const json = await res.json();
         const addr = json.results?.[0]?.formatted_address;

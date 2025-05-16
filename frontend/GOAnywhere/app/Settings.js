@@ -20,7 +20,6 @@ import AuthService from './authService';
 export default function Settings() {
   const router = useRouter();
   const [pushNotifications, setPushNotifications] = useState(true);
-  const [locationSharing, setLocationSharing] = useState(true);
   const [forecastFrequency, setForecastFrequency] = useState('Daily');
   const [showFrequencyModal, setShowFrequencyModal] = useState(false);
   const [user, setUser] = useState(null);
@@ -35,7 +34,6 @@ export default function Settings() {
         console.error('Error loading user data:', error);
       }
     }
-    
     loadUserData();
   }, []);
 
@@ -48,9 +46,7 @@ export default function Settings() {
   };
 
   const openWebLink = async (url) => {
-    // Check if the link can be opened
     const canOpen = await Linking.canOpenURL(url);
-    
     if (canOpen) {
       await Linking.openURL(url);
     } else {
@@ -59,12 +55,7 @@ export default function Settings() {
   };
 
   const togglePushNotifications = () => {
-    setPushNotifications(previousState => !previousState);
-    // need to change for backend stuff!!
-  };
-
-  const toggleLocationSharing = () => {
-    setLocationSharing(previousState => !previousState);
+    setPushNotifications(prev => !prev);
     // need to change for backend stuff!!
   };
   
@@ -74,30 +65,28 @@ export default function Settings() {
     // Add backend logic here
   };
 
-  const SettingsItem = ({ title, onPress, hasToggle, toggleValue, onToggleChange, rightContent }) => {
-    return (
-      <TouchableOpacity 
-        style={styles.settingsItem} 
-        onPress={onPress}
-        disabled={hasToggle}
-      >
-        <Text style={styles.settingsText}>{title}</Text>
-        {hasToggle ? (
-          <Switch
-            trackColor={{ false: "#767577", true: "#4CD964" }}
-            thumbColor="#f4f3f4"
-            ios_backgroundColor="#3e3e3e"
-            onValueChange={onToggleChange}
-            value={toggleValue}
-          />
-        ) : rightContent ? (
-          rightContent
-        ) : (
-          <Ionicons name="chevron-forward" size={20} color="#888" />
-        )}
-      </TouchableOpacity>
-    );
-  };
+  const SettingsItem = ({ title, onPress, hasToggle, toggleValue, onToggleChange, rightContent }) => (
+    <TouchableOpacity 
+      style={styles.settingsItem} 
+      onPress={onPress}
+      disabled={hasToggle}
+    >
+      <Text style={styles.settingsText}>{title}</Text>
+      {hasToggle ? (
+        <Switch
+          trackColor={{ false: "#767577", true: "#4CD964" }}
+          thumbColor="#f4f3f4"
+          ios_backgroundColor="#3e3e3e"
+          onValueChange={onToggleChange}
+          value={toggleValue}
+        />
+      ) : rightContent ? (
+        rightContent
+      ) : (
+        <Ionicons name="chevron-forward" size={20} color="#888" />
+      )}
+    </TouchableOpacity>
+  );
 
   const SectionHeader = ({ title }) => (
     <View style={styles.sectionHeader}>
@@ -166,7 +155,7 @@ export default function Settings() {
         
         <SettingsItem 
           title="Push notifications" 
-          hasToggle={true}
+          hasToggle
           toggleValue={pushNotifications}
           onToggleChange={togglePushNotifications}
         />
@@ -174,10 +163,10 @@ export default function Settings() {
         <Divider />
         
         {/* Traffic Updates Section */}
-        <SectionHeader title="Traffic Updates" />
+        <SectionHeader title="General Updates" />
         
         <SettingsItem 
-          title="Forecast Updates" 
+          title="Weather Forecast Updates" 
           onPress={() => setShowFrequencyModal(true)}
           rightContent={
             <View style={styles.valueContainer}>
@@ -185,13 +174,6 @@ export default function Settings() {
               <Ionicons name="chevron-forward" size={20} color="#888" />
             </View>
           } 
-        />
-        
-        <SettingsItem 
-          title="Location Sharing" 
-          hasToggle={true}
-          toggleValue={locationSharing}
-          onToggleChange={toggleLocationSharing}
         />
         
         <Divider />

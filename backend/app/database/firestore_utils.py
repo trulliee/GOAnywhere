@@ -2774,19 +2774,7 @@ def store_events_data(events):
         print(f"Error storing events data: {e}")
 
 async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered", created_at=None, last_login=None, settings=None):
-    """
-    Stores user data in Firestore
     
-    Args:
-        user_id (str): The Firebase UID of the user
-        name (str, optional): The user's display name
-        email (str, optional): The user's email
-        phone_number (str, optional): The user's phone number
-        user_type (str): Either "registered" or "anonymous"
-    
-    Returns:
-        bool: True if successful
-    """
     try:
         # Create a reference to the users collection
         users_ref = db.collection('users')
@@ -2822,19 +2810,11 @@ async def store_user_data(user_id, name=None, email=None, phone_number=None, use
 async def update_user_last_login(user_id):
     """
     Updates the last login timestamp for a user
-    
-    Args:
-        user_id (str): The Firebase UID of the user
-    
-    Returns:
-        bool: True if successful
     """
     try:
-        # Update the last_login field
         db.collection('users').document(user_id).update({
             'last_login': firestore.SERVER_TIMESTAMP
         })
-        
         return True
     except Exception as e:
         print(f"Error updating user last login: {e}")

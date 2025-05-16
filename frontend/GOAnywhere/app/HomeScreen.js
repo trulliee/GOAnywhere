@@ -31,7 +31,8 @@ import { MaterialIcons, MaterialCommunityIcons, Ionicons, FontAwesome, FontAweso
 
 import ENV from './env';
 import { API_URL } from './utils/apiConfig';
-
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0";
@@ -192,7 +193,7 @@ export default function HomeScreen() {
         body: JSON.stringify(reportData),   
       });
 
-      Alert.alert("Report Submitted", `You reported: ${reportType} at coordinates (${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})`);
+      Alert.alert("Report Submitted", `You reported: ${reportType}`);
     } catch (error) {
       console.error("Error submitting report: ", error);
       Alert.alert("Submission Failed", "Please try again.");
@@ -420,6 +421,23 @@ export default function HomeScreen() {
     
     loadUser();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const refreshUserName = async () => {
+        try {
+          const userData = await AuthService.getCurrentUser();
+          if (userData && userData.name) {
+            setUserName(userData.name.toUpperCase());
+          }
+        } catch (error) {
+          console.error("Error refreshing user name on focus:", error);
+        }
+      };
+
+      refreshUserName();
+    }, [])
+  );
 
   const toggleTraffic = () => {
     setTrafficExpanded(!trafficExpanded);

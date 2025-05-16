@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { 
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
+import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import AuthService from './authService';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { API_URL } from './utils/apiConfig';
+
 
 //update with actual logo stuff
 const TrafficLightIcon = () => (
@@ -27,7 +29,7 @@ const TrafficLightIcon = () => (
 );
 
 export default function LoginUser() {
-  const [emailOrPhone, setEmailOrPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -38,43 +40,37 @@ export default function LoginUser() {
       alert('Please fill in all fields');
       return;
     }
-    
-    // Test accounts for quick login
+
+    // Quick test logins
     if (emailOrPhone === 'ben@gmail.com' && password === '1234') {
-      console.log('Logged in with regular user test account');
-      // Navigate to user home screen
-      router.replace('./HomeScreen');
+      router.replace('./homeScreen');
       return;
     }
-    
-    // Admin test account
     if (emailOrPhone === 'admin@gmail.com' && password === '1234') {
-      console.log('Logged in with admin test account');
-      // Navigate to admin home screen
       router.replace('./AdminHomeScreen');
       return;
     }
-    
+
     setLoading(true);
     try {
-      const userData = await AuthService.login(emailOrPhone, password);
+      const userData = await AuthService.login(email, password);
       console.log('Logged in:', userData);
-      
-      // Route based on user type from server
+      console.log('Logging in as:', emailOrPhone, "with password:", password);
+
       if (userData.user_type === 'admin') {
         router.replace('./AdminHomeScreen');
-      }
-      else {
-        router.replace('./HomeScreen');
+      } else {
+        router.replace('./homeScreen');
       }
 
     } catch (error) {
       console.error('Login failed:', error.message);
-      alert('Login failed. Please check your credentials and try again.');
+      alert('Login failed: ${error.message}');
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -95,16 +91,15 @@ export default function LoginUser() {
           
           {/* Login Form */}
           <View style={styles.formContainer}>
-          <TextInput
+            <TextInput
               style={styles.input}
               placeholder="Email / Phone Number"
-              value={emailOrPhone}
-              onChangeText={setEmailOrPhone}
+              value={email}
+              onChangeText={setEmail}
               autoCapitalize="none"
               editable={!loading}
               placeholderTextColor="#555"
             />
-
             
             <TextInput
               style={styles.input}
@@ -124,7 +119,20 @@ export default function LoginUser() {
           >
             <Text style={styles.signupText}>Don't have an account? Sign up</Text>
           </TouchableOpacity>
-          
+
+          <View style={{ height: 10 }} />
+
+          <Text style={[styles.signupText, { textAlign: 'center', marginBottom: 5 }]}>
+            — OR —
+          </Text>
+
+          <TouchableOpacity 
+            style={styles.signupLink}
+            onPress={() => router.push('./AdminSignUp')}
+          >
+            <Text style={styles.signupText}>System Admin? Register here</Text>
+          </TouchableOpacity>
+
           {/* Quick login buttons - Only visible in development */}
           <View style={styles.devLoginContainer}>
             <TouchableOpacity 
@@ -174,128 +182,39 @@ export default function LoginUser() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
-  },
-  keyboardAvoidView: {
-    flex: 1,
-  },
-  topCurve: {
-    height: 150,
-    backgroundColor: '#9de3d2', 
-    borderBottomRightRadius: 150,
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '50%',
-  },
-  contentContainer: {
-    flex: 1,
-    padding: 20,
     justifyContent: 'center',
+    padding: 20,
   },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 50,
-  },
-  trafficLightContainer: {
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  trafficLightBody: {
-    width: 40,
-    height: 70,
-    backgroundColor: '#9de3d2',
-    borderRadius: 10,
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
-  },
-  trafficLightLight: {
-    width: 15,
-    height: 15,
-    backgroundColor: 'white',
-    borderRadius: 10,
-  },
-  trafficLightBase: {
-    width: 10,
-    height: 20,
-    backgroundColor: '#9de3d2',
-  },
-  logoText: {
+  title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#9de3d2',
-    marginTop: 10,
-  },
-  tagline: {
-    fontSize: 12,
-    color: '#9de3d2',
-    marginTop: 5,
-  },
-  formContainer: {
-    width: '100%',
     marginBottom: 20,
+    textAlign: 'center',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#ddd',
     padding: 15,
-    borderRadius: 30,
+    borderRadius: 5,
     marginBottom: 15,
-    fontSize: 16,
   },
-  signupLink: {
-    alignSelf: 'center',
-  },
-  signupText: {
-    color: '#3498db',
-    fontSize: 14,
-  },
-  bottomSection: {
-    height: 180,
-    backgroundColor: '#9de3d2',
-    borderTopLeftRadius: 150,
-    position: 'relative',
-    justifyContent: 'center',
-    paddingLeft: 50,
-  },
-  signInContainer: {
-    flexDirection: 'row',
+  button: {
+    backgroundColor: '#3498db',
+    padding: 15,
+    borderRadius: 5,
     alignItems: 'center',
-  },
-  signInText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginRight: 15,
-  },
-  arrowButton: {
-    backgroundColor: 'black',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: 15,
   },
   buttonDisabled: {
-    backgroundColor: '#888',
+    backgroundColor: '#a0cff1',
   },
-  // Development quick login buttons
-  devLoginContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
-  devLoginButton: {
-    backgroundColor: '#f0f0f0',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginHorizontal: 5,
-  },
-  adminLoginButton: {
-    backgroundColor: '#ffe0e0',
-  },
-  devLoginText: {
-    fontSize: 12,
-    color: '#666',
-  },
+  signupText: {
+    textAlign: 'center',
+    color: '#3498db',
+    textDecorationLine: 'underline',
+  }
 });

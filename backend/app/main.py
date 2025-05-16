@@ -3,9 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
-
 
 print("FIREBASE_CREDENTIALS_PATH =", os.getenv("FIREBASE_CREDENTIALS_PATH"))
 
@@ -18,6 +16,7 @@ from app.routes.retrain_models import router as retrain_router
 from app.routes.prediction import router as prediction_router
 from app.routes.notifications import router as notifications_router # Import the notifications router
 from app.routes.crowdsourced import router as crowd_router
+from app.routes import traffic_incidents 
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -44,6 +43,7 @@ app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(account_settings.router)
 app.include_router(cloud_jobs_router, tags=["Cloud Jobs"])
 app.include_router(retrain_router, tags=["Retrain"])
+app.include_router(traffic_incidents.router)
 
 
 if __name__ == "__main__":

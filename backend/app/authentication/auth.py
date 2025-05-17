@@ -3,9 +3,9 @@ from fastapi import APIRouter, HTTPException, Depends, Header, status, Body, Req
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, EmailStr, Field
-from datetime import datetime
+import datetime
 from .auth_services import AuthService
-from app.database.firestore_utils import store_user_data, update_user_last_login, db
+from app.database.firestore_utils import store_user_data, update_user_last_login, get_firestore_client
 from firebase_admin import auth
 import httpx
 import requests
@@ -108,7 +108,7 @@ async def sign_up(user_data: SignUpRequest):
             display_name=user_data.name
         )
         
-        now = datetime.now()
+        now = datetime.datetime.now()
         
         user_type = "admin" if not user_data.phone_number else "registered"
 

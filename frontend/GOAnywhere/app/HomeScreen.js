@@ -34,7 +34,6 @@ import { API_URL } from './utils/apiConfig';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 
-
 const GOOGLE_MAPS_API_KEY = "AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0";
 
 // Get screen dimensions
@@ -782,10 +781,9 @@ export default function HomeScreen() {
               style={styles.submenuItem} 
               onPress={() => navigateTo('TrafficPrediction')}
             >
-              <Text style={styles.submenuText}>Forecast</Text>
+              <Text style={styles.submenuText}>Predictions</Text>
             </TouchableOpacity>
           </Collapsible>
-
 
           {/* Navigation Section */}
           <TouchableOpacity 

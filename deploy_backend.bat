@@ -23,11 +23,6 @@ IF %ERRORLEVEL% NEQ 0 (
   exit /b %ERRORLEVEL%
 )
 
-:: Sanitize time (remove colons and periods)
-set CLEAN_TIME=%TIME::=%
-set CLEAN_TIME=%CLEAN_TIME:.=%
-set FORCE_DEPLOY_TIMESTAMP=%DATE%_%CLEAN_TIME%
-
 echo.
 echo Deploying to Cloud Run...
 gcloud run deploy goanywhere-backend ^

@@ -1,14 +1,28 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
+import logging
 import joblib
 import os
 import pandas as pd
 from travel_time_prediction import TravelTimePredictionModel
 
 app = FastAPI()
-model = TravelTimePredictionModel().load_model("model.joblib")
 
+# Find latest model by timestamp in filename
+def find_latest_model(path: str) -> str:
+    files = [f for f in os.listdir(path) if f.startswith("model_") and f.endswith(".joblib")]
+    if not files:
+        raise FileNotFoundError("No versioned model files found in model_serving directory")
+    files.sort(reverse=True)  # Newest first
+    return os.path.join(path, files[0])
+
+# Load the latest versioned model
+model_path = os.path.join(os.path.dirname(__file__), "model.joblib")
+model = TravelTimePredictionModel().load_model(model_path)
+print("✅ Travel Time model loaded:", model_path)
+
+# Pydantic input schema
 class Instance(BaseModel):
     Expressway: str
     Direction: str
@@ -38,67 +52,28 @@ class Instance(BaseModel):
 class PredictionRequest(BaseModel):
     instances: List[Instance]
 
+# Dummy class labels for travel time range
+def get_dummy_classes():
+    return ["low_estimate", "point_estimate", "high_estimate"]
+
+# --- Local testing route ---
 @app.post("/predict")
 async def predict(request: PredictionRequest):
     try:
-        input_dicts = [instance.dict() for instance in request.instances]
-        X = model.process_inputs(input_dicts)
-        predictions = model.model.predict(X).tolist()
-        return {"predictions": predictions}
-    except Exception as e:
-        return {"error": str(e)}
+        input_data = [inst.dict() for inst in request.instances]
+        result = model.predict(input_data)
 
-@app.post("/predict_proba")
-async def predict_proba(request: PredictionRequest):
-    try:
-        input_dicts = [instance.dict() for instance in request.instances]
-        X = model.process_inputs(input_dicts)
-        probabilities = model.model.predict_proba(X).tolist()
-        return {"probabilities": probabilities}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/v1/endpoints/{endpoint_id}:predict")
-async def vertex_predict(endpoint_id: str, request: PredictionRequest):
-    try:
-        input_dicts = [instance.dict() for instance in request.instances]
-        X = model.process_inputs(input_dicts)
-        predictions = model.model.predict(X).tolist()
-        probabilities = model.model.predict_proba(X).tolist()
         return {
-            "predictions": predictions,
-            "probabilities": probabilities
+            "predictions": [
+                {
+                    "prediction": result["predictions"][i],
+                    "probabilities": result["probabilities"][i],
+                    "classes": result["classes"]
+                }
+                for i in range(len(result["predictions"]))
+            ]
         }
-    except Exception as e:
-        return {"error": str(e)}
 
-@app.post("/v1/endpoints/{endpoint_id}/deployedModels/{model_id}:predict")
-async def vertex_predict(endpoint_id: str, model_id: str, request: PredictionRequest):
-    try:
-        input_dicts = [instance.dict() for instance in request.instances]
-        X = model.process_inputs(input_dicts)
-        predictions = model.model.predict(X).tolist()
-        if hasattr(model.model, "predict_proba"):
-            probabilities = model.model.predict_proba(X).tolist()
-            return {
-                "predictions": predictions,
-                "probabilities": probabilities
-            }
-        else:
-            return {"predictions": predictions}
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/v1/endpoints/{endpoint_id}/deployedModels/{model_id}:predict_proba")
-async def vertex_predict_proba(endpoint_id: str, model_id: str, request: PredictionRequest):
-    try:
-        input_dicts = [instance.dict() for instance in request.instances]
-        X = model.process_inputs(input_dicts)
-        probabilities = model.model.predict_proba(X).tolist()
-        return {"probabilities": probabilities}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/v1/endpoints/{endpoint_id}/deployedModels/{model_id}")
-def health_check(endpoint_id: str, model_id: str):
-    return {"status": "healthy"}

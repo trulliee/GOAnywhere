@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from firebase_admin import auth
 from app.database.firestore_utils import db
-from datetime import datetime
+import datetime
 
 router = APIRouter(
     prefix="/account",
@@ -62,7 +62,7 @@ async def update_profile(
             updates["phone_number"] = update_data.phone_number
         if update_data.settings:
             updates["settings"] = update_data.settings
-        updates["last_updated"] = datetime.utcnow().isoformat()
+        updates["last_updated"] = datetime.datetime.utcnow().isoformat()
 
         user_ref.update(updates)
 

@@ -19,7 +19,6 @@ from app.routes.retrain_models import router as retrain_router
 from app.routes.prediction import router as prediction_router
 from app.routes.notifications import router as notifications_router # Import the notifications router
 from app.routes.crowdsourced import router as crowd_router
-from app.routes import traffic_incidents 
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -49,8 +48,6 @@ app.include_router(admin_reports.router)
 app.include_router(admin_notifications_router)
 app.include_router(cloud_jobs_router, tags=["Cloud Jobs"])
 app.include_router(retrain_router, tags=["Retrain"])
-app.include_router(traffic_incidents.router)
-
 
 if __name__ == "__main__":
     import uvicorn

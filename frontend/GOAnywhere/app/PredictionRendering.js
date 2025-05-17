@@ -21,9 +21,9 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useNavigation } from '@react-navigation/native';
 
 // Import styles
-import styles from './TrafficPredictionStyling';
+import styles from './PredictionStyling';
 
-const TrafficPredictionRendering = ({
+const PredictionRendering = ({
   startLocation,
   setStartLocation,
   endLocation,
@@ -1024,4 +1024,4 @@ const TrafficPredictionRendering = ({
   );
 }
 
-export default TrafficPredictionRendering;
+export default PredictionRendering;

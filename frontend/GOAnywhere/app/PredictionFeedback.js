@@ -10,7 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import axios from 'axios';
-import styles from './TrafficPredictionStyling';
+import styles from './PredictionStyling';
 
 const API_BASE_URL = 'https://goanywhere-backend-541900038032.asia-southeast1.run.app';
 
@@ -19,18 +19,16 @@ const TrafficPredictionFeedback = () => {
   const route = useRoute();
   const predictionType = route.params?.predictionType ?? '';
 
-  const [userId, setUserId] = useState('');
   const [rating, setRating] = useState(null);
   const [comment, setComment] = useState('');
 
   const submitFeedback = async () => {
-    if (!userId || !rating) {
+    if (!rating) {
       Alert.alert('Missing Fields', 'Please provide both User ID and Rating.');
       return;
     }
 
     const payload = {
-      user_id: userId,
       prediction_type: predictionType,
       rating: rating,
       comment: comment || '',

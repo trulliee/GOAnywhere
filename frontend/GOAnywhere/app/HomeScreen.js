@@ -760,7 +760,7 @@ export default function HomeScreen() {
           <TouchableOpacity style={styles.menuItem} onPress={toggleTraffic}>
             <View style={styles.menuItemRow}>
               <MaterialIcons name="traffic" size={24} color="#fff" style={styles.menuIcon} />
-              <Text style={styles.menuText}>Traffic</Text>
+              <Text style={styles.menuText}>Predictions</Text>
               <MaterialIcons 
                 name={trafficExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"} 
                 size={24} 
@@ -773,15 +773,15 @@ export default function HomeScreen() {
           <Collapsible collapsed={!trafficExpanded}>
             <TouchableOpacity 
               style={styles.submenuItem} 
-              onPress={() => navigateTo('TrafficIncidentsNav')}
+              onPress={() => navigateTo('PredictCongestion')}
             >
-              <Text style={styles.submenuText}>Incidents</Text>
+              <Text style={styles.submenuText}>Traffic Congestions</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.submenuItem} 
-              onPress={() => navigateTo('TrafficPrediction')}
+              onPress={() => navigateTo('PredictTravel')}
             >
-              <Text style={styles.submenuText}>Predictions</Text>
+              <Text style={styles.submenuText}>Travel Times</Text>
             </TouchableOpacity>
           </Collapsible>
 
@@ -815,28 +815,6 @@ export default function HomeScreen() {
             <View style={styles.menuItemRow}>
               <MaterialIcons name="settings" size={24} color="#fff" style={styles.menuIcon} />
               <Text style={styles.menuText}>Settings</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* User Management Section (Admin only) */}
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => navigateTo('UserManagement')}
-          >
-            <View style={styles.menuItemRow}>
-              <MaterialIcons name="people" size={24} color="#fff" style={styles.menuIcon} />
-              <Text style={styles.menuText}>User Management (admin)</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Admin Notifications Section (Admin only)*/}
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => navigateTo('AdminNotification')}
-          >
-            <View style={styles.menuItemRow}>
-              <MaterialIcons name="admin-panel-settings" size={24} color="#fff" style={styles.menuIcon} />
-              <Text style={styles.menuText}>Admin Notifications (admin)</Text>
             </View>
           </TouchableOpacity>
 

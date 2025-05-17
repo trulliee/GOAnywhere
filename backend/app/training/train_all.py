@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
-print("🧪 USE_LOCAL_FIREBASE_CREDENTIALS =", os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS"))
+print("USE_LOCAL_FIREBASE_CREDENTIALS =", os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS"))
 
 
 # Import model classes with correct file names
@@ -109,9 +109,9 @@ def train_travel_time_model(data_loader):
     results = model.train(X, y)
 
     # Save model
-    versioned_path, latest_path = model.save_model()
+    model_path = model.save_model()
 
-    logger.info(f"Travel Time Model saved: {versioned_path} → {latest_path}")
+    logger.info(f"Travel Time Model saved to: {model_path}")
     logger.info(f"Model metrics: RMSE: {results['test_rmse']:.2f}, MAE: {results['test_mae']:.2f}, R²: {results['test_r2']:.2f}")
 
     return True
@@ -180,9 +180,9 @@ def train_congestion_model(data_loader):
     results = model.train(X, y)
 
     # Save model
-    versioned_path, latest_path = model.save_model()
+    model_path = model.save_model()
 
-    logger.info(f"Traffic Congestion Model saved: {versioned_path} → {latest_path}")
+    logger.info(f"Traffic Congestion Model saved to: {model_path}")
     logger.info(f"Model metrics: Test Accuracy: {results['test_accuracy']:.4f}, Test F1 Score: {results['test_f1_score']:.4f}")
 
     return True

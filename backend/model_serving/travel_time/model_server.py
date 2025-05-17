@@ -18,14 +18,9 @@ def find_latest_model(path: str) -> str:
     return os.path.join(path, files[0])
 
 # Load the latest versioned model
-serving_dir = os.path.dirname(__file__)
-latest_model_path = find_latest_model(serving_dir)
-model = TravelTimePredictionModel().load_model(latest_model_path)
-print("✅ Travel Time model loaded:", latest_model_path)
-
-# Optional: Inject version into environment for prediction response
-os.environ["MODEL_VERSION"] = os.path.basename(latest_model_path).replace(".joblib", "")
-
+model_path = os.path.join(os.path.dirname(__file__), "model.joblib")
+model = TravelTimePredictionModel().load_model(model_path)
+print("✅ Travel Time model loaded:", model_path)
 
 # Pydantic input schema
 class Instance(BaseModel):
@@ -68,10 +63,7 @@ async def predict(request: PredictionRequest):
         input_data = [inst.dict() for inst in request.instances]
         result = model.predict(input_data)
 
-        model_version = os.getenv("MODEL_VERSION", "v1")
-
         return {
-            "model_version": model_version,
             "predictions": [
                 {
                     "prediction": result["predictions"][i],

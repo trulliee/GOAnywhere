@@ -7,18 +7,18 @@ import datetime
 
 def get_firebase_credentials():
     use_local = os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS")
-    print(f"🧪 USE_LOCAL_FIREBASE_CREDENTIALS = {use_local}")
+    print(f"USE_LOCAL_FIREBASE_CREDENTIALS = {use_local}")
 
     if use_local == "1":
         creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-        print(f"🔴 Loading Firebase credentials from local path: {creds_path}")
+        print(f"Loading Firebase credentials from local path: {creds_path}")
         if not creds_path:
             raise ValueError("FIREBASE_CREDENTIALS_PATH environment variable is not set")
         if not os.path.exists(creds_path):
             raise FileNotFoundError(f"Firebase credentials file not found: {creds_path}")
         return credentials.Certificate(creds_path)
     else:
-        print("✅ Loading Firebase credentials from Secret Manager")
+        print("Loading Firebase credentials from Secret Manager")
         client = secretmanager.SecretManagerServiceClient()
         project_id = os.getenv("GCP_PROJECT_ID")
         secret_name = os.getenv("FIREBASE_SECRET_NAME")
@@ -35,6 +35,8 @@ def get_firestore_client():
         cred = get_firebase_credentials()
         initialize_app(cred)
     return firestore.client()
+
+db = get_firestore_client()
 
 def store_bus_arrival_data(bus_stop_code, services, store_history=True):
     """
@@ -2587,64 +2589,6 @@ def get_traffic_flow_links(quarter, limit=100, skip=0):
     except Exception as e:
         print(f"Error retrieving traffic flow links: {e}")
         return {"error": str(e)}
-
-def store_traffic_conditions(traffic_conditions):
-    """Stores traffic conditions during peak hours data from data.gov.sg in Firestore."""
-    db = get_firestore_client()
-    try:
-        traffic_conditions_ref = db.collection("peak_traffic_conditions")
-        
-        # Process and store each record
-        for entry in traffic_conditions:
-            if isinstance(entry, dict):
-                # Create a unique document ID using date or other identifier
-                doc_id = str(entry.get("year", "")) + "_" + str(entry.get("month", ""))
-                
-                # Store the data
-                traffic_conditions_data = {
-                    "year": entry.get("year", ""),
-                    "month": entry.get("month", ""),
-                    "daily_traffic_volume": entry.get("daily_traffic_volume", 0),
-                    "avg_speed": entry.get("avg_speed", 0),
-                    "congestion_free_roads_percentage": entry.get("congestion_free_roads_percentage", 0),
-                    "Timestamp": firestore.SERVER_TIMESTAMP
-                }
-                
-                traffic_conditions_ref.document(doc_id).set(traffic_conditions_data)
-        
-        print("Peak hour traffic conditions successfully stored in Firestore.")
-    except Exception as e:
-        print(f"Error storing peak hour traffic conditions: {e}")
-
-def store_weather_forecast(forecast_data):
-    """Stores 24-hour weather forecast data from data.gov.sg in Firestore."""
-    db = get_firestore_client()
-    try:
-        weather_forecast_ref = db.collection("weather_forecast_24hr")
-        
-        # Create a document ID using the forecast timestamp or date
-        timestamp = forecast_data.get("timestamp", "")
-        doc_id = timestamp.replace(":", "-").replace(".", "-") if timestamp else str(firestore.SERVER_TIMESTAMP)
-        
-        # Include all relevant fields from the forecast
-        forecast_to_store = {
-            "timestamp": timestamp,
-            "update_timestamp": forecast_data.get("update_timestamp", ""),
-            "valid_period": forecast_data.get("valid_period", {}),
-            "general_forecast": forecast_data.get("general_forecast", ""),
-            "temperature": forecast_data.get("temperature", {}),
-            "relative_humidity": forecast_data.get("relative_humidity", {}),
-            "wind": forecast_data.get("wind", {}),
-            "regions": forecast_data.get("regions", {}),
-            "stored_at": firestore.SERVER_TIMESTAMP
-        }
-        
-        # Store the data
-        weather_forecast_ref.document(doc_id).set(forecast_to_store)
-        
-        print("24-hour weather forecast successfully stored in Firestore.")
-    except Exception as e:
-        print(f"Error storing 24-hour weather forecast: {e}")
         
 def store_weather_data(weather_info):
     """Stores weather data in Firestore."""

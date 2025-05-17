@@ -6,7 +6,6 @@ from app.services.lta_data import (
     get_approved_road_works, get_traffic_flow, get_bus_arrival, get_bus_services, get_bus_routes, get_train_service_alerts,
     get_station_crowd_density, get_station_crowd_forecast
 )
-from app.services.data_gov import get_peak_traffic_conditions, get_24hr_weather_forecast
 from app.services.owm_data import fetch_weather_data
 from app.scrapers.events_scraper import scrape_visit_singapore_events
 
@@ -30,13 +29,6 @@ def trigger_lta_job():
     get_station_crowd_forecast()
     return {"status": "success"}
 
-@router.post("/cloud_job/datagov")
-def trigger_datagov_job():
-    get_peak_traffic_conditions()
-    get_24hr_weather_forecast()
-    
-    return {"status": "success"}
-
 @router.post("/cloud_job/weather")
 def trigger_weather_job():
     return fetch_weather_data()
@@ -48,7 +40,6 @@ def trigger_events_job():
 @router.post("/cloud_job/all")
 def trigger_all_jobs():
     trigger_lta_job()
-    trigger_datagov_job()
     trigger_weather_job()
     trigger_events_job()
     return {"status": "all jobs triggered"}

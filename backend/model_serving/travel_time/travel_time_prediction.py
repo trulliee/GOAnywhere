@@ -466,8 +466,6 @@ class TravelTimePredictionModel:
             'trained_on': self.trained_on.strftime("%Y-%m-%d %H:%M:%S")
         }
 
-
-
     def save_model(self, 
                trained_local_path="models/trained/travel_time", 
                serving_local_path="model_serving/travel_time"):
@@ -478,14 +476,9 @@ class TravelTimePredictionModel:
         os.makedirs(trained_local_path, exist_ok=True)
         os.makedirs(serving_local_path, exist_ok=True)
 
-        # Generate versioned filename based on date
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        versioned_filename = f"model_{timestamp}.joblib"
-
-
         # Define paths
-        trained_model_path = os.path.join(trained_local_path, versioned_filename)
-        serving_model_path = os.path.join(serving_local_path, versioned_filename)
+        trained_model_path = os.path.join(trained_local_path, "model.joblib")
+        serving_model_path = os.path.join(serving_local_path, "model.joblib")
 
         # Save to both places
         joblib.dump(self.model, trained_model_path)

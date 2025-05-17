@@ -781,11 +781,7 @@ export default function HomeScreen() {
               style={styles.submenuItem} 
               onPress={() => navigateTo('TrafficPrediction')}
             >
-<<<<<<< HEAD:frontend/GOAnywhere/app/homeScreen.js
               <Text style={styles.submenuText}>Predictions</Text>
-=======
-              <Text style={styles.submenuText}>Forecast</Text>
->>>>>>> origin/main:frontend/GOAnywhere/app/HomeScreen.js
             </TouchableOpacity>
           </Collapsible>
 

@@ -65,7 +65,7 @@ def add_user_notification(user_id, title, message, type="info"):
         "title": title,
         "message": message,
         "type": type,
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.datetime.utcnow()
     })
 
 # Dependency to get current user
@@ -281,7 +281,7 @@ async def update_profile(update_data: UpdateProfileRequest):
         add_user_notification(update_data.user_id, "Phone Number Updated", "Your phone number has been updated.")
 
     if updates:
-        updates["last_updated"] = datetime.utcnow()
+        updates["last_updated"] = datetime.datetime.utcnow()
         user_ref.update(updates)
         return {
             "message": "Profile updated successfully",

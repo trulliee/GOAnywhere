@@ -125,7 +125,7 @@ export default function EditProfile() {
             try {
               await AuthService.logout();
               // Navigate to the login screen
-              router.replace("./loginUser");
+              router.replace("./");
             } catch (error) {
               console.error('Error logging out:', error);
               Alert.alert("Error", "Failed to logout. Please try again.");

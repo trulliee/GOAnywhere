@@ -19,7 +19,6 @@ import AuthService from './authService';
 
 export default function Settings() {
   const router = useRouter();
-  const [pushNotifications, setPushNotifications] = useState(true);
   const [forecastFrequency, setForecastFrequency] = useState('Daily');
   const [showFrequencyModal, setShowFrequencyModal] = useState(false);
   const [user, setUser] = useState(null);
@@ -54,10 +53,6 @@ export default function Settings() {
     }
   };
 
-  const togglePushNotifications = () => {
-    setPushNotifications(prev => !prev);
-    // need to change for backend stuff!!
-  };
   
   const handleFrequencySelect = (frequency) => {
     setForecastFrequency(frequency);
@@ -152,13 +147,7 @@ export default function Settings() {
           title="Edit profile" 
           onPress={() => navigateTo('EditProfile')} 
         />
-        
-        <SettingsItem 
-          title="Push notifications" 
-          hasToggle
-          toggleValue={pushNotifications}
-          onToggleChange={togglePushNotifications}
-        />
+      
         
         <Divider />
         

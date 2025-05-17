@@ -73,7 +73,7 @@ export default function SignUp() {
       const userData = await AuthService.signUp(email, password, name, phoneNumber.trim());
       console.log('Signup successful:', userData);
       alert('Account created successfully!');
-      router.replace('./loginUser');  // Navigate to login page after successful signup
+      router.replace('./');  // Navigate to login page after successful signup
     } catch (error) {
       console.error('Signup error:', error.message);
       alert('Signup failed. Please try again.');
@@ -153,7 +153,7 @@ export default function SignUp() {
           {/* Login Link */}
           <TouchableOpacity 
             style={styles.loginLink}
-            onPress={() => router.replace('./loginUser')}
+            onPress={() => router.replace('./')}
           >
             <Text style={styles.loginText}>Already have an account? Login</Text>
           </TouchableOpacity>
@@ -254,10 +254,12 @@ const styles = StyleSheet.create({
   },
   loginLink: {
     alignSelf: 'center',
+    zIndex: 1,
   },
   loginText: {
     color: '#3498db',
     fontSize: 14,
+    zIndex: 1,
   },
   bottomSection: {
     height: 180,

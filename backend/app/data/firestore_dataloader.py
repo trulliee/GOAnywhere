@@ -2,11 +2,12 @@ import pandas as pd
 import numpy as np
 import firebase_admin
 import os
-from datetime import datetime, timedelta
+import datetime
 from firebase_admin import credentials, firestore
 from google.cloud import storage
 from google.oauth2 import service_account
 from dotenv import load_dotenv
+from app.database.firestore_utils import get_firestore_client
 import tempfile
 import logging
 import json
@@ -33,20 +34,20 @@ class FirestoreDataLoader:
         Args:
             gcs_bucket_name (str, optional): Name of the GCS bucket for auxiliary data.
         """
+        self.db = get_firestore_client()
 
-        if not firebase_admin._apps:
+        # Optional: Initialize GCS client only if needed
+        use_local = os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS")
+        if use_local == "1":
             creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-            if not creds_path:
-                raise RuntimeError("FIREBASE_CREDENTIALS_PATH is not set.")
-            print(f"Initializiong Firebase using: {creds_path}")
-            firebase_cred = credentials.Certificate(creds_path)
-            firebase_admin.initialize_app(firebase_cred)
-
             gcs_cred = service_account.Credentials.from_service_account_file(creds_path)
-            self.storage_client = storage.Client(credentials=gcs_cred)
-            self.db = firestore.client()
-            self.gcs_bucket_name = gcs_bucket_name or "goanywhere-traffic-data-history"
-            #self.storage_client = storage.Client()
+        else:
+            # Use default credentials (e.g. for Cloud Run)
+            gcs_cred = None
+
+        self.storage_client = storage.Client(credentials=gcs_cred) if gcs_cred else storage.Client()
+        self.gcs_bucket_name = gcs_bucket_name or "goanywhere-traffic-data-history"
+
             
     # LTA DataMall 2.1: Bus Arrival
     def get_bus_arrivals(self, bus_stop_code=None, limit=10):
@@ -121,7 +122,7 @@ class FirestoreDataLoader:
         return pd.DataFrame(records)
     
     # LTA DataMall: Bus Arrival History
-    def get_bus_arrival_history(self, bus_stop_code=None, days=7, limit=1000):
+    def get_bus_arrival_history(self, bus_stop_code=None, days=None, limit=1000):
         """
         Get historical bus arrival data from Firestore.
         
@@ -137,7 +138,10 @@ class FirestoreDataLoader:
         
         try:
             # Calculate the cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days)
+            if days is not None:
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
+                query = query.where(... >= cutoff_date)
+
             
             # Query Firestore
             history_ref = self.db.collection("bus_arrivals_history")
@@ -151,7 +155,10 @@ class FirestoreDataLoader:
                 query = query.where("bus_stop_code", "==", bus_stop_code)
             
             # Filter by timestamp and order by timestamp
-            query = query.where(filter=FieldFilter("timestamp", ">=", cutoff_date))
+            if days is not None:
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
+                query = query.where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
+
             query = query.order_by("timestamp", direction=firestore.Query.DESCENDING)
             query = query.limit(limit)
             
@@ -190,9 +197,9 @@ class FirestoreDataLoader:
             
             # Convert timestamps
             if 'timestamp' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce', utc=True)
             if 'estimated_arrival' in df.columns:
-                df['estimated_arrival'] = pd.to_datetime(df['estimated_arrival'], errors='coerce')
+                df['estimated_arrival'] = pd.to_datetime(df['estimated_arrival'], errors='coerce', utc=True)
             
             logger.info(f"Loaded {len(df)} historical bus arrival records")
             return df
@@ -663,7 +670,7 @@ class FirestoreDataLoader:
             timestamp_cols = ['last_updated', 'deactivated_at']
             for col in timestamp_cols:
                 if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
+                    df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
             
             logger.info(f"Loaded {len(df)} train service alert records")
             return df
@@ -673,7 +680,7 @@ class FirestoreDataLoader:
             return pd.DataFrame()
     
     # Train Alert History
-    def get_train_alert_history(self, days=30):
+    def get_train_alert_history(self, days=None):
         """
         Get historical train service alert data from Firestore.
         
@@ -683,11 +690,13 @@ class FirestoreDataLoader:
         Returns:
             pandas.DataFrame: Train alert history data
         """
-        logger.info(f"Loading train alert history for the past {days} days")
+        logger.info(f"Loading train alert history for the past days")
         
         try:
             # Calculate the cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days)
+            if days is not None:
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
+                query = query.where(... >= cutoff_date)
             
             # Query Firestore
             history_ref = self.db.collection("train_alerts_history")
@@ -710,7 +719,7 @@ class FirestoreDataLoader:
             
             # Convert timestamps if they exist
             if 'timestamp' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce', utc=True)
                 
                 # Filter by cutoff date
                 df = df[df['timestamp'] >= cutoff_date]
@@ -723,63 +732,48 @@ class FirestoreDataLoader:
             return pd.DataFrame()
 
     # LTA DataMall 2.13: Estimated Travel Times
-    def get_travel_times(self, days=30):
+    def get_travel_times(self, days: int = None) -> pd.DataFrame:
         """
-        Get validated estimated travel times from Firestore.
+        Retrieve estimated travel times from top-level Firestore collection.
 
         Args:
-            days (int): Number of days of data to retrieve
+            days (int, optional): If provided, filters data from the last N days.
 
         Returns:
-            pandas.DataFrame: Clean travel times data
+            pd.DataFrame: Travel time data with Timestamp and Esttime
         """
-        logger.info(f"Loading estimated travel times data for the past {days} days")
-
         try:
-            # Calculate the cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days)
+            logger.info("🔄 Loading estimated travel times data from top-level collection...")
+            collection_ref = self.db.collection("estimated_travel_times")
 
-            # Query Firestore
-            travel_times_ref = self.db.collection("estimated_travel_times")
-            query = (travel_times_ref
-                    .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
-                    .order_by("Timestamp", direction=firestore.Query.DESCENDING))
+            # Build query
+            if days is not None:
+                cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+                query = collection_ref.where("Timestamp", ">=", cutoff)
+            else:
+                query = collection_ref
 
-            # Execute query
             docs = query.stream()
-
-            # Convert to list
             records = []
+
             for doc in docs:
-                record = doc.to_dict()
-                record['id'] = doc.id
-                # Validate basic fields here too
-                if (
-                    record.get('Expressway') and
-                    record.get('Startpoint') and
-                    record.get('Endpoint') and
-                    isinstance(record.get('Esttime'), (int, float)) and record['Esttime'] > 0
-                ):
-                    records.append(record)
-                else:
-                    logger.warning(f"Skipped invalid travel time record (doc id: {doc.id})")
+                data = doc.to_dict()
+                if "Timestamp" in data and "Esttime" in data:
+                    data["id"] = doc.id
+                    records.append(data)
 
             if not records:
-                logger.warning("No valid estimated travel times data found")
+                logger.warning("⚠️ No valid estimated travel times data found.")
                 return pd.DataFrame()
 
             df = pd.DataFrame(records)
+            df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce", utc=True)
 
-            # Process timestamps if they exist
-            if 'Timestamp' in df.columns:
-                df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-                df['date'] = df['Timestamp'].dt.date
-
-            logger.info(f"Loaded {len(df)} valid estimated travel time records")
+            logger.info(f"✅ Loaded {len(df)} estimated travel time records.")
             return df
 
         except Exception as e:
-            logger.error(f"Error loading estimated travel times data: {e}")
+            logger.error(f"❌ Error loading estimated travel times: {e}")
             return pd.DataFrame()
 
     # LTA DataMall: Faulty Traffic Lights
@@ -829,7 +823,7 @@ class FirestoreDataLoader:
             timestamp_cols = ['last_updated', 'start_timestamp', 'end_timestamp', 'resolved_at']
             for col in timestamp_cols:
                 if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
+                    df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
             
             logger.info(f"Loaded {len(df)} faulty traffic light records")
             return df
@@ -839,7 +833,7 @@ class FirestoreDataLoader:
             return pd.DataFrame()
     
     # Traffic Light Fault History
-    def get_traffic_light_history(self, days=30):
+    def get_traffic_light_history(self, days=None):
         """
         Get historical traffic light fault data from Firestore.
         
@@ -849,11 +843,13 @@ class FirestoreDataLoader:
         Returns:
             pandas.DataFrame: Traffic light fault history data
         """
-        logger.info(f"Loading traffic light fault history for the past {days} days")
+        logger.info(f"Loading traffic light fault history for the past days")
         
         try:
             # Calculate the cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days)
+            if days is not None:
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
+                query = query.where(... >= cutoff_date)
             
             # Query Firestore
             history_ref = self.db.collection("traffic_lights_history")
@@ -876,7 +872,7 @@ class FirestoreDataLoader:
             
             # Convert timestamps if they exist
             if 'timestamp' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce', utc=True)
                 
                 # Filter by cutoff date
                 df = df[df['timestamp'] >= cutoff_date]
@@ -932,7 +928,7 @@ class FirestoreDataLoader:
             timestamp_cols = ['last_updated', 'start_timestamp', 'end_timestamp', 'completed_at']
             for col in timestamp_cols:
                 if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
+                    df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
             
             logger.info(f"Loaded {len(df)} planned road opening records")
             return df
@@ -942,7 +938,7 @@ class FirestoreDataLoader:
             return pd.DataFrame()
 
     # LTA DataMall 2.19: Traffic Speed Bands
-    def get_traffic_speed_bands(self, days=7, limit=10000):
+    def get_traffic_speed_bands(self, days=None, limit=10000):
         """
         Get traffic speed bands from Firestore.
         
@@ -953,18 +949,19 @@ class FirestoreDataLoader:
         Returns:
             pandas.DataFrame: Traffic speed bands data
         """
-        logger.info(f"Loading traffic speed bands data for the past {days} days")
+        logger.info(f"Loading traffic speed bands data for the past days")
         
-        try:
-            # Calculate the cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days)
-            
+        try:            
             # Query Firestore
             speed_bands_ref = self.db.collection("traffic_speed_bands")
-            query = (speed_bands_ref
-                    .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
-                    .order_by("Timestamp", direction=firestore.Query.DESCENDING)
-                    .limit(limit))
+            if days is not None:
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
+                query = (speed_bands_ref
+                        .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
+                        .order_by("Timestamp", direction=firestore.Query.DESCENDING))
+            else:
+                query = speed_bands_ref.order_by("Timestamp", direction=firestore.Query.DESCENDING)
+
             
             # Execute query
             docs = query.stream()
@@ -984,7 +981,7 @@ class FirestoreDataLoader:
             
             # Process timestamps if they exist
             if 'Timestamp' in df.columns:
-                df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
+                df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce', utc=True)
             
             logger.info(f"Loaded {len(df)} traffic speed band records")
             return df
@@ -994,7 +991,7 @@ class FirestoreDataLoader:
             return pd.DataFrame()
 
     # LTA DataMall 2.18: Traffic Incidents
-    def get_incidents(self, days=7, include_user_reported=False):
+    def get_incidents(self, days=None, include_user_reported=False):
         """
         Get traffic incidents from Firestore.
         
@@ -1005,17 +1002,19 @@ class FirestoreDataLoader:
         Returns:
             pandas.DataFrame: Incidents data
         """
-        logger.info(f"Loading traffic incidents data for the past {days} days")
+        logger.info(f"Loading traffic incidents data for the past days")
         
         try:
-            # Calculate the cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days)
-            
             # Query official incidents
             incidents_ref = self.db.collection("traffic_incidents")
-            query = (incidents_ref
-                    .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
-                    .order_by("Timestamp", direction=firestore.Query.DESCENDING))
+            if days is not None:
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
+                query = (incidents_ref
+                        .where(filter=FieldFilter("Timestamp", ">=", cutoff_date))
+                        .order_by("Timestamp", direction=firestore.Query.DESCENDING))
+            else:
+                query = incidents_ref.order_by("Timestamp", direction=firestore.Query.DESCENDING)
+
             
             # Execute query
             docs = query.stream()
@@ -1038,7 +1037,7 @@ class FirestoreDataLoader:
             timestamp_cols = ['Timestamp', 'time_reported']
             for col in timestamp_cols:
                 if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
+                    df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
             
             if 'Timestamp' in df.columns:
                 df['date'] = df['Timestamp'].dt.date
@@ -1051,7 +1050,7 @@ class FirestoreDataLoader:
             return pd.DataFrame()
 
     # Weather data
-    def get_weather_data(self, days=1, location=None):
+    def get_weather_data(self, days=None, location=None):
         """
         Load weather data from Firestore.
         
@@ -1063,55 +1062,56 @@ class FirestoreDataLoader:
             pandas.DataFrame: Weather data formatted for model compatibility
         """
         try:
-            logging.info(f"Loading weather data for the past {days} days")
-            
-            # Reference to the weather collection
-            weather_ref = self.db.collection('weather_data')
-            
-            # Calculate the start time for the query
-            start_time = datetime.now() - timedelta(days=days)
-            
+            logging.info(f"Loading weather data for the past days")
+
+            # Base query
+            query = self.db.collection('weather_data')
+
+            # Apply time filter only if days is provided
+            if days is not None:
+                start_time = datetime.datetime.now() - datetime.timedelta(days=days)
+                query = query.where("stored_at", ">=", start_time)
+
             # Apply location filter if specified
-            query = weather_ref
             if location:
                 query = query.where("city", "==", location)
-            
+
             # Execute query
             docs = query.stream()
-            
+
             # Convert to list of dicts
             weather_data = []
             for doc in docs:
                 data = doc.to_dict()
                 data['id'] = doc.id
-                # Add stored_at timestamp if not present
+                # Add stored_at if missing
                 if 'stored_at' not in data:
                     data['stored_at'] = doc.create_time
-                    
                 weather_data.append(data)
-            
+
             if not weather_data:
                 logging.warning("No weather data found")
                 return pd.DataFrame()
-            
+
             # Convert to DataFrame
             df = pd.DataFrame(weather_data)
-            
-            # Ensure the DataFrame has the expected columns
+
+            # Fix missing columns if necessary
             if 'temperature' not in df.columns and 'temp' in df.columns:
                 df['temperature'] = df['temp']
-                
-            # Make sure humidity is present
+
             if 'humidity' not in df.columns:
-                df['humidity'] = 70.0  # Default value if missing
-            
-            # Convert timestamp if present
+                df['humidity'] = 70.0  # Default fallback
+
             if 'stored_at' in df.columns:
-                df['stored_at'] = pd.to_datetime(df['stored_at'])
-            
+                df['stored_at'] = pd.to_datetime(df['stored_at'], errors='coerce')
+            else:
+                logger.warning("'stored_at' column not found in weather data")
+                df['stored_at'] = pd.NaT
+
             logging.info(f"Loaded {len(df)} weather records")
             return df
-        
+
         except Exception as e:
             logging.error(f"Error loading weather data: {e}")
             return pd.DataFrame()
@@ -1160,7 +1160,7 @@ class FirestoreDataLoader:
                         
                     # Convert date column to datetime format
                     if 'Date' in holidays_df.columns:
-                        holidays_df['Date'] = pd.to_datetime(holidays_df['Date'])
+                        holidays_df['Date'] = pd.to_datetime(holidays_df['Date'], utc=True)
                     
                     # Filter by years if specified
                     if years:
@@ -1197,61 +1197,61 @@ class FirestoreDataLoader:
             return pd.DataFrame(columns=['Date', 'Day', 'Name'])
 
     # Singapore Events data
-    def get_events_data(self, active_only=True, days_ahead=30):
+    def get_events_data(self, active_only=True, days_ahead=None):
         """
         Get Singapore events data from Firestore.
-        
+
         Args:
             active_only (bool): Whether to retrieve only active events.
             days_ahead (int): For active events, how many days ahead to consider.
-            
+
         Returns:
             pandas.DataFrame: Events data
         """
         logger.info(f"Loading Singapore events data (active_only={active_only})")
-        
+
         try:
-            # Query Firestore
             events_ref = self.db.collection("singapore_events")
-            
-            # Get all events
             docs = events_ref.stream()
-            
-            # Convert to DataFrame
+
             records = []
             for doc in docs:
                 record = doc.to_dict()
-                record['id'] = doc.id
+                record["id"] = doc.id
                 records.append(record)
-            
+
             if not records:
                 logger.warning("No events data found")
                 return pd.DataFrame()
-            
+
             df = pd.DataFrame(records)
-            
-            # Filter for active events if requested
+
+            # Filter active events
             if active_only and 'is_active' in df.columns:
                 df = df[df['is_active'] == True]
-            
-            # Process date/time fields
+
+            # Convert date/time fields with utc=True to handle tz-aware datetimes
             date_cols = ['start_date', 'end_date', 'imported_at', 'last_updated', 'scraped_at']
             for col in date_cols:
                 if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
-            
-            # Filter for upcoming events if active_only is True
-            if active_only and 'end_date' in df.columns:
-                cutoff_date = datetime.now() + timedelta(days=days_ahead)
-                df = df[df['end_date'] >= datetime.now()]
-                df = df[df['start_date'] <= cutoff_date]
-            
+                    df[col] = pd.to_datetime(df[col], errors='coerce', utc=True)
+
+            # Filter for upcoming events if active_only is True and days_ahead is valid
+            if active_only and days_ahead is not None and 'end_date' in df.columns:
+                now_utc = pd.Timestamp.utcnow()
+                cutoff = now_utc + pd.Timedelta(days=days_ahead)
+
+                df = df[df['end_date'] >= now_utc]
+                df = df[df['start_date'] <= cutoff]
+
+
             logger.info(f"Loaded {len(df)} event records")
             return df
-            
+
         except Exception as e:
             logger.error(f"Error loading events data: {e}")
             return pd.DataFrame()
+
 
     # Traffic Flow Data
     def get_traffic_flow_data(self, quarter=None):

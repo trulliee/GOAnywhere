@@ -14,9 +14,16 @@ async function getCoordinates(address) {
     const [lat, lng] = address.split(',').map(Number);
     return { lat, lng };
   }
-  const formatted = address.toLowerCase().includes('singapore')
-    ? address
-    : `${address}, Singapore`;
+
+  // const formatted = address.toLowerCase().includes('singapore')
+  //   ? address
+  //   : `${address}, Singapore`;
+
+  // Remove duplicate "Singapore" if already in address
+  let cleaned = address.replace(/,?\s*singapore\s*$/i, '');
+  cleaned = cleaned.replace(/^Blk\s*/i, 'Block '); // Normalize Blk to Block
+  const formatted = `${cleaned}, Singapore`;
+
   const { data } = await axios.get(
     `${GOOGLE_GEOCODE_URL}?address=${encodeURIComponent(formatted)}&key=${GOOGLE_MAPS_API_KEY}`
   );

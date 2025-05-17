@@ -9,12 +9,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY backend /app/
 
-# Set environment variable for port
-ENV PORT=8080
-# ENV GOOGLE_APPLICATION_CREDENTIALS="/app/service-account-key.json"
-# ENV USE_LOCAL_FIREBASE_CREDENTIALS=1
-# ENV FIREBASE_CREDENTIALS_PATH="/app/service-account-key.json"
-ENV GCP_PROJECT_ID=goanywhere-c55c8
+EXPOSE 8080
 
-# Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Common environment variables
+ENV PORT=8080
+ENV GCP_PROJECT_ID=goanywhere-c55c8
+ENV REGION=asia-southeast1
+ENV GCP_REGION=asia-southeast1
+ENV USE_LOCAL_FIREBASE_CREDENTIALS=0
+ENV FIREBASE_SECRET_NAME=firebase-service-account-key
+ENV GMAPS_API_KEY=AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

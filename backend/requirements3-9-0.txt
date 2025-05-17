@@ -9,12 +9,13 @@ python-jose[cryptography]>=3.3.0
 python-dotenv>=0.19.0
 
 # Data processing & ML
-scikit-learn>=1.5.0
-pandas>=1.3.0
-numpy>=1.20.0
-joblib>=1.1.0
-scipy>=1.10.0
-networkx>=2.6.0
+# Data processing & ML
+setuptools==65.5.0
+scikit-learn==1.0.1
+pandas==1.3.5
+numpy==1.21.6
+joblib==1.2.0
+scipy==1.7.3
 matplotlib
 
 # Cloud services
@@ -34,11 +35,10 @@ psycopg2-binary>=2.9.0
 # Geo services
 geopy>=2.2.0
 googlemaps>=4.10.0
+
 networkx
-google-cloud-aiplatform
 beautifulsoup4
 playwright
 
 # Phone number
 phonenumbers>=8.12.0
-

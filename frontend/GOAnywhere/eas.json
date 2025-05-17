@@ -4,14 +4,14 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal"
-    },
-    "preview": {
-      "distribution": "internal"
-    },
     "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EAS_BUILD_WORKFLOW": "managed",
+        "MAPBOX_DOWNLOADS_TOKEN": "pk.eyJ1IjoidHJvbGxleTEyNCIsImEiOiJjbThkOTQ2ODgybDF2MmpyM2YwbzQwaHhwIn0.W9SmB0piy6kIiMp3BPmZxA"
+      },
       "autoIncrement": true
     }
   },

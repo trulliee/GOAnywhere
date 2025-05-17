@@ -4,20 +4,20 @@
     "slug": "GOAnywhere",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/GOAnywhere.jpg",
+    "icon": "./assets/images/GOAnywhere.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.GOAnywhere"
+      "bundleIdentifier": "com.trolley.GOAnywhere"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.GOAnywhere"
+      "package": "com.trolley.GOAnywhere"
     },
     "web": {
       "output": "static",
@@ -34,7 +34,18 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-build-properties"
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://api.mapbox.com/downloads/v2/releases/maven",
+              "https://oss.sonatype.org/content/repositories/snapshots",
+              "https://jitpack.io"
+            ]
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

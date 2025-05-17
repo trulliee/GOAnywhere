@@ -18,6 +18,6 @@ ENV REGION=asia-southeast1
 ENV GCP_REGION=asia-southeast1
 ENV USE_LOCAL_FIREBASE_CREDENTIALS=0
 ENV FIREBASE_SECRET_NAME=firebase-service-account-key
-ENV GMAPS_API_KEY=AIzaSyDzdl-AzKqD_NeAdrz934cQM6LxWEHYF1g
+ENV GMAPS_API_KEY=AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

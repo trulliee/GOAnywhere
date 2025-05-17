@@ -172,18 +172,9 @@ export default function Settings() {
         
         <SettingsItem 
           title="About us" 
-          onPress={() => openWebLink('https://www.youtube.com/watch?v=f_WuRfuMXQw')}
+          onPress={() => openWebLink('https://tgtan002.wixsite.com/goanywhere/blank')}
         />
-        
-        <SettingsItem 
-          title="Privacy policy" 
-          onPress={() => openWebLink('https://www.youtube.com/watch?v=f_WuRfuMXQw')}
-        />
-        
-        <SettingsItem 
-          title="Terms and conditions" 
-          onPress={() => openWebLink('https://www.youtube.com/watch?v=f_WuRfuMXQw')}
-        />
+    
       </ScrollView>
       
       <FrequencyModal />

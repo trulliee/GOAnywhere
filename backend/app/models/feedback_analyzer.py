@@ -30,7 +30,6 @@ class FeedbackAnalyzer:
         data = {
             'prediction_type': prediction_type,
             'rating': rating,
-            'user_id': user_id,
             'feedback_text': feedback_text,
             'timestamp': firestore.SERVER_TIMESTAMP
         }

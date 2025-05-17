@@ -2,8 +2,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Production backend URL (hosted on Google Cloud Run)
-export const API_URL = 'https://goanywhere-backend-541900038032.asia-southeast1.run.app';
-// export const API_URL = 'http://192.168.1.12:8000';
+// export const API_URL = 'https://goanywhere-backend-541900038032.asia-southeast1.run.app';
+export const API_URL = 'https://d318-103-252-200-4.ngrok-free.app';
+
 
 // Helper for making API requests
 export const fetchAPI = async (endpoint, options = {}) => {

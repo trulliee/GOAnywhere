@@ -22,7 +22,7 @@ const TrafficIncidents = () => {
   useEffect(() => {
     const fetchIncidents = async () => {
       try {
-        const response = await axios.get('https://goanywhere-backend-541900038032.asia-southeast1.run.app'); // 👈 Change to your Cloud Run URL for production
+        const response = await axios.get('https://goanywhere-backend-541900038032.asia-southeast1.run.app/incidents'); // 👈 Change to your Cloud Run URL for production
         setIncidents(response.data.incidents);
       } catch (error) {
         console.error('Error fetching traffic incidents:', error);

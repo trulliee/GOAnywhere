@@ -17,7 +17,6 @@ from app.services.lta_data import (
     get_approved_road_works, get_traffic_flow, get_bus_arrival, get_bus_services, get_bus_routes, get_train_service_alerts,
     get_station_crowd_density, get_station_crowd_forecast
 )
-from app.services.data_gov import get_peak_traffic_conditions, get_24hr_weather_forecast
 from app.services.owm_data import fetch_weather_data
 from app.scrapers.events_scraper import scrape_visit_singapore_events
 
@@ -63,7 +62,6 @@ transit_tasks = [
 
 weather_tasks = [
     PythonOperator(task_id='fetch_weather_data', python_callable=fetch_weather_data, dag=dag),
-    PythonOperator(task_id='fetch_24hr_weather_forecast', python_callable=get_24hr_weather_forecast, dag=dag)
 ]
 
 events_task = PythonOperator(

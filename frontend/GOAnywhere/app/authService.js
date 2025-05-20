@@ -23,8 +23,22 @@ class AuthService {
           phoneNumber: phoneNumber,
         }),
       });
+
+      const text = await response.text();     // 🟡 catch HTML response
       
-      const data = await response.json();
+      console.log("🔧 API_URL in use:", API_URL);
+      console.log('🔍 Raw backend response:', text);  // ✅ log it
+      let data;
+
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error('❌ JSON parse failed:', e);
+        throw new Error("Received malformed response from server.");
+}
+
+console.log('✅ Parsed data:', data);
+
       console.log('📩 Signup response data:', data);
       console.log('📡 Response status:', response.status);
       

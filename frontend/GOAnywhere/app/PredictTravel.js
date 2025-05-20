@@ -206,6 +206,7 @@ const PredictTravel = () => {
     setEditingTravelTime(false);
     setCustomTravelTimeInput(null);
     setApplyTriggered(false);
+    setShowSimilarityWarningFlag(false);
 
   };
 
@@ -263,7 +264,6 @@ const PredictTravel = () => {
   const applyCustomTravelTimeInput = async () => {
     setIsLoading(true);
     setEditingTravelTime(false);
-    setShowSimilarityWarningFlag(true); // <- Add at start of try block
     setApplyTriggered(true);
 
     try {
@@ -275,7 +275,7 @@ const PredictTravel = () => {
       
       if (response.data && response.data.predictions) {
         const data = response.data.predictions[0];  // unwrap first prediction
-        setPrevTravelTimePrediction(JSON.parse(JSON.stringify(travelTimePrediction)));
+        setPrevTravelTimePrediction(travelTimePrediction);
         setTravelTimePrediction({
             predictions: [data.prediction],
             probabilities: [data.probabilities],
@@ -650,7 +650,8 @@ const PredictTravel = () => {
 
   return <PredictionRendering {...renderProps}
     prevTravelTimePrediction={prevTravelTimePrediction}
-    showSimilarityWarningFlag={showSimilarityWarningFlag} 
+    showSimilarityWarningFlag={showSimilarityWarningFlag}
+    setShowSimilarityWarningFlag={setShowSimilarityWarningFlag}
     mode="travel"
     />;
 

@@ -61,6 +61,8 @@ const PredictionRendering = ({
   predictTravelTime,
   prevCongestionPrediction,
   prevTravelTimePrediction,
+  showSimilarityWarningFlag,
+  setShowSimilarityWarningFlag,
   applyTriggered,
   startJourney, 
   formatMinutes,
@@ -79,19 +81,19 @@ const PredictionRendering = ({
   const [showTravelTimeSimilarityWarning, setShowTravelTimeSimilarityWarning] = useState(false);
 
   useEffect(() => {
-    if (congestionPrediction && prevCongestionPrediction) {
+    if (applyTriggered && congestionPrediction && prevCongestionPrediction) {
       const isSame = JSON.stringify(congestionPrediction) === JSON.stringify(prevCongestionPrediction);
       setShowCongestionSimilarityWarning(isSame);
     }
   }, [congestionPrediction]);
 
   useEffect(() => {
-    if (travelTimePrediction && prevTravelTimePrediction) {
+    if (applyTriggered && travelTimePrediction && prevTravelTimePrediction) {
       const isSame = JSON.stringify(travelTimePrediction) === JSON.stringify(prevTravelTimePrediction);
       setShowTravelTimeSimilarityWarning(isSame);
     }
   }, [travelTimePrediction]);
- 
+
   const renderDateBanner = () => (
     <View style={styles.dateBanner}>
       <Text style={styles.titleText}>Traffic Prediction</Text>
@@ -154,7 +156,7 @@ const PredictionRendering = ({
               style={{ flexDirection: 'row', alignItems: 'center' }}
             >
               <Text style={styles.weatherInfoText}>
-                🌡 Temp: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
+                🌡 Temperature: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
               </Text>
               <Ionicons name="information-circle-outline" size={18} color="#9de3d2" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
@@ -354,7 +356,6 @@ const PredictionRendering = ({
     )
   );
 
-
   const renderEditableCongestionForm = () => (
     <View style={styles.editFormContainer}>
         <Text style={styles.editFormTitle}>Edit Congestion Prediction Input</Text>
@@ -364,7 +365,7 @@ const PredictionRendering = ({
         <Text style={styles.inputRowLabel}>Peak Hour:</Text>
         {[0, 1].map((val) => (
             <TouchableOpacity
-            key={`peak_hour_${val}`}
+            key={`peak_hour_flag${val}`}
             style={[
                 styles.inputOption,
                 customCongestionInput.peak_hour_flag === val && styles.inputOptionSelected
@@ -466,7 +467,7 @@ const PredictionRendering = ({
             >
               <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
             </TouchableOpacity>
-          </View> {/* ✅ Add this closing tag here */}
+          </View> 
           
           <RNPickerSelect
             onValueChange={(value) => updateCustomCongestionInput('max_event_severity', value)}
@@ -547,10 +548,13 @@ const PredictionRendering = ({
 
         {/* Buttons */}
         <TouchableOpacity 
-        style={styles.applyButton}
-        onPress={applyCustomCongestionInput}
+          style={styles.applyButton}
+          onPress={() => {
+            setShowSimilarityWarningFlag(true);  // 👈 Show warning immediately
+            applyCustomCongestionInput();        // then call prediction
+          }}
         >
-        <Text style={styles.applyButtonText}>Apply Changes</Text>
+          <Text style={styles.applyButtonText}>Apply Changes</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -809,22 +813,24 @@ const PredictionRendering = ({
         </View>
 
         {/* Apply + Cancel Buttons */}
-        <TouchableOpacity
-        style={styles.applyButton}
-        onPress={applyCustomTravelTimeInput}
+        <TouchableOpacity 
+          style={styles.applyButton}
+          onPress={() => {
+            setShowSimilarityWarningFlag(true);   // 👈 immediately show warning
+            applyCustomTravelTimeInput();         // call the real handler
+          }}
         >
-        <Text style={styles.applyButtonText}>Apply Changes</Text>
+          <Text style={styles.applyButtonText}>Apply Changes</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
         style={styles.cancelButton}
-        onPress={toggleEditCongestion}
+        onPress={toggleEditTravelTime}
         >
         <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
     </View>
     );
-
 
   const renderCongestionPrediction = () => (
     congestionPrediction && !editingCongestion ? (
@@ -965,7 +971,7 @@ const PredictionRendering = ({
                 </Text>
               </View>
 
-              <Text style={styles.timeRangeToText}>to</Text>
+              <View><Text style={styles.timeRangeToText}>to</Text></View>
 
               <View style={styles.timeRangeValue}>
                 <AntDesign name="arrowup" size={14} color="#FF3B30" />

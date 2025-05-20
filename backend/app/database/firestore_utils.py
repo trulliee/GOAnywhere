@@ -4,6 +4,10 @@ import firebase_admin
 from firebase_admin import credentials, firestore, initialize_app  
 from google.cloud import secretmanager
 import datetime
+import os
+from dotenv import load_dotenv
+
+#load_dotenv()
 
 def get_firebase_credentials():
     use_local = os.getenv("USE_LOCAL_FIREBASE_CREDENTIALS")
@@ -2705,48 +2709,42 @@ def store_events_data(events):
     except Exception as e:
         print(f"Error storing events data: {e}")
 
-async def store_user_data(user_id, name=None, email=None, phone_number=None, user_type="registered"):
-    """
-    Stores user data in Firestore
-    
-    Args:
-        user_id (str): The Firebase UID of the user
-        name (str, optional): The user's display name
-        email (str, optional): The user's email
-        phone_number (str, optional): The user's phone number
-        user_type (str): Either "registered" or "anonymous"
-    
-    Returns:
-        bool: True if successful
-    """
+async def store_user_data(
+    user_id,
+    name=None,
+    email=None,
+    phone_number=None,
+    user_type="registered",
+    created_at=None,
+    last_login=None,
+    settings=None
+):
     db = get_firestore_client()
     try:
-        # Create a reference to the users collection
         users_ref = db.collection('users')
-        
-        # Prepare user data
+
         user_data = {
             'user_id': user_id,
             'user_type': user_type,
-            'created_at': firestore.SERVER_TIMESTAMP,
-            'last_login': firestore.SERVER_TIMESTAMP
+            'created_at': created_at if created_at else firestore.SERVER_TIMESTAMP,
+            'last_login': last_login if last_login else firestore.SERVER_TIMESTAMP,
         }
-        
-        # Add optional fields if provided
+
         if name:
             user_data['name'] = name
         if email:
             user_data['email'] = email
         if phone_number:
             user_data['phone_number'] = phone_number
-            
-        # Store in Firestore using the UID as document ID
+        if settings:
+            user_data['settings'] = settings
+
         users_ref.document(user_id).set(user_data)
-        
         return True
     except Exception as e:
         print(f"Error storing user data: {e}")
         return False
+
 
 async def update_user_last_login(user_id):
     """

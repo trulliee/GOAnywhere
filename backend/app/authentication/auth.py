@@ -12,6 +12,9 @@ import requests
 import phonenumbers
 from fastapi import HTTPException
 
+db = get_firestore_client()
+
+
 def validate_phone(phone: str, region="SG"):
     try:
         phone = phone.strip()
@@ -138,7 +141,7 @@ async def sign_up(user_data: SignUpRequest):
         import traceback
         traceback.print_exc()
         print("Signup error:", str(e))
-        raise HTTPException(status_code=400, detail="Signup failed. Please check your input.")
+        raise HTTPException(status_code=400, detail=str(e))
     
 FIREBASE_API_KEY = "AIzaSyDJRcgdtLm_bIvr0oXmEvH7clRTGoPiW2Y"
 

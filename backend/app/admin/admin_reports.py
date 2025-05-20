@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from app.database.firestore_utils import store_user_data, update_user_last_login, db
+from app.database.firestore_utils import store_user_data, update_user_last_login, get_firestore_client
+
+db = get_firestore_client()
 
 router = APIRouter()
 

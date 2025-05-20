@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Union
-from app.database.firestore_utils import get_firestore_client
+from app.database.firestore_utils import store_user_data, update_user_last_login, get_firestore_client
 from datetime import datetime
 from google.cloud import firestore  # Needed for Query
+
+db = get_firestore_client()
 
 router = APIRouter(
     prefix="/crowd",

@@ -137,7 +137,7 @@ export default function LoginUser() {
           </TouchableOpacity>
 
           {/* Quick login buttons - Only visible in development */}
-          <View style={styles.devLoginContainer}>
+          {/* <View style={styles.devLoginContainer}>
             <TouchableOpacity 
               style={styles.devLoginButton}
               onPress={() => {
@@ -157,7 +157,7 @@ export default function LoginUser() {
             >
               <Text style={styles.devLoginText}>Quick Admin Login</Text>
             </TouchableOpacity>
-          </View>
+          </View> */}
         </View>
         
         {/* Sign in button */}

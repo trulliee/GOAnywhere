@@ -207,7 +207,7 @@ const PredictCongestion = () => {
     setEditingCongestion(false);
     setCustomCongestionInput(null);
     setApplyTriggered(false);
-
+    setShowSimilarityWarningFlag(false);
   };
 
   const selectRoute = (index) => {
@@ -264,7 +264,6 @@ const PredictCongestion = () => {
   const applyCustomCongestionInput = async () => {
     setIsLoading(true);
     setEditingCongestion(false);
-    setShowSimilarityWarningFlag(true); // <- Add this at the top of try block
     setApplyTriggered(true);
 
     try {
@@ -603,6 +602,7 @@ const PredictCongestion = () => {
   return <PredictionRendering {...renderProps} 
   prevCongestionPrediction={prevCongestionPrediction}
   showSimilarityWarningFlag={showSimilarityWarningFlag}
+  setShowSimilarityWarningFlag={setShowSimilarityWarningFlag}
   mode="congestion" />;
 };
 

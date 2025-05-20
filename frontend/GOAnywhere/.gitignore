@@ -36,3 +36,9 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# Ignore gradle cache folders
+*.iml
+.gradle/
+**/.gradle/
+/android/.gradle/

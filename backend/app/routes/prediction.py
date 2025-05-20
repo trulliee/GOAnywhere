@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+import datetime
 import logging
 import os
 import requests
@@ -35,13 +35,12 @@ feedback_analyzer = FeedbackAnalyzer()
 # Firestore logging
 db = firestore.Client()
 
-def log_prediction_to_firestore(model_name: str, model_input: dict, model_output: dict, version: str = "v1"):
+def log_prediction_to_firestore(model_name: str, model_input: dict, model_output: dict):
     log_entry = {
         "model_name": model_name,
-        "model_version": version,
         "input": model_input,
         "output": model_output,
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.datetime.utcnow()
     }
     try:
         db.collection("model_predictions_log").add(log_entry)
@@ -95,7 +94,6 @@ class TrafficPredictionInput(BaseModel):
     max_event_severity: int = 0
     sum_event_severity: int = 0
 
-
 # --- 🔮 Predict Congestion Class Only ---
 # Cloud Run URL for traffic congestion model
 CLOUD_RUN_CONGESTION_URL = "https://goanywhere-traffic-congestion-model-server-541900038032.asia-southeast1.run.app/predict"
@@ -130,7 +128,6 @@ async def predict_congestion(input_data: TrafficPredictionInput = Body(...)):
             model_name="traffic_congestion",
             model_input=input_data.dict(),
             model_output=result,
-            version="v1_2025-05-15"
         )
 
         return {
@@ -203,33 +200,24 @@ async def predict_travel_time(input_data: TravelTimeInput):
             model_name="travel_time",
             model_input=input_data.dict(),
             model_output=result,
-            version="v1_2025-05-15"
         )
-
-        predictions = result.get("predictions", [])
-        probabilities = result.get("probabilities", [])
-        classes = result.get("classes", [])
 
         return {
             "status": "success",
-            "predictions": predictions,
-            "probabilities": probabilities,
-            "classes": classes
+            "predictions": result.get("predictions", [])
         }
 
     except Exception as e:
         logger.error(f"Travel time prediction error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # --- Feedback ---
 
 class FeedbackRatingInput(BaseModel):
-    user_id: str
     prediction_type: str
     rating: int = Field(ge=1, le=5)
     comment: Optional[str] = None
-    timestamp: Optional[datetime] = None
+    timestamp: Optional[datetime.datetime] = None
 
 @router.post("/feedback")
 async def submit_feedback(input_data: FeedbackRatingInput):
@@ -238,7 +226,6 @@ async def submit_feedback(input_data: FeedbackRatingInput):
         feedback_id = feedback_analyzer.record_feedback(
             prediction_type=feedback_data["prediction_type"],
             rating=feedback_data["rating"],
-            user_id=feedback_data["user_id"],
             feedback_text=feedback_data.get("comment", "")
         )
 

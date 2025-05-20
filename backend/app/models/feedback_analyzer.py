@@ -23,7 +23,7 @@ class FeedbackAnalyzer:
             self._collection = self.db.collection("simple_feedback")
         return self._collection
 
-    def record_feedback(self, prediction_type: str, rating: int, user_id: str, feedback_text: Optional[str] = ""):
+    def record_feedback(self, prediction_type: str, rating: int, feedback_text: Optional[str] = ""):
         if not (1 <= rating <= 5):
             raise ValueError("Rating must be between 1 and 5")
 

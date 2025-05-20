@@ -2,7 +2,9 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from pydantic import BaseModel
-from app.database.firestore_utils import get_firestore_client
+from app.database.firestore_utils import store_user_data, update_user_last_login, get_firestore_client
+
+db = get_firestore_client()
 
 router = APIRouter(
     tags=["Notifications"],

@@ -272,10 +272,6 @@ export default StyleSheet.create({
     backgroundColor: '#FFF', // white background
   },
 
-  bothButton: {
-    backgroundColor: '#555', // grey background
-  },
-
   congestionButtonText: {
     color: '#000', // Black text for white button
     fontSize: 16,
@@ -284,12 +280,6 @@ export default StyleSheet.create({
 
   timeButtonText: {
     color: '#FFF', // White text for turquoise button
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  bothButtonText: {
-    color: '#FFF', // White text for dark grey button
     fontSize: 16,
     fontWeight: '600',
   },
@@ -325,9 +315,12 @@ export default StyleSheet.create({
     fontWeight: 'bold',
   },
   editButton: {
+    marginLeft: 10,
     padding: 6,
+    backgroundColor: '#222',
+    borderRadius: 8
   },
-  
+
   // Congestion prediction
   congestionResultBox: {
     backgroundColor: '#333',
@@ -514,7 +507,23 @@ export default StyleSheet.create({
     fontSize: 14,
     marginBottom: 4,
   },
-  
+  warningBox: {
+    backgroundColor: '#3a2e00',
+    padding: 10,
+    marginTop: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFA500',
+  },
+  warningText: {
+    color: '#FFA500',
+    fontSize: 13,
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+
   // Edit form
   editFormContainer: {
     backgroundColor: '#2A2A2A',
@@ -677,6 +686,11 @@ export default StyleSheet.create({
     color: '#9de3d2',
     fontSize: 14,
     fontWeight: '600',
+  },
+  weatherSubtext: {
+    color: '#AAA',
+    fontSize: 12,
+    marginTop: 4,
   },
   tooltipOverlay: {
     flex: 1,

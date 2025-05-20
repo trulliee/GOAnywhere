@@ -59,16 +59,38 @@ const PredictionRendering = ({
   applyCustomTravelTimeInput,
   predictCongestion,
   predictTravelTime,
-  predictBoth,
-  bothPredicted,
-  startJourney,
-  goToFeedback,
+  prevCongestionPrediction,
+  prevTravelTimePrediction,
+  applyTriggered,
+  startJourney, 
   formatMinutes,
   isHoliday,
-  getDayType
+  getDayType,
+  mode
   }) => {
   
   const navigation = useNavigation();
+  const goToFeedback = () => {
+    const predictionType = mode === 'congestion' ? 'congestion' : 'travel_time';
+    navigation.navigate('PredictionFeedback', { predictionType });
+  };
+
+  const [showCongestionSimilarityWarning, setShowCongestionSimilarityWarning] = useState(false);
+  const [showTravelTimeSimilarityWarning, setShowTravelTimeSimilarityWarning] = useState(false);
+
+  useEffect(() => {
+    if (congestionPrediction && prevCongestionPrediction) {
+      const isSame = JSON.stringify(congestionPrediction) === JSON.stringify(prevCongestionPrediction);
+      setShowCongestionSimilarityWarning(isSame);
+    }
+  }, [congestionPrediction]);
+
+  useEffect(() => {
+    if (travelTimePrediction && prevTravelTimePrediction) {
+      const isSame = JSON.stringify(travelTimePrediction) === JSON.stringify(prevTravelTimePrediction);
+      setShowTravelTimeSimilarityWarning(isSame);
+    }
+  }, [travelTimePrediction]);
  
   const renderDateBanner = () => (
     <View style={styles.dateBanner}>
@@ -124,16 +146,25 @@ const PredictionRendering = ({
         </Modal>
       )}
 
-      currentTemperature !== null && currentHumidity !== null && (
+      {currentTemperature !== null && currentHumidity !== null && (
         <View style={styles.weatherInfoBanner}>
-          <TouchableOpacity onPress={() => Alert.alert('Weather Information', 'Default is to current Singapore weather.')}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity 
+              onPress={() => Alert.alert('Weather Information', 'Default is to current Singapore weather.')}
+              style={{ flexDirection: 'row', alignItems: 'center' }}
+            >
               <Text style={styles.weatherInfoText}>
-              🌡 Temp: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
+                🌡 Temp: {Math.round(currentTemperature)}°C   💧 Humidity: {Math.round(currentHumidity)}%
               </Text>
               <Ionicons name="information-circle-outline" size={18} color="#9de3d2" style={{ marginLeft: 8 }} />
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.weatherSubtext}>
+            Weather values are defaulted to Singapore's current weather for when you generate predictions. Please wait a moment for the values to load.
+          </Text>
         </View>
-      )
+      )}
     </View>
   );
 
@@ -148,6 +179,7 @@ const PredictionRendering = ({
         placeholderTextColor="#999"
         value={startLocation}
         onChangeText={setStartLocation}
+        editable={!predictionLock}
       />
       
       <Text style={styles.inputLabel}>Destination</Text>
@@ -157,12 +189,16 @@ const PredictionRendering = ({
         placeholderTextColor="#999"
         value={endLocation}
         onChangeText={setEndLocation}
+        editable={!predictionLock}
       />
       
       <TouchableOpacity 
-        style={styles.findButton}
+        style={[
+          styles.findButton,
+          predictionLock && { backgroundColor: '#aaa' } // Optional greyed-out look
+        ]}
         onPress={findRoute}
-        disabled={isLoading}
+        disabled={isLoading || predictionLock}
       >
         <Text style={styles.buttonText}>Find Route</Text>
       </TouchableOpacity>
@@ -284,40 +320,40 @@ const PredictionRendering = ({
     )
   );
   
-  const renderPredictionButtons = () => (
-    routes.length > 0 && selectedRouteIndex !== null && !congestionPrediction && !travelTimePrediction && (
+  const renderCongestionButton = () => (
+    routes.length > 0 &&
+    selectedRouteIndex !== null &&
+    !congestionPrediction && (
       <View style={styles.predictionButtonsContainer}>
-        <View style={styles.predictionButtonsRow}>
-          <TouchableOpacity
-            style={[styles.predictionButton, { backgroundColor: '#FFF' }]}
-            onPress={predictCongestion}
-            disabled={isLoading || selectedRouteIndex === null}
-          >
-            <MaterialIcons name="traffic" size={16} color="#000" style={styles.buttonIcon} />
-            <Text style={styles.congestionButtonText}>Predict Traffic Congestion</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.predictionButton, { backgroundColor: '#FFF' }]}
-            onPress={predictTravelTime}
-            disabled={isLoading || selectedRouteIndex === null}
-          >
-            <Ionicons name="time" size={16} color="#000" style={styles.buttonIcon} />
-            <Text style={styles.congestionButtonText}>Predict Travel Time</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.predictionButton, { backgroundColor: '#444' }]}
-            onPress={predictBoth}
-            disabled={isLoading || selectedRouteIndex === null}
-          >
-            <MaterialIcons name="all-inclusive" size={16} color="#FFF" style={styles.buttonIcon} />
-            <Text style={styles.bothButtonText}>Predict Both</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.predictionButton, { backgroundColor: '#FFF' }]}
+          onPress={predictCongestion}
+          disabled={isLoading || selectedRouteIndex === null}
+        >
+          <MaterialIcons name="traffic" size={16} color="#000" style={styles.buttonIcon} />
+          <Text style={styles.congestionButtonText}>Predict Traffic Congestion</Text>
+        </TouchableOpacity>
       </View>
     )
   );
+
+  const renderTravelTimeButton = () => (
+    routes.length > 0 &&
+    selectedRouteIndex !== null &&
+    !travelTimePrediction && (
+      <View style={styles.predictionButtonsContainer}>
+        <TouchableOpacity
+          style={[styles.predictionButton, { backgroundColor: '#FFF' }]}
+          onPress={predictTravelTime}
+          disabled={isLoading || selectedRouteIndex === null}
+        >
+          <Ionicons name="time" size={16} color="#000" style={styles.buttonIcon} />
+          <Text style={styles.congestionButtonText}>Predict Travel Time</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  );
+
 
   const renderEditableCongestionForm = () => (
     <View style={styles.editFormContainer}>
@@ -359,17 +395,20 @@ const PredictionRendering = ({
 
         {/* Event Count Dropdown (0–5) */}
         <View style={styles.inputRowVertical}>
-          <Text style={styles.inputRowLabel}>Nearby Events</Text>
-          <TouchableOpacity
-            onPress={() =>
-              Alert.alert(
-                'Nearby Events',
-                'Number of relevant traffic-affecting events within the area.'
-              )
-            }
-          >
-            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Nearby Events</Text>
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert(
+                  'Nearby Events',
+                  'Number of relevant traffic-affecting events within the area.'
+                )
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+
           <RNPickerSelect
             onValueChange={(value) => updateCustomCongestionInput('event_count', value)}
             value={customCongestionInput.event_count}
@@ -386,6 +425,7 @@ const PredictionRendering = ({
 
         {/* Incident Count Dropdown (0–5) */}
         <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.inputRowLabel}>Nearby Incidents</Text>
           <TouchableOpacity
             onPress={() =>
@@ -397,18 +437,19 @@ const PredictionRendering = ({
           >
             <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
           </TouchableOpacity>
-          <RNPickerSelect
-            onValueChange={(value) => updateCustomCongestionInput('incident_count', value)}
-            value={customCongestionInput.incident_count}
-            items={[0, 1, 2, 3, 4, 5].map((val) => ({
-              label: val.toString(),
-              value: val
-            }))}
-            style={{
-              inputAndroid: styles.dropdownInput
-            }}
-            useNativeAndroidPickerStyle={false}
-          />
+          </View>
+            <RNPickerSelect
+              onValueChange={(value) => updateCustomCongestionInput('incident_count', value)}
+              value={customCongestionInput.incident_count}
+              items={[0, 1, 2, 3, 4, 5].map((val) => ({
+                label: val.toString(),
+                value: val
+              }))}
+              style={{
+                inputAndroid: styles.dropdownInput
+              }}
+              useNativeAndroidPickerStyle={false}
+            />
         </View>
 
         {/* Max Event Severity (0–3) */}
@@ -561,17 +602,19 @@ const PredictionRendering = ({
 
         {/* Event Count */}
         <View style={styles.inputRowVertical}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.inputRowLabel}>Nearby Events</Text>
-          <TouchableOpacity
-            onPress={() =>
-              Alert.alert(
-                'Nearby Events',
-                'Number of relevant traffic-affecting events within the area.'
-              )
-            }
-          >
-            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert(
+                  'Nearby Events',
+                  'Number of relevant traffic-affecting events within the area.'
+                )
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('event_count', value)}
             value={customTravelTimeInput.event_count}
@@ -585,17 +628,19 @@ const PredictionRendering = ({
 
         {/* Incident Count */}
         <View style={styles.inputRowVertical}>
-          <Text style={styles.inputRowLabel}>Nearby Incidents</Text>
-          <TouchableOpacity
-            onPress={() =>
-              Alert.alert(
-                'Nearby Incidents',
-                'Number of relevant traffic-affecting incidents within the area.'
-              )
-            }
-          >
-            <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.inputRowLabel}>Nearby Incidents</Text>
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert(
+                  'Nearby Incidents',
+                  'Number of relevant traffic-affecting incidents within the area.'
+                )
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color="#9de3d2" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('incident_count', value)}
             value={customTravelTimeInput.incident_count}
@@ -755,7 +800,7 @@ const PredictionRendering = ({
           <RNPickerSelect
             onValueChange={(value) => updateCustomTravelTimeInput('distance_km', value)}
             value={customTravelTimeInput.distance_km}
-            items={[5, 10, 15, 20, 25, 30, 35].map((val) => ({ label: val.toString(), value: val }))}
+            items={[10, 20, 30, 40, 50, 60].map((val) => ({ label: val.toString(), value: val }))}
             style={{
               inputAndroid: styles.dropdownInput
             }}
@@ -786,21 +831,23 @@ const PredictionRendering = ({
       <View style={styles.predictionContainer}>
         <View style={styles.predictionTitleRow}>
           <Text style={styles.predictionTitle}>Traffic Congestion Prediction</Text>
-          <TouchableOpacity 
-            style={styles.editButton}
-            onPress={() => {
-              if (bothPredicted) {
-                Alert.alert('Locked', 'You cannot edit after Predict Both. Please reset.');
-              } else {
-                toggleEditCongestion();
-              }
-            }}
-            disabled={bothPredicted}
-          >
-            <Feather name="edit-2" size={20} color={bothPredicted ? '#555' : '#CCC'} />
-          </TouchableOpacity>
+
+          {!editingCongestion && (
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => {
+                if (congestionPrediction) {
+                  toggleEditCongestion();
+                } else {
+                  Alert.alert("Prediction Required", "Please generate a congestion prediction first.");
+                }
+              }}
+            >
+              <Feather name="edit-2" size={20} color="#CCC" />
+            </TouchableOpacity>
+          )}
         </View>
-        
+
         <View style={styles.congestionResultBox}>
           {congestionPrediction.predictions[0].prediction === 1 ? (
             <>
@@ -863,39 +910,48 @@ const PredictionRendering = ({
       <View style={styles.predictionContainer}>
         <View style={styles.predictionTitleRow}>
           <Text style={styles.predictionTitle}>Travel Time Prediction</Text>
-          <TouchableOpacity 
-            style={styles.editButton}
-            onPress={() => {
-              if (bothPredicted) {
-                  Alert.alert('Locked', 'You cannot edit after Predict Both. Please reset.');
-                } else {
+          {!editingTravelTime && (
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => {
+                if (travelTimePrediction) {
                   toggleEditTravelTime();
+                } else {
+                  Alert.alert("Prediction Required", "Please generate a travel time prediction first.");
                 }
               }}
-          >
-            <Feather name="edit-2" size={20} color={bothPredicted ? '#555' : '#CCC'} />
-          </TouchableOpacity>
+            >
+              <Feather name="edit-2" size={20} color="#CCC" />
+            </TouchableOpacity>
+          )}
         </View>
-        
+
         <View style={styles.travelTimeResultBox}>
           <View style={styles.timeIconContainer}>
             <Ionicons name="stopwatch" size={32} color="#FFB300" />
             <Text style={styles.timeValue}>
-              {Math.round(travelTimePrediction.predictions[0].prediction)} minutes
+              {Math.round(travelTimePrediction.predictions[0])} minutes
             </Text>
           </View>
 
+          {travelTimePrediction.predictions[0] <= 5 && (
+            <View style={styles.warningBox}>
+              <Ionicons name="warning" size={18} color="#FFA500" style={{ marginRight: 8 }} />
+              <Text style={styles.warningText}>
+                {'\u26A0\uFE0F'} This travel time prediction is unusually short and may be inaccurate.
+              </Text>
+            </View>
+          )}
+
           {routes[selectedRouteIndex] && (
             <Text style={styles.timeComparisonText}>
-              {Math.round(
-                travelTimePrediction.predictions[0].prediction -
-                (routes[selectedRouteIndex].durationValue / 60)
-              )} minutes{' '}
-              {travelTimePrediction.predictions[0].prediction >
-              (routes[selectedRouteIndex].durationValue / 60)
-                ? 'slower'
-                : 'faster'}{' '}
-              than navigation estimate
+              {`${Math.round(
+                  travelTimePrediction.predictions[0] - (routes[selectedRouteIndex].durationValue / 60)
+                )} minutes ${
+                  travelTimePrediction.predictions[0] > (routes[selectedRouteIndex].durationValue / 60)
+                    ? 'slower'
+                    : 'faster'
+                } than navigation estimate`}
             </Text>
           )}
 
@@ -905,7 +961,7 @@ const PredictionRendering = ({
               <View style={styles.timeRangeValue}>
                 <AntDesign name="arrowdown" size={14} color="#4CD964" />
                 <Text style={styles.timeRangeMinText}>
-                  {Math.round(travelTimePrediction.predictions[0].probabilities[0])} min
+                  {Math.round(travelTimePrediction.probabilities[0][0])} min
                 </Text>
               </View>
 
@@ -914,7 +970,7 @@ const PredictionRendering = ({
               <View style={styles.timeRangeValue}>
                 <AntDesign name="arrowup" size={14} color="#FF3B30" />
                 <Text style={styles.timeRangeMaxText}>
-                  {Math.round(travelTimePrediction.predictions[0].probabilities[2])} min
+                  {Math.round(travelTimePrediction?.probabilities?.[0]?.[2] || 0)} min
                 </Text>
               </View>
             </View>
@@ -923,21 +979,23 @@ const PredictionRendering = ({
           <View style={styles.probabilityContainer}>
             <Text style={styles.probabilityTitle}>Travel Time Estimates:</Text>
             <View style={styles.timeEstimatesRow}>
-              {travelTimePrediction.predictions[0].classes.map((className, idx) => (
-                <View key={idx} style={styles.timeEstimateItem}>
-                  <Text style={styles.timeEstimateLabel}>
-                    {className === 'low_estimate' ? 'Optimistic' :
-                    className === 'point_estimate' ? 'Expected' : 'Pessimistic'}
-                  </Text>
-                  <Text style={[
-                    styles.timeEstimateValue,
-                    idx === 0 ? styles.optimisticValue : 
-                    idx === 2 ? styles.pessimisticValue : {}
-                  ]}>
-                    {Math.round(travelTimePrediction.predictions[0].probabilities[idx])} min
-                  </Text>
-                </View>
-              ))}
+              {Array.isArray(travelTimePrediction?.classes) &&
+                Array.isArray(travelTimePrediction?.probabilities?.[0]) &&
+                travelTimePrediction.classes.map((className, idx) => (
+                  <View key={idx} style={styles.timeEstimateItem}>
+                    <Text style={styles.timeEstimateLabel}>
+                      {className === 'low_estimate' ? 'Optimistic' :
+                        className === 'point_estimate' ? 'Expected' : 'Pessimistic'}
+                    </Text>
+                    <Text style={[
+                      styles.timeEstimateValue,
+                      idx === 0 ? styles.optimisticValue :
+                        idx === 2 ? styles.pessimisticValue : {}
+                    ]}>
+                      {Math.round(travelTimePrediction.probabilities[0][idx] || 0)} min
+                    </Text>
+                  </View>
+                ))}
             </View>
           </View>
 
@@ -1011,11 +1069,20 @@ const PredictionRendering = ({
           <>
             {renderRouteMap()}
             {renderRouteTabs()}
-            {renderPredictionButtons()}
+            {mode === 'congestion' && renderCongestionButton()}
+            {mode === 'travel' && renderTravelTimeButton()}
             {renderCongestionPrediction()}
             {renderTravelTimePrediction()}
           </>
         )}
+        {applyTriggered && (showCongestionSimilarityWarning || showTravelTimeSimilarityWarning) ? (
+          <View style={styles.warningBox}>
+            <Ionicons name="alert-circle" size={20} color="#FFA500" style={{ marginRight: 8 }} />
+            <Text style={styles.warningText}>
+              Heads up: The model processed your changes, but the results are very similar to your previous prediction. This can happen when changes don’t strongly affect the route conditions.
+            </Text>
+          </View>
+        ) : null}
         {(congestionPrediction || travelTimePrediction) && !editingCongestion && !editingTravelTime && renderResetAndFeedbackButtons()}
       </ScrollView>
       {renderStartJourneyButton()}

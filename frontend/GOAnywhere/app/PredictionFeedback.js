@@ -14,7 +14,7 @@ import styles from './PredictionStyling';
 
 const API_BASE_URL = 'https://goanywhere-backend-541900038032.asia-southeast1.run.app';
 
-const TrafficPredictionFeedback = () => {
+const PredictionFeedback = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const predictionType = route.params?.predictionType ?? '';
@@ -24,7 +24,7 @@ const TrafficPredictionFeedback = () => {
 
   const submitFeedback = async () => {
     if (!rating) {
-      Alert.alert('Missing Fields', 'Please provide both User ID and Rating.');
+      Alert.alert('Missing Fields', 'Please provide a Rating.');
       return;
     }
 
@@ -52,15 +52,7 @@ const TrafficPredictionFeedback = () => {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: '#121212', padding: 20 }}>
       <Text style={styles.titleText}>Give Feedback</Text>
-      <Text style={[styles.inputLabel, { marginTop: 16 }]}>User ID</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter your user ID"
-        placeholderTextColor="#999"
-        value={userId}
-        onChangeText={setUserId}
-      />
-
+     
       <Text style={styles.inputLabel}>Rating (1–5)</Text>
       <View style={styles.inputRow}>
         {[1, 2, 3, 4, 5].map((val) => (
@@ -99,4 +91,4 @@ const TrafficPredictionFeedback = () => {
   );
 };
 
-export default TrafficPredictionFeedback;
+export default PredictionFeedback;

@@ -11,14 +11,14 @@
 //   const [user, setUser] = useState(null);
 //   const [loading, setLoading] = useState(true);
 
-//   useEffect(() => {
-//     // Simple redirection to the signup page
-//     const timer = setTimeout(() => {
-//       router.replace('./loginUser');
-//     }, 300);
+// //   useEffect(() => {
+// //     // Simple redirection to the signup page
+// //     const timer = setTimeout(() => {
+// //       router.replace('./loginUser');
+// //     }, 300);
     
-//     return () => clearTimeout(timer);
-//   }, [router]);
+// //     return () => clearTimeout(timer);
+// //   }, [router]);
 
 //   // Only show loading screen while preparing to redirect
 //   return (

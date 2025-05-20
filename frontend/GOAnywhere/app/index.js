@@ -186,15 +186,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'white',
   },
-  topCurve: {
-    height: 150,
-    backgroundColor: '#9de3d2', 
-    borderBottomRightRadius: 150,
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '50%',
-  },
   contentContainer: {
     flex: 1,
     padding: 20,
@@ -257,22 +248,16 @@ const styles = StyleSheet.create({
     color: '#3498db',
     fontSize: 14,
   },
-  bottomSection: {
-    height: 180,
-    backgroundColor: '#9de3d2',
-    borderTopLeftRadius: 150,
-    position: 'relative',
-    justifyContent: 'center',
-    paddingLeft: 50,
-  },
   signInContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   signInText: {
     fontSize: 24,
     fontWeight: 'bold',
     marginRight: 15,
+    color: '#000',
   },
   arrowButton: {
     backgroundColor: 'black',

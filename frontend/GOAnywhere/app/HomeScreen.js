@@ -753,7 +753,6 @@ export default function HomeScreen() {
         {/* App Title */}
         <Text style={styles.appTitle}>GOANYWHERE</Text>
 
-        {/* Menu Items */}
         <ScrollView style={styles.menuContainer}>
           {/* Traffic Section */}
           <TouchableOpacity style={styles.menuItem} onPress={togglePredictions}>
@@ -792,6 +791,17 @@ export default function HomeScreen() {
             <View style={styles.menuItemRow}>
               <MaterialIcons name="navigation" size={24} color="#fff" style={styles.menuIcon} />
               <Text style={styles.menuText}>Navigation</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* NEW: Crowdsourced Reports Button */}
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => navigateTo('CrowdReportList')}
+          >
+            <View style={styles.menuItemRow}>
+              <MaterialIcons name="report" size={24} color="#fff" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Crowdsourced Reports</Text>
             </View>
           </TouchableOpacity>
 

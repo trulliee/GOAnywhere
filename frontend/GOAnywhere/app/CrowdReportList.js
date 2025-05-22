@@ -10,6 +10,26 @@ import {
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { API_URL } from './utils/apiConfig';
+// Google API key for reverse geocoding
+const GOOGLE_MAPS_API_KEY = 'AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0';
+
+// helper to reverse‐geocode coordinates to a road name
+async function fetchStreetName(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
+    );
+    const json = await res.json();
+    const comps = json.results?.[0]?.address_components || [];
+    return (
+      comps.find(c => c.types.includes('route'))?.long_name ||
+      'Unknown Road'
+    );
+  } catch {
+    return 'Unknown Road';
+  }
+}
+
 
 const iconMap = {
   Accident:       { lib: FontAwesome5, name: 'car-crash' },
@@ -29,16 +49,37 @@ export default function CrowdReportList() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_URL}/admin/alert-notifications`)
-      .then(res => res.json())
-      .then(data => {
-        setReports(data.notifications || []);
-        setLoading(false);
-      })
-      .catch(err => {
+    (async () => {
+      try {
+        const res   = await fetch(`${API_URL}/admin/alert-notifications`);
+        const data  = await res.json();
+        const notifs = data.notifications || [];
+
+        const enriched = await Promise.all(
+          notifs.map(async item => {
+            // extract "(lat, lng)" from message
+            const m = item.message.match(/\(\s*([^,]),\s*([^)])\s*\)/);
+            let roadName = 'Unknown Road';
+            if (m) {
+              const lat = parseFloat(m[1]);
+              const lng = parseFloat(m[2]);
+              roadName = await fetchStreetName(lat, lng);
+            }
+            // replace coords with road name
+            return {
+              ...item,
+              message: `${item.type} reported by ${item.username} at ${roadName}`
+            };
+          })
+        );
+
+        setReports(enriched);
+      } catch (err) {
         console.error('Failed to load reports:', err);
+      } finally {
         setLoading(false);
-      });
+      }
+    })();
   }, []);
 
   const renderItem = ({ item }) => {

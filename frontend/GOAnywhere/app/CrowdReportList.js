@@ -58,7 +58,7 @@ export default function CrowdReportList() {
         const enriched = await Promise.all(
           notifs.map(async item => {
             // extract "(lat, lng)" from message
-            const m = item.message.match(/\(\s*([^,]),\s*([^)])\s*\)/);
+            const m = item.message.match(/\(\s*([^,]+),\s*([^)]+)\s*\)/);
             let roadName = 'Unknown Road';
             if (m) {
               const lat = parseFloat(m[1]);

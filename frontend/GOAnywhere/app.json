@@ -17,7 +17,12 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.trolley.GOAnywhere"
+      "package": "com.trolley.GOAnywhere",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0"
+        }
+      }
     },
     "web": {
       "output": "static",

@@ -160,20 +160,20 @@ export function calculateWalkingMinutes(steps) {
 
 export function getManeuverIcon(maneuver) {
   switch (maneuver) {
-    case 'turn-right': return 'turn-right';
-    case 'turn-left': return 'turn-left';
-    case 'uturn-right': return 'uturn';
-    case 'uturn-left': return 'uturn';
-    case 'keep-right': return 'turn-slight-right';
-    case 'keep-left': return 'turn-slight-left';
-    case 'merge': return 'merge';
+    case 'turn-right':       return 'turn-right';
+    case 'turn-left':        return 'turn-left';
+    case 'uturn-right':      return 'u-turn-right';
+    case 'uturn-left':       return 'u-turn-left';
+    case 'keep-right':       return 'turn-slight-right';
+    case 'keep-left':        return 'turn-slight-left';
+    case 'merge':            return 'merge';
     case 'roundabout-right': return 'roundabout-right';
-    case 'roundabout-left': return 'roundabout-left';
-    case 'straight': return 'arrow-upward';
-    case 'fork-right': return 'turn-slight-right';
-    case 'fork-left': return 'turn-slight-left';
-    case 'ferry': return 'directions-boat';
-    default: return 'arrow-forward';
+    case 'roundabout-left':  return 'roundabout-left';
+    case 'straight':         return 'arrow-upward';
+    case 'fork-right':       return 'turn-slight-right';
+    case 'fork-left':        return 'turn-slight-left';
+    case 'ferry':            return 'directions-boat';
+    default:                 return 'arrow-forward';
   }
 }
 

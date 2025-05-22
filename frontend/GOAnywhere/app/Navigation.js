@@ -71,29 +71,48 @@ export default function Navigation() {
   }, []);
 
   // Update navigation instruction
-  useEffect(() => {
-    if (!location || !steps.length || arrived) return;
-    const next   = steps[currentStepIndex];
-    const nextPt = polyline?.[currentStepIndex + 1];
-    if (!nextPt) return;
-    const dist = Math.round(
-      calculateDistance(
-        location.latitude, location.longitude,
-        nextPt.latitude,   nextPt.longitude
-      ) * 1000
-    );
-    if (dist < 50) {
-        // still more steps?
-        if (currentStepIndex < steps.length - 1) {
-        setCurrentStepIndex(i => i + 1);
-        } else {
-        setArrived(true);
-        Alert.alert('You have reached your destination');
-        }
-    }    
-    setInstructionMain(cleanInstruction(next.instruction).toUpperCase());
-    setInstructionSub(`IN ${dist} M`);
-  }, [location, currentStepIndex, arrived]);
+useEffect(() => {
+  if (!location || !steps.length || arrived) return;
+  const step = steps[currentStepIndex];
+
+  // 1) pull the true end-point of this step
+  const { lat: nextLat, lng: nextLng } = step.endLocation;
+
+  // 2) compute remaining distance in meters
+  const distKm = calculateDistance(
+    location.latitude, location.longitude,
+    nextLat, nextLng
+  );
+  const dist = Math.round(distKm * 1000);
+
+  // 3) parse the step’s nominal length from its text (e.g. "350 m" or "1.2 km")
+  let stepDist = 0;
+  const m = step.distance.match(/(\d+(?:\.\d+)?)\s*(km|m)/i);
+  if (m) {
+    stepDist = parseFloat(m[1]) * (m[2].toLowerCase() === 'km' ? 1000 : 1);
+  }
+
+  // 4) set a small, dynamic threshold (5% of the step length, at least 5 m)
+  const minThreshold = 15; // you can tweak this
+  const threshold = stepDist
+    ? Math.max(stepDist * 0.05, minThreshold)
+    : minThreshold * 2;
+
+  // 5) only advance when truly within that threshold
+  if (dist < threshold) {
+    if (currentStepIndex < steps.length - 1) {
+      setCurrentStepIndex(i => i + 1);
+    } else {
+      setArrived(true);
+      Alert.alert('You have reached your destination');
+    }
+  }
+
+  // 6) update the on-screen instructions
+  setInstructionMain(cleanInstruction(step.instruction).toUpperCase());
+  setInstructionSub(`IN ${dist} M`);
+}, [location, currentStepIndex, arrived]);
+
 
   // Toggle route detail sheet
   const toggleDetail = () => {

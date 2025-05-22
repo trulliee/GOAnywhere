@@ -255,6 +255,7 @@ const styles = StyleSheet.create({
   signUpContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingBottom: 20,
   },
   signUpText: {
     fontSize: 24,

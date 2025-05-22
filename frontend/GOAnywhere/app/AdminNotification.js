@@ -1,97 +1,90 @@
-
-
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Button, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from './utils/apiConfig';
 
-const Notification = () => {
+const GOOGLE_MAPS_API_KEY = 'AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0';
+
+async function fetchStreetName(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
+    );
+    const json  = await res.json();
+    const comps = json.results?.[0]?.address_components || [];
+    return (
+      comps.find(c => c.types.includes('route'))?.long_name ||
+      'Unknown Road'
+    );
+  } catch {
+    return 'Unknown Road';
+  }
+}
+
+function formatRelativeTime(timestamp) {
+  const time = new Date(Number(timestamp));
+  const now  = new Date();
+  const diff = now - time; // ms
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  return time.toLocaleDateString() + ' ' + time.toLocaleTimeString();
+}
+
+export default function Notification() {
   const [notifications, setNotifications] = useState([]);
   const [filterType, setFilterType] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
 
   useEffect(() => {
-    const fetchReports = async () => {
+    (async () => {
       try {
-        const res = await fetch(`${API_URL}/admin/crowdsourced-reports`);
-        const data = await res.json();
+        const res    = await fetch(`${API_URL}/admin/alert-notifications`);
+        const data   = await res.json();
+        const notifs = data.notifications || [];
 
-        const formatted = data.reports.map((r) => {
-          const reportDate = new Date(r.timestamp * 1000); // assuming backend sends timestamp in seconds
-          const now = new Date();
-          const diff = Math.floor((now - reportDate) / (1000 * 60 * 60 * 24));
-
-          let timeCategory = '2days';
-          if (diff === 0) timeCategory = 'today';
-          else if (diff === 1) timeCategory = 'yesterday';
-
-          return {
-            id: r.id,
-            icon: r.type === 'High Crowd' ? 'people' : 'alert-circle',
-            iconColor: r.type === 'High Crowd' ? '#BC3535' : '#EEA039',
-            title: r.type,
-            message: `${r.username} reported ${r.type}`,
-            timeCategory,
-            type: 'public',
-            status: r.status,
-          };
-        });
-
-        setNotifications(formatted);
+        const enriched = await Promise.all(
+          notifs.map(async (item) => {
+            // parse coords and reverse-geocode
+            const match = item.message.match(/\(\s*([^,]+),\s*([^)]+)\s*\)/);
+            let roadName = 'Unknown Road';
+            if (match) {
+              const lat = parseFloat(match[1]);
+              const lng = parseFloat(match[2]);
+              roadName = await fetchStreetName(lat, lng);
+            }
+            return {
+              id:        item.id,
+              icon:      item.type === 'High Crowd' ? 'people' : 'alert-circle',
+              iconColor: item.type === 'High Crowd' ? '#BC3535' : '#EEA039',
+              title:     item.type,
+              message:   `${item.username} reported ${item.type} on ${roadName}`,
+              timestamp: item.timestamp,
+              type:      'public',
+            };
+          })
+        );
+        setNotifications(enriched);
       } catch (err) {
-        console.error('Failed to fetch reports:', err);
+        console.error('Failed to load reports:', err);
       }
-    };
-
-    fetchReports();
+    })();
   }, []);
 
-  const handleStatusChange = async (id, newStatus) => {
-    try {
-      await fetch(`${API_URL}/admin/update-report-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report_id: id, status: newStatus }),
-      });
-
-      const updated = notifications.map((item) =>
-        item.id === id ? { ...item, status: newStatus } : item
-      );
-      setNotifications(updated);
-    } catch (err) {
-      console.error('Failed to update report status:', err);
-    }
-  };
-
-
-  const renderCard = (item, index) => (
-    <View key={index} style={styles.notificationCard}>
+  const renderCard = (item) => (
+    <View key={item.id} style={styles.notificationCard}>
       <Ionicons name={item.icon} size={28} color={item.iconColor} style={{ marginRight: 12 }} />
       <View style={{ flex: 1 }}>
         <Text style={styles.notificationTitle}>{item.title}</Text>
         <Text style={styles.notificationMessage}>{item.message}</Text>
-        <Text style={styles.notificationTime}>Type: {item.type} | Status: {item.status}</Text>
-        <View style={styles.actionButtons}>
-          <Button title="Accept" onPress={() => handleStatusChange(item.id, 'accepted')} />
-          <Button title="Flag" onPress={() => handleStatusChange(item.id, 'flagged')} color="#D9534F" />
-        </View>
+        <Text style={styles.notificationTime}>{formatRelativeTime(item.timestamp)}</Text>
       </View>
     </View>
   );
 
-  const grouped = {
-    today: [],
-    yesterday: [],
-    '2days': [],
-  };
-
-  notifications
-    .filter((n) => (filterType === 'all' || n.type === filterType) && (filterStatus === 'all' || n.status === filterStatus))
-    .forEach((notif) => {
-      if (grouped[notif.timeCategory]) {
-        grouped[notif.timeCategory].push(notif);
-      }
-    });
+  const filtered = notifications.filter(
+    (n) => filterType === 'all' || n.type === filterType
+  );
 
   return (
     <View style={styles.container}>
@@ -100,43 +93,22 @@ const Notification = () => {
       <View style={styles.filterContainer}>
         <Text>Filter Type:</Text>
         {['all', 'driver', 'public'].map((type) => (
-          <TouchableOpacity key={type} onPress={() => setFilterType(type)} style={styles.filterBtn}>
+          <TouchableOpacity
+            key={type}
+            onPress={() => setFilterType(type)}
+            style={styles.filterBtn}
+          >
             <Text style={{ color: filterType === type ? 'blue' : '#000' }}>{type}</Text>
-          </TouchableOpacity>
-        ))}
-        <Text>Filter Status:</Text>
-        {['all', 'pending', 'accepted', 'flagged'].map((status) => (
-          <TouchableOpacity key={status} onPress={() => setFilterStatus(status)} style={styles.filterBtn}>
-            <Text style={{ color: filterStatus === status ? 'blue' : '#000' }}>{status}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       <ScrollView contentContainerStyle={styles.notificationContainer}>
-        {grouped.today.length > 0 && (
-          <>
-            <Text style={styles.sectionHeader}>Today</Text>
-            {grouped.today.map((item, index) => renderCard(item, index))}
-          </>
-        )}
-        {grouped.yesterday.length > 0 && (
-          <>
-            <Text style={styles.sectionHeader}>Yesterday</Text>
-            {grouped.yesterday.map((item, index) => renderCard(item, index))}
-          </>
-        )}
-        {grouped['2days'].length > 0 && (
-          <>
-            <Text style={styles.sectionHeader}>2 Days Ago</Text>
-            {grouped['2days'].map((item, index) => renderCard(item, index))}
-          </>
-        )}
+        {filtered.map((item) => renderCard(item))}
       </ScrollView>
     </View>
   );
-};
-
-export default Notification;
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -187,18 +159,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#777',
     marginTop: 5,
-  },
-  sectionHeader: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    marginTop: 20,
-    color: '#555',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    marginTop: 10,
-    gap: 10,
   },
 });

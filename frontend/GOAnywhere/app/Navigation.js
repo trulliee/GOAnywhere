@@ -23,7 +23,8 @@ import { useRoute } from '@react-navigation/native';
 import {
   calculateDistance,
   cleanInstruction,
-  calculateWalkingMinutes
+  calculateWalkingMinutes,
+  isNear
 } from './P2PHelper';
 import { API_URL } from './utils/apiConfig';
 
@@ -70,48 +71,93 @@ export default function Navigation() {
     return () => sub && sub.remove();
   }, []);
 
+  const seenReports = useRef(new Set());
+
+  useEffect(() => {
+    const driverTypes = ["Accident","Road Works","Police","Weather","Hazard","Map Issue"];
+    const publicTypes = ["Accident","Transit Works","High Crowd","Weather","Hazard","Delays","Map Issue"];
+    // detect if this public route is MRT-only (no bus segments)
+    const isMRTRoute = steps.some(s => s.transitInfo?.vehicleType === 'SUBWAY')
+    && !steps.some(s => s.transitInfo?.vehicleType === 'BUS');
+    const thresholdDeg = 50 / 111000; // ~50 m in degrees
+
+    const checkReports = async () => {
+      try {
+        const res  = await fetch(`${API_URL}/crowd/all-reports`);
+        const data = await res.json();
+
+        for (const report of data) {
+          if (seenReports.current.has(report.timestamp)) continue;
+
+          // only consider types valid for current mode
+          const validTypes = mode === 'driver'
+            ? driverTypes
+            : (isMRTRoute ? ['High Crowd', 'Delays'] : publicTypes);
+
+          if (!validTypes.includes(report.type)) {
+            seenReports.current.add(report.timestamp);
+            continue;
+          }
+
+          // if report is within 50m of any point on the route
+          const incidentPt = { Latitude: report.latitude, Longitude: report.longitude };
+          if (polyline.some(pt => isNear(pt, incidentPt, thresholdDeg))) {
+            // derive street name from the incident’s coordinates
+            const roadName = await fetchStreetName(report.latitude, report.longitude);
+            Alert.alert(
+              '⚠️ Report Ahead',
+              `"${report.type}" reported on ${roadName}.`
+            );
+          }
+
+          seenReports.current.add(report.timestamp);
+        }
+      } catch (e) {
+        console.warn('Crowd-report fetch failed', e);
+      }
+    };
+
+    checkReports();
+    const intervalId = setInterval(checkReports, 20000);
+    return () => clearInterval(intervalId);
+  }, [polyline, mode, steps]);
+
   // Update navigation instruction
-useEffect(() => {
-  if (!location || !steps.length || arrived) return;
-  const step = steps[currentStepIndex];
+  useEffect(() => {
+    if (!location || !steps.length || arrived) return;
+    const step = steps[currentStepIndex];
 
-  // 1) pull the true end-point of this step
-  const { lat: nextLat, lng: nextLng } = step.endLocation;
+    const { lat: nextLat, lng: nextLng } = step.endLocation;
 
-  // 2) compute remaining distance in meters
-  const distKm = calculateDistance(
-    location.latitude, location.longitude,
-    nextLat, nextLng
-  );
-  const dist = Math.round(distKm * 1000);
+    const distKm = calculateDistance(
+      location.latitude, location.longitude,
+      nextLat, nextLng
+    );
+    const dist = Math.round(distKm * 1000);
 
-  // 3) parse the step’s nominal length from its text (e.g. "350 m" or "1.2 km")
-  let stepDist = 0;
-  const m = step.distance.match(/(\d+(?:\.\d+)?)\s*(km|m)/i);
-  if (m) {
-    stepDist = parseFloat(m[1]) * (m[2].toLowerCase() === 'km' ? 1000 : 1);
-  }
-
-  // 4) set a small, dynamic threshold (5% of the step length, at least 5 m)
-  const minThreshold = 15; // you can tweak this
-  const threshold = stepDist
-    ? Math.max(stepDist * 0.05, minThreshold)
-    : minThreshold * 2;
-
-  // 5) only advance when truly within that threshold
-  if (dist < threshold) {
-    if (currentStepIndex < steps.length - 1) {
-      setCurrentStepIndex(i => i + 1);
-    } else {
-      setArrived(true);
-      Alert.alert('You have reached your destination');
+    let stepDist = 0;
+    const m = step.distance.match(/(\d+(?:\.\d+)?)\s*(km|m)/i);
+    if (m) {
+      stepDist = parseFloat(m[1]) * (m[2].toLowerCase() === 'km' ? 1000 : 1);
     }
-  }
 
-  // 6) update the on-screen instructions
-  setInstructionMain(cleanInstruction(step.instruction).toUpperCase());
-  setInstructionSub(`IN ${dist} M`);
-}, [location, currentStepIndex, arrived]);
+    const minThreshold = 15; // you can tweak this
+    const threshold = stepDist
+      ? Math.max(stepDist * 0.05, minThreshold)
+      : minThreshold * 2;
+
+    if (dist < threshold) {
+      if (currentStepIndex < steps.length - 1) {
+        setCurrentStepIndex(i => i + 1);
+      } else {
+        setArrived(true);
+        Alert.alert('You have reached your destination');
+      }
+    }
+
+    setInstructionMain(cleanInstruction(step.instruction).toUpperCase());
+    setInstructionSub(`IN ${dist} M`);
+  }, [location, currentStepIndex, arrived]);
 
 
   // Toggle route detail sheet

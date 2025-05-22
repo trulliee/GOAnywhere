@@ -59,6 +59,10 @@ export default function AdminHomeScreen() {
   const sidebarPosition = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
 
+  const [congestionFeedback, setCongestionFeedback] = useState(null);
+  const [travelTimeFeedback, setTravelTimeFeedback] = useState(null);
+
+
   // Handle user status toggle
   const handleToggleUserStatus = async (userId, currentType) => {
     const action = currentType === 'banned' ? 'unban' : 'ban';
@@ -265,6 +269,30 @@ export default function AdminHomeScreen() {
     }
 
     fetchAdminAlerts();
+
+    async function fetchFeedbackSummaries() {
+    try {
+      const [congestionRes, travelTimeRes] = await Promise.all([
+        fetch(`${API_URL}/prediction/feedback/summary?prediction_type=traffic_congestion`),
+        fetch(`${API_URL}/prediction/feedback/summary?prediction_type=travel_time`)
+      ]);
+
+      if (congestionRes.ok) {
+        const data = await congestionRes.json();
+        setCongestionFeedback(data);
+      }
+      if (travelTimeRes.ok) {
+        const data = await travelTimeRes.json();
+        setTravelTimeFeedback(data);
+      }
+    } catch (error) {
+      console.error("Error fetching feedback summary:", error.message);
+    }
+  }
+
+  fetchFeedbackSummaries();
+
+
   }, []);
 
 
@@ -342,6 +370,40 @@ export default function AdminHomeScreen() {
               Manage users and send notifications from this control panel
             </Text>
           </View>
+
+          <View style={styles.sectionTitle}>
+            <FontAwesome5 name="comment-dots" size={20} color="#333" />
+            <Text style={styles.sectionTitleText}>Feedback Summary</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Traffic Congestion</Text>
+            {congestionFeedback ? (
+              <>
+                <Text style={styles.statValue}>{congestionFeedback.average_rating ?? "N/A"} ⭐</Text>
+                <Text style={styles.statLabel}>
+                  {congestionFeedback.feedback_count} feedbacks — {congestionFeedback.satisfaction_rate}% satisfied
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.statLabel}>Loading...</Text>
+            )}
+          </View>
+
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Travel Time</Text>
+            {travelTimeFeedback ? (
+              <>
+                <Text style={styles.statValue}>{travelTimeFeedback.average_rating ?? "N/A"} ⭐</Text>
+                <Text style={styles.statLabel}>
+                  {travelTimeFeedback.feedback_count} feedbacks — {travelTimeFeedback.satisfaction_rate}% satisfied
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.statLabel}>Loading...</Text>
+            )}
+          </View>
+
           
           {/* User Management Preview Section */}
           <View style={styles.sectionTitle}>

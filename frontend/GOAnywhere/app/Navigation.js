@@ -83,7 +83,7 @@ export default function Navigation() {
 
     const checkReports = async () => {
       try {
-        const res  = await fetch(`${API_URL}/crowd/all-reports`);
+        const res  = await fetch(`${API_URL}/crowd/get-crowd-data`);
         const data = await res.json();
 
         for (const report of data) {

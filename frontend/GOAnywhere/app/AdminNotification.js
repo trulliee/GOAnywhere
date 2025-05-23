@@ -1,9 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import { API_URL } from './utils/apiConfig';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0';
+
+const iconMap = {
+  Accident:        { lib: FontAwesome5,  name: 'car-crash',            color: '#e53935' },
+  'Road Works':    { lib: FontAwesome5,  name: 'hard-hat',             color: '#e53935' },
+  'Traffic Police':          { lib: FontAwesome5,  name: 'user-secret',          color: '#4caf50' },
+  Weather:         { lib: FontAwesome5,  name: 'cloud',                color: '#4caf50' },
+  Hazard:          { lib: FontAwesome5,  name: 'exclamation-triangle', color: '#e53935' },
+  'Map Issue':     { lib: FontAwesome5,  name: 'map-marked',           color: '#ffeb3b' },
+  'Transit Works': { lib: FontAwesome5,  name: 'train',                color: '#e53935' },
+  'High Crowd':    { lib: MaterialIcons, name: 'people',               color: '#ffeb3b' },
+  Delays:          { lib: FontAwesome5,  name: 'hand-paper',           color: '#4caf50' },
+};
 
 async function fetchStreetName(lat, lng) {
   try {
@@ -39,34 +51,38 @@ export default function Notification() {
   useEffect(() => {
     (async () => {
       try {
-        const res    = await fetch(`${API_URL}/admin/alert-notifications`);
+        const res    = await fetch(`${API_URL}/crowd/get-crowd-data`);
         const data   = await res.json();
-        const notifs = data.notifications || [];
+        const notifs = data.reports || [];
 
         const enriched = await Promise.all(
           notifs.map(async (item) => {
-            // parse coords and reverse-geocode
-            const match = item.message.match(/\(\s*([^,]+),\s*([^)]+)\s*\)/);
-            let roadName = 'Unknown Road';
-            if (match) {
-              const lat = parseFloat(match[1]);
-              const lng = parseFloat(match[2]);
-              roadName = await fetchStreetName(lat, lng);
+            const lat  = item.latitude;
+            const lng  = item.longitude;
+            let road   = 'Unknown Road';
+            if (lat != null && lng != null) {
+              road = await fetchStreetName(lat, lng);
             }
+
             return {
-              id:        item.id,
-              icon:      item.type === 'High Crowd' ? 'people' : 'alert-circle',
-              iconColor: item.type === 'High Crowd' ? '#BC3535' : '#EEA039',
-              title:     item.type,
-              message:   `${item.username} reported ${item.type} on ${roadName}`,
-              timestamp: item.timestamp,
-              type:      'public',
+              id:           item.id,
+              userName:     item.username,
+              userId:       item.user_id,
+              reportType:   item.type,
+              locationName: road,
+              coordinate:   `(${lat}, ${lng})`,
+
+              IconComponent: iconMap[item.type]?.lib   || Ionicons,
+              iconName:      iconMap[item.type]?.name  || 'alert-circle',
+              iconColor:     iconMap[item.type]?.color || '#000',
+
+              timestamp:    item.timestamp,
+              type:         'public',
             };
           })
         );
-        enriched.sort(
-          (a, b) => Number(b.timestamp) - Number(a.timestamp)
-        );
+
+        enriched.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
         setNotifications(enriched);
       } catch (err) {
         console.error('Failed to load reports:', err);
@@ -74,20 +90,58 @@ export default function Notification() {
     })();
   }, []);
 
+
+
   const renderCard = (item) => (
     <View key={item.id} style={styles.notificationCard}>
-      <Ionicons name={item.icon} size={28} color={item.iconColor} style={{ marginRight: 12 }} />
+      <item.IconComponent
+        name={item.iconName}
+        size={28}
+        color={item.iconColor}
+        style={{ marginRight: 12 }}
+      />
       <View style={{ flex: 1 }}>
-        <Text style={styles.notificationTitle}>{item.title}</Text>
-        <Text style={styles.notificationMessage}>{item.message}</Text>
-        <Text style={styles.notificationTime}>{formatRelativeTime(item.timestamp)}</Text>
+        {/* 1️⃣ USER - (User ID) */}
+        <Text style={styles.notificationTitle}>
+          Username: {item.userName}
+        </Text>
+        <Text style={styles.notificationMessage}>
+          UID: {item.userId}
+        </Text>
+        {/* 2️⃣ Report Type */}
+        <Text style={styles.notificationMessage}>
+          Report Type: {item.reportType}
+        </Text>
+        {/* 3️⃣ Location */}
+        <Text style={styles.notificationMessage}>
+          Location: {item.locationName},
+        </Text>
+        {/* 4️⃣ Coordinate */}
+        <Text style={styles.notificationMessage}>
+          Coordinate: {item.coordinate}
+        </Text>
+        {/* timestamp */}
+        <Text style={styles.notificationTime}>
+          {formatRelativeTime(item.timestamp)}
+        </Text>
       </View>
     </View>
   );
 
-  const filtered = notifications.filter(
-    (n) => filterType === 'all' || n.type === filterType
-  );
+  const filtered = notifications.filter(n => {
+    if (filterType === 'all') {
+      return true;
+    }
+    if (filterType === 'driver') {
+      // driver mode: exclude Transit Works, High Crowd, Delays
+      return !['Transit Works', 'High Crowd', 'Delays'].includes(n.reportType);
+    }
+    if (filterType === 'public') {
+      // public mode: exclude Road Works, Traffic Police
+      return !['Road Works', 'Traffic Police'].includes(n.reportType);
+    }
+    return true;
+  });
 
   return (
     <View style={styles.container}>

@@ -9,19 +9,16 @@ import {
   SafeAreaView, 
   Alert,
   Animated,
-  Platform,
   PanResponder,
   Dimensions,
-  FlatList
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import MapView, { Marker } from 'react-native-maps';
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from './authService';
 import { API_URL } from './utils/apiConfig';
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0";
+const GOOGLE_MAPS_API_KEY = 'AIzaSyDHIQoHjcVR0RsyKG-U5myMIpdPqK6n-m0';
+
 
 // Get screen dimensions
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -247,26 +244,67 @@ export default function AdminHomeScreen() {
     loadUser();
     fetchRecentUsers();
 
-    async function fetchAdminAlerts() {
-      try {
-        const res = await fetch(`${API_URL}/admin/alert-notifications`);
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`Server returned ${res.status}: ${errText}`);
-        }
-        const contentType = res.headers.get('content-type') || '';
-        let data;
-        if (contentType.includes('application/json')) {
-          data = await res.json();
-        } else {
-          const txt = await res.text();
-          throw new Error(`Expected JSON but got: ${txt}`);
-        }
-        setAdminAlerts(data.notifications || []);
-      } catch (err) {
-        console.error("Error fetching admin alerts:", err.message);
-      }
+  async function fetchStreetName(lat, lng) {
+    try {
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
+      );
+      const json  = await res.json();
+      const comps = json.results?.[0]?.address_components || [];
+      return (
+        comps.find(c => c.types.includes('route'))?.long_name ||
+        'Unknown Road'
+      );
+    } catch {
+      return 'Unknown Road';
     }
+  }
+
+  async function fetchAdminAlerts() {
+    try {
+      const res = await fetch(`${API_URL}/crowd/get-crowd-data`);
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Server returned ${res.status}: ${errText}`);
+      }
+
+      const contentType = res.headers.get('content-type') || '';
+      let data;
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const txt = await res.text();
+        throw new Error(`Expected JSON but got: ${txt}`);
+      }
+
+      const notifications = await Promise.all(
+        (data.reports || []).map(async item => {
+          const roadName = await fetchStreetName(item.latitude, item.longitude);
+          return {
+            ...item,
+            message: `${item.type} reported by ${item.username} at ${roadName} (${item.latitude}, ${item.longitude})`
+          };
+        })
+      );
+
+      notifications.sort(
+        (a, b) => parseInt(b.timestamp, 10) - parseInt(a.timestamp, 10)
+      );
+
+      setAdminAlerts(notifications);
+    } catch (err) {
+      console.error("Error fetching admin alerts:", err.message);
+    }
+  }
+
+
+
+
+
+
+
+
+
 
     fetchAdminAlerts();
 

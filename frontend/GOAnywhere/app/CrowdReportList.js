@@ -32,15 +32,15 @@ async function fetchStreetName(lat, lng) {
 
 
 const iconMap = {
-  Accident:       { lib: FontAwesome5, name: 'car-crash' },
-  'Road Works':   { lib: FontAwesome5, name: 'hard-hat' },
-  Police:         { lib: FontAwesome5, name: 'user-secret' },
-  Weather:        { lib: FontAwesome5, name: 'cloud' },
-  Hazard:         { lib: FontAwesome5, name: 'exclamation-triangle' },
-  'Map Issue':    { lib: FontAwesome5, name: 'map-marked' },
-  'Transit Works':{ lib: FontAwesome5, name: 'train' },
-  'High Crowd':   { lib: MaterialIcons, name: 'people' },
-  Delays:         { lib: FontAwesome5, name: 'hand-paper' },
+  Accident:       { lib: FontAwesome5, name: 'car-crash',       color: '#e53935' }, // red
+  'Road Works':   { lib: FontAwesome5, name: 'hard-hat',        color: '#e53935' }, // red
+  'Traffic Police':         { lib: FontAwesome5, name: 'user-secret',     color: '#4caf50' }, // green
+  Weather:        { lib: FontAwesome5, name: 'cloud',           color: '#4caf50' }, // green
+  Hazard:         { lib: FontAwesome5, name: 'exclamation-triangle', color: '#e53935' }, // red
+  'Map Issue':    { lib: FontAwesome5, name: 'map-marked',      color: '#ffeb3b' }, // yellow
+  'Transit Works':{ lib: FontAwesome5, name: 'train',           color: '#e53935' }, // red
+  'High Crowd':   { lib: MaterialIcons, name: 'people',         color: '#ffeb3b' }, // yellow
+  Delays:         { lib: FontAwesome5, name: 'hand-paper',      color: '#4caf50' }, // green
 };
 
 export default function CrowdReportList() {
@@ -51,31 +51,33 @@ export default function CrowdReportList() {
   useEffect(() => {
     (async () => {
       try {
-        const res   = await fetch(`${API_URL}/admin/alert-notifications`);
-        const data  = await res.json();
-        const notifs = data.notifications || [];
+        const res      = await fetch(`${API_URL}/crowd/get-crowd-data`);
+        const data     = await res.json();
+        const reports  = data.reports || [];
 
         const enriched = await Promise.all(
-          notifs.map(async item => {
-            // extract "(lat, lng)" from message
-            const m = item.message.match(/\(\s*([^,]+),\s*([^)]+)\s*\)/);
+          reports.map(async item => {
+            const { latitude: lat, longitude: lng } = item;
             let roadName = 'Unknown Road';
-            if (m) {
-              const lat = parseFloat(m[1]);
-              const lng = parseFloat(m[2]);
+
+            // reverse-geocode
+            if (lat != null && lng != null) {
               roadName = await fetchStreetName(lat, lng);
             }
-            // replace coords with road name
+
             return {
               ...item,
+              // compose same style message
               message: `${item.type} reported by ${item.username} at ${roadName}`
             };
           })
         );
-      enriched.sort((a, b) =>
-        parseInt(b.timestamp, 10) - parseInt(a.timestamp, 10)
-      );
-      setReports(enriched);
+
+        enriched.sort(
+          (a, b) => parseInt(b.timestamp, 10) - parseInt(a.timestamp, 10)
+        );
+
+        setReports(enriched);
       } catch (err) {
         console.error('Failed to load reports:', err);
       } finally {
@@ -84,13 +86,19 @@ export default function CrowdReportList() {
     })();
   }, []);
 
+
   const renderItem = ({ item }) => {
     const IconData = iconMap[item.type] || { lib: Ionicons, name: 'alert-circle' };
     const IconComponent = IconData.lib;
 
     return (
       <View style={styles.card}>
-        <IconComponent name={IconData.name} size={24} color="#e53935" style={styles.icon} />
+        <IconComponent
+          name={IconData.name}
+          size={24}
+          color={IconData.color}
+          style={styles.icon}
+        />
         <View style={styles.textContainer}>
           <Text style={styles.type}>{item.type}</Text>
           <Text style={styles.metaText}>{item.message}</Text>

@@ -54,10 +54,15 @@ export default function SignUp() {
       return;
     }
 
-    if (!/^\d{8}$/.test(phoneNumber.trim())) {
-      alert('Phone number must be 8 digits');
-      return;
-    }
+   if (password.length < 6) {
+     alert('Password must be at least 6 characters long');
+     return;
+   }
+
+   if (!/^[89]\d{7}$/.test(phoneNumber.trim())) {
+     alert('Phone number should be valid.');
+     return;
+   }
 
     console.log("Sending payload:", {
       email,

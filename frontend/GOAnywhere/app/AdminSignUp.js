@@ -54,6 +54,13 @@ export default function SignUp() {
       return;
     }
 
+
+    if (password.length < 6) {
+     alert('Password must be at least 6 characters long');
+     return;
+    }
+
+
     if (adminCode.trim() !== 'CSCI321') {
       alert('Invalid admin code. Please enter the correct code.');
       return;

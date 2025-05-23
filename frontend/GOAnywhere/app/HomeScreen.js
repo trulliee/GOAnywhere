@@ -64,12 +64,12 @@ export default function HomeScreen() {
   const [reportOpen, setReportOpen]       = useState(false);
   const reportAnim                        = useRef(new Animated.Value(Dimensions.get('window').height * 0.45)).current;
   const [reportMode, setReportMode]       = useState(null); // 'driver' | 'public'
-  const driverCategories                  = ["Accident","Road Works","Police","Weather","Hazard","Map Issue"];
+  const driverCategories                  = ["Accident","Road Works","Traffic Police","Weather","Hazard","Map Issue"];
   const publicCategories                  = ["Accident","Transit Works","High Crowd","Weather","Hazard","Delays","Map Issue"];
   const categoryIcons = {
     Accident:      { name: "car-crash",             lib: "FontAwesome5" },
     "Road Works":  { name: "hard-hat",              lib: "FontAwesome5" },
-    Police:        { name: "user-secret",           lib: "FontAwesome5" },
+    "Traffic Police":        { name: "user-secret",           lib: "FontAwesome5" },
     Weather:       { name: "cloud",                 lib: "FontAwesome5" },
     Hazard:        { name: "exclamation-triangle",  lib: "FontAwesome5" },
     "Map Issue":   { name: "map-marked",            lib: "FontAwesome5" },
@@ -168,36 +168,36 @@ export default function HomeScreen() {
   };
 
   const submitCrowdsourcedReport = async (reportType) => {
+    const stored = await AuthService.getUserInfo(); 
+    if (!stored?.uid) {
+      return Alert.alert("Please log in before submitting a report");
+    }
+
     const location = await getCurrentLocation();
     if (!location) return;
-  
-    try {
-      const reportData = {
-        reportType,
-        username: userName,
-        userId:   user?.uid || 'anonymous',
-        timestamp: Date.now(),
-        latitude:  location.latitude,
-        longitude: location.longitude
-      };
 
-      console.log('Sending report to backend:', reportData);
-      console.log("Using URL:", `${API_URL}/crowd/submit-crowd-data`);
+    const reportData = {
+      userId:    stored.uid,                      // ← real UID
+      username:  stored.name.toUpperCase(),       // or however you want it
+      reportType,
+      timestamp: Date.now(),
+      latitude:  location.latitude,
+      longitude: location.longitude,
+    };
 
-      await fetch(`${API_URL}/crowd/submit-crowd-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(reportData),   
-      });
+    const res = await fetch(`${API_URL}/crowd/submit-crowd-data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(reportData),
+    });
 
-      Alert.alert("Report Submitted", `You reported: ${reportType}`);
-    } catch (error) {
-      console.error("Error submitting report: ", error);
-      Alert.alert("Submission Failed", "Please try again.");
+    const text = await res.text();
+    if (!res.ok) {
+      return Alert.alert("Submission failed", text);
     }
+    Alert.alert("Report Submitted", `You reported: ${reportType}`);
   };
+
 
   //Search Bar
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -394,7 +394,11 @@ export default function HomeScreen() {
         }
         
         // Then try to get full user data from current session
-        const userData = await AuthService.getCurrentUser();
+
+        let userData = await AuthService.getCurrentUser();
+        if (!userData) {
+          userData = await AuthService.getUserInfo(); // { uid, name, token… }
+        }
         setUser(userData);
         
         if (userData) {

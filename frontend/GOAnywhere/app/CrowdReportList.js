@@ -72,8 +72,10 @@ export default function CrowdReportList() {
             };
           })
         );
-
-        setReports(enriched);
+      enriched.sort((a, b) =>
+        parseInt(b.timestamp, 10) - parseInt(a.timestamp, 10)
+      );
+      setReports(enriched);
       } catch (err) {
         console.error('Failed to load reports:', err);
       } finally {
@@ -92,6 +94,9 @@ export default function CrowdReportList() {
         <View style={styles.textContainer}>
           <Text style={styles.type}>{item.type}</Text>
           <Text style={styles.metaText}>{item.message}</Text>
+          <Text style={styles.time}>
+            {new Date(parseInt(item.timestamp, 10)).toLocaleString()}
+          </Text>
         </View>
       </View>
     );
@@ -146,5 +151,10 @@ const styles = StyleSheet.create({
   icon: { marginRight: 12 },
   textContainer: { flex: 1 },
   type: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  metaText: { color: '#777', fontSize: 13, marginTop: 2 }
+  metaText: { color: '#777', fontSize: 13, marginTop: 2 },
+  time: {
+    fontSize: 12,
+    color: '#555',
+    marginTop: 4,
+  },
 });

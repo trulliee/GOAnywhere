@@ -71,7 +71,7 @@ export default function LoginUser() {
 
     } catch (error) {
       console.error('Login failed:', error.message);
-      alert('Login failed: ${error.message}');
+      alert(`Login failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -252,6 +252,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingBottom: 20,
   },
   signInText: {
     fontSize: 24,

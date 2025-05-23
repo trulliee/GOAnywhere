@@ -69,12 +69,12 @@ def submit_crowdsourced_data(data: CrowdData):
 
         # Use backend timestamp if none provided
         data_to_store = {
-            "user_id": data.userId,
+            "user_id":  data.userId,
             "username": data.username,
+            "type":     data.reportType,
             "latitude": data.latitude,
-            "longitude": data.longitude,
-            "type": data.reportType,
-            "timestamp": timestamp_value
+            "longitude":data.longitude,
+            "timestamp":timestamp_value
         }
 
         # Store in Firestore

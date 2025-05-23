@@ -21,7 +21,6 @@ async def get_crowdsourced_reports():
                 "username": data.get("username", "Unknown"),
                 "type": data.get("type", "Unknown"),
                 "timestamp": timestamp,
-                "status": data.get("status", "pending"),
             })
 
         return {"reports": reports}

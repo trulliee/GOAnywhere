@@ -74,7 +74,7 @@ export default function Navigation() {
   const seenReports = useRef(new Set());
 
   useEffect(() => {
-    const driverTypes = ["Accident","Road Works","Police","Weather","Hazard","Map Issue"];
+    const driverTypes = ["Accident","Road Works","Traffic Police","Weather","Hazard","Map Issue"];
     const publicTypes = ["Accident","Transit Works","High Crowd","Weather","Hazard","Delays","Map Issue"];
     // detect if this public route is MRT-only (no bus segments)
     const isMRTRoute = steps.some(s => s.transitInfo?.vehicleType === 'SUBWAY')
@@ -234,30 +234,34 @@ export default function Navigation() {
 
 	// 2) your unified submitCrowdsourcedReport
   const submitCrowdsourcedReport = async (reportType) => {
-    const loc = await getCurrentLocation();
-    if (!loc) return;
+    const stored = await AuthService.getUserInfo(); 
+    if (!stored?.uid) {
+      return Alert.alert("Please log in before submitting a report");
+    }
+
+    const location = await getCurrentLocation();
+    if (!location) return;
 
     const reportData = {
+      userId:    stored.uid,                      // ← real UID
+      username:  stored.name.toUpperCase(),       // or however you want it
       reportType,
-      username: userName,
-      userId: 'anonymous',
       timestamp: Date.now(),
-      latitude: loc.latitude,
-      longitude: loc.longitude
+      latitude:  location.latitude,
+      longitude: location.longitude,
     };
 
-    try {
-      await fetch(`${API_URL}/crowd/submit-crowd-data`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reportData)
-      });
-      Alert.alert("Report Submitted", `You reported: ${reportType}`);
-    } catch (error) {
-      console.error('Error submitting report:', error);
-      Alert.alert("Submission Failed", "Please try again.");
+    const res = await fetch(`${API_URL}/crowd/submit-crowd-data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(reportData),
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      return Alert.alert("Submission failed", text);
     }
-    setReportOpen(false);
+    Alert.alert("Report Submitted", `You reported: ${reportType}`);
   };
 
   // Public transport totals
@@ -274,7 +278,7 @@ export default function Navigation() {
   const walkText = location ? `${walkMins} min walk`         : 'Loading...';
 
   // Crowd-source categories
-  const driverCategories = ["Accident","Road Works","Police","Weather","Hazard","Map Issue"];
+  const driverCategories = ["Accident","Road Works","Traffic Police","Weather","Hazard","Map Issue"];
   const publicCategories = ["Accident","Transit Works","High Crowd","Weather","Hazard","Delays","Map Issue"];
   const categories = mode === 'driver' ? driverCategories : publicCategories;
   const rows = [];
@@ -284,7 +288,7 @@ export default function Navigation() {
   const categoryIcons = {
     Accident:      { name: "car-crash",             lib: "FontAwesome5" },
     "Road Works":  { name: "hard-hat",              lib: "FontAwesome5" },
-    Police:        { name: "user-secret",           lib: "FontAwesome5" },
+    "Traffic Police":        { name: "user-secret",           lib: "FontAwesome5" },
     Weather:       { name: "cloud",                 lib: "FontAwesome5" },
     Hazard:        { name: "exclamation-triangle",  lib: "FontAwesome5" },
     "Map Issue":   { name: "map-marked",            lib: "FontAwesome5" },

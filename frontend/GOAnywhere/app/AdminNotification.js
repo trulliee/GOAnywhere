@@ -64,6 +64,9 @@ export default function Notification() {
             };
           })
         );
+        enriched.sort(
+          (a, b) => Number(b.timestamp) - Number(a.timestamp)
+        );
         setNotifications(enriched);
       } catch (err) {
         console.error('Failed to load reports:', err);

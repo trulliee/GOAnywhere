@@ -28,7 +28,6 @@ This app provides a set of isolated features, including:
 - All features are **isolated**, not dynamically connected
 - Location history has **inconsistent performance**
 - Admin sees reports only as **lat/lon coordinates**
-- App is a functional **prototype**, not a polished product
 
 ---
 
